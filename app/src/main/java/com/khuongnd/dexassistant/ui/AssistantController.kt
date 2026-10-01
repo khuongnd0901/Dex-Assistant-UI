@@ -6,10 +6,12 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import com.khuongnd.dexassistant.ui.device.DpcClient
 import com.khuongnd.dexassistant.ui.protocol.AssistantWebSocket
 import com.khuongnd.dexassistant.ui.protocol.DeviceAction
 import com.khuongnd.dexassistant.ui.security.CredentialStore
+import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
 
 class AssistantController(
@@ -70,6 +72,7 @@ class AssistantController(
         state = state.copy(
             voiceState = voice.getString("state", "STOPPED") ?: "STOPPED",
             voiceDetail = voice.getString("detail", "Not started") ?: "Not started",
+            assistantReadiness = voice.getString(VoiceAssistantService.KEY_ASSISTANT_READINESS, "NOT_BOUND") ?: "NOT_BOUND",
         )
         dpc.getCapabilityReport { result ->
             state = state.copy(capabilities = result.capabilities,
@@ -84,15 +87,17 @@ class AssistantController(
         publish()
     }
 
-    fun startVoice() = dpc.startVoiceService { result ->
-        update(if (result.status == "SUCCESS") "VOICE_START_REQUESTED" else "VOICE_START_FAILED",
-            result.errorCode ?: "Voice service request sent")
+    fun startVoice() {
+        val result = runCatching { ContextCompat.startForegroundService(context,
+            Intent(context, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_START)) }
+        update(if (result.isSuccess) "VOICE_START_REQUESTED" else "VOICE_START_FAILED",
+            result.exceptionOrNull()?.javaClass?.simpleName ?: "App requested its voice service")
         refreshHealth()
     }
 
-    fun stopVoice() = dpc.stopVoiceService { result ->
-        update(if (result.status == "SUCCESS") "VOICE_STOP_REQUESTED" else "VOICE_STOP_FAILED",
-            result.errorCode ?: "Voice service stop sent")
+    fun stopVoice() {
+        context.startService(Intent(context, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_STOP))
+        update("VOICE_STOP_REQUESTED", "App requested microphone stop")
         refreshHealth()
     }
 
@@ -167,6 +172,7 @@ data class UiState(
     val lastRequestId: String? = null,
     val voiceState: String = "STOPPED",
     val voiceDetail: String = "Not started",
+    val assistantReadiness: String = "NOT_BOUND",
     val deviceOwner: Boolean = false,
     val capabilities: Map<String, String> = emptyMap(),
 )

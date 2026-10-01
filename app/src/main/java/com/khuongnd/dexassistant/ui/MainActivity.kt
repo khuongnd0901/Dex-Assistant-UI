@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -63,7 +65,7 @@ fun AssistantScreen(
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("DeX Assistant", style = MaterialTheme.typography.headlineMedium)
@@ -83,6 +85,7 @@ fun AssistantScreen(
             Text("Health", style = MaterialTheme.typography.titleMedium)
             Text("Device Owner: ${if (state.deviceOwner) "ready" else "not verified"}")
             Text("Voice: ${state.voiceState} — ${state.voiceDetail}")
+            Text("Default assistant readiness: ${state.assistantReadiness}")
             Text("Backend: ${state.status}")
             Button(onClick = onRefresh) { Text("Refresh health") }
             Button(onClick = onApplyPermissions) { Text("Apply permission profile") }

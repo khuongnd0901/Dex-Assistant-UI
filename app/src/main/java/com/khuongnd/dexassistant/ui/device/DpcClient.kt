@@ -50,8 +50,6 @@ class DpcClient(private val context: Context) {
 
     fun applyPermissionProfile(callback: (DeviceResult) -> Unit) = request(MSG_APPLY_PERMISSION_PROFILE, Bundle(), callback)
     fun getCapabilityReport(callback: (DeviceResult) -> Unit) = request(MSG_GET_CAPABILITY_REPORT, Bundle(), callback)
-    fun startVoiceService(callback: (DeviceResult) -> Unit) = request(MSG_START_VOICE_SERVICE, Bundle(), callback)
-    fun stopVoiceService(callback: (DeviceResult) -> Unit) = request(MSG_STOP_VOICE_SERVICE, Bundle(), callback)
 
     private fun request(what: Int, data: Bundle, callback: (DeviceResult) -> Unit) {
         val service = remote
@@ -81,8 +79,6 @@ class DpcClient(private val context: Context) {
         private const val MSG_RESULT = 2
         private const val MSG_APPLY_PERMISSION_PROFILE = 3
         private const val MSG_GET_CAPABILITY_REPORT = 4
-        private const val MSG_START_VOICE_SERVICE = 5
-        private const val MSG_STOP_VOICE_SERVICE = 6
         private const val KEY_ENABLED = "enabled"
         private const val KEY_STATUS = "status"
         private const val KEY_ERROR_CODE = "errorCode"

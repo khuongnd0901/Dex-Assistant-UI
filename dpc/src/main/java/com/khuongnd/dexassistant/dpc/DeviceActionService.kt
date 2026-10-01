@@ -24,20 +24,6 @@ class DeviceActionService : Service() {
                 respondReport(reply, request.arg1, PermissionProfileManager(this).capabilityReport())
                 return@Handler true
             }
-            MSG_START_VOICE_SERVICE, MSG_STOP_VOICE_SERVICE -> {
-                val action = if (request.what == MSG_START_VOICE_SERVICE) RecoveryReceiver.ACTION_START
-                    else ACTION_STOP_VOICE
-                val intent = Intent(action).setClassName(
-                    PermissionProfileManager.TARGET_PACKAGE,
-                    RecoveryReceiver.TARGET_SERVICE,
-                )
-                val result = runCatching {
-                    if (request.what == MSG_START_VOICE_SERVICE) startForegroundService(intent) else startService(intent)
-                }
-                respond(reply, request.arg1, if (result.isSuccess) STATUS_SUCCESS else STATUS_FAILED,
-                    if (result.isSuccess) null else ERROR_VOICE_SERVICE_START_FAILED)
-                return@Handler true
-            }
             MSG_TOGGLE_WIFI -> Unit
             else -> return@Handler false
         }
@@ -114,8 +100,6 @@ class DeviceActionService : Service() {
         const val MSG_RESULT = 2
         const val MSG_APPLY_PERMISSION_PROFILE = 3
         const val MSG_GET_CAPABILITY_REPORT = 4
-        const val MSG_START_VOICE_SERVICE = 5
-        const val MSG_STOP_VOICE_SERVICE = 6
         const val KEY_ENABLED = "enabled"
         const val KEY_STATUS = "status"
         const val KEY_ERROR_CODE = "errorCode"
@@ -125,8 +109,6 @@ class DeviceActionService : Service() {
         const val STATUS_FAILED = "FAILED"
         const val STATUS_REJECTED = "REJECTED"
         const val ERROR_DEVICE_STATE_MISMATCH = "DEVICE_STATE_MISMATCH"
-        const val ERROR_VOICE_SERVICE_START_FAILED = "VOICE_SERVICE_START_FAILED"
-        const val ACTION_STOP_VOICE = "com.khuongnd.dexassistant.ui.action.STOP_VOICE_SERVICE"
         private const val POLL_MS = 250L
         private const val MAX_ATTEMPTS = 40
     }

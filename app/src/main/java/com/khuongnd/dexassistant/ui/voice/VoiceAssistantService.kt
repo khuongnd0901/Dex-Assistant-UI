@@ -5,8 +5,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -16,6 +21,7 @@ import com.khuongnd.dexassistant.ui.MainActivity
 class VoiceAssistantService : Service() {
     private val stateMachine = VoiceStateMachine()
     private val preferences by lazy { getSharedPreferences(HEALTH_PREFERENCES, MODE_PRIVATE) }
+    @Volatile private var probe: AudioRecord? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -25,28 +31,73 @@ class VoiceAssistantService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action ?: ACTION_START) {
             ACTION_STOP -> {
+                stopProbe()
                 stateMachine.accept(VoiceEvent.STOP)
                 publishHealth(VoiceState.STOPPED, "Stopped by user")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
-            ACTION_PAUSE -> transitionSafely(VoiceEvent.PAUSE)
-            ACTION_RESUME -> transitionSafely(VoiceEvent.RESUME)
+            ACTION_PAUSE -> { stopProbe(); transitionSafely(VoiceEvent.PAUSE) }
+            ACTION_RESUME -> { transitionSafely(VoiceEvent.RESUME); runMicrophoneProbe() }
             else -> transitionSafely(VoiceEvent.START)
         }
-        val modelAvailable = WakeWordAssets.requiredFiles.all { assets.list(it.substringBeforeLast('/'))
-            ?.contains(it.substringAfterLast('/')) == true }
-        if (!modelAvailable && stateMachine.state != VoiceState.PAUSED) {
-            transitionSafely(VoiceEvent.PAUSE)
-        }
-        val detail = if (modelAvailable) "Preparing offline wake word" else "Wake model unavailable; microphone is not recording"
+        val detail = "Opening microphone probe"
         publishHealth(stateMachine.state, detail)
         startInForeground(notification(stateMachine.state, detail))
+        if (stateMachine.state == VoiceState.LISTENING) runMicrophoneProbe()
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        stopProbe()
+        super.onDestroy()
+    }
+
+    private fun runMicrophoneProbe() {
+        if (probe != null) return
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            transitionSafely(VoiceEvent.FAILURE)
+            publishHealth(VoiceState.ERROR, "Microphone probe failed: RECORD_AUDIO_DENIED")
+            updateNotification(VoiceState.ERROR, "Microphone probe failed: RECORD_AUDIO_DENIED")
+            return
+        }
+        Thread {
+            val result = runCatching {
+                val sampleRate = 16_000
+                val minimum = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT)
+                check(minimum > 0) { "Unsupported audio format" }
+                val recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                    minimum.coerceAtLeast(sampleRate))
+                check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord initialization failed" }
+                probe = recorder
+                recorder.startRecording()
+                check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "AudioRecord start failed" }
+                check(recorder.read(ShortArray(320), 0, 320, AudioRecord.READ_BLOCKING) >= 0) { "AudioRecord read failed" }
+            }
+            stopProbe()
+            if (result.isSuccess) {
+                publishHealth(VoiceState.LISTENING, "Microphone probe passed; wake-word runtime pending")
+                updateNotification(VoiceState.LISTENING, "Microphone probe passed; wake-word runtime pending")
+            } else {
+                transitionSafely(VoiceEvent.FAILURE)
+                val failure = "Microphone probe failed: ${result.exceptionOrNull()?.javaClass?.simpleName}"
+                publishHealth(VoiceState.ERROR, failure)
+                updateNotification(VoiceState.ERROR, failure)
+            }
+        }.start()
+    }
+
+    private fun stopProbe() {
+        val recorder = probe ?: return
+        probe = null
+        runCatching { recorder.stop() }
+        recorder.release()
+    }
 
     private fun transitionSafely(event: VoiceEvent) {
         runCatching { stateMachine.accept(event) }.onFailure { stateMachine.accept(VoiceEvent.FAILURE) }
@@ -55,6 +106,10 @@ class VoiceAssistantService : Service() {
     private fun startInForeground(notification: Notification) {
         val type = if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+    }
+
+    private fun updateNotification(state: VoiceState, detail: String) {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state, detail))
     }
 
     private fun notification(state: VoiceState, detail: String): Notification {
@@ -102,6 +157,7 @@ class VoiceAssistantService : Service() {
         const val KEY_STATE = "state"
         const val KEY_DETAIL = "detail"
         const val KEY_UPDATED_AT = "updatedAt"
+        const val KEY_ASSISTANT_READINESS = "assistantReadiness"
         private const val CHANNEL_ID = "dex_voice"
         private const val NOTIFICATION_ID = 1001
     }
