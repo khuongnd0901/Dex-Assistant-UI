@@ -124,3 +124,16 @@ observation attaches only while the administration Activity is started.
 - Provision/verify using the backend script documented in its
   `scripts/android/README.md`. The AVD is currently stopped and retains the
   successful Device Owner/default-assistant state; do not reset casually.
+
+## Authorized local signing recovery — 2026-10-02
+
+The owner authorized recovery of DEVICE_TEST_KEYSTORE_BASE64 for local signing.
+Workflow run 36897677667 exported only CMS-encrypted signing material, encrypted
+for a locally generated recipient whose private key never left this host.
+The recovered keystore certificate and both locally re-signed app/DPC APKs were
+verified with SHA-256 fingerprint
+`9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`,
+matching the installed prerelease signing identity. Signing material remains
+outside the repositories in a host-local directory with restrictive permissions.
+Temporary recovery workflow logic was removed. Physical acceptance of these
+re-signed recovery APKs remains pending; this is not a device-test PASS.
