@@ -1,0 +1,79 @@
+package com.khuongnd.dexassistant.ui.device
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Bundle
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
+import java.util.concurrent.atomic.AtomicInteger
+
+class DpcClient(private val context: Context) {
+    private var remote: Messenger? = null
+    private val callbacks = mutableMapOf<Int, (DeviceResult) -> Unit>()
+    private val sequence = AtomicInteger()
+    private val incoming = Messenger(Handler(Looper.getMainLooper()) { message ->
+        if (message.what != MSG_RESULT) return@Handler false
+        val callback = callbacks.remove(message.arg1) ?: return@Handler true
+        callback(DeviceResult(message.data.getString(KEY_STATUS) ?: STATUS_FAILED,
+            message.data.getString(KEY_ERROR_CODE)))
+        true
+    })
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            remote = Messenger(binder)
+        }
+        override fun onServiceDisconnected(name: ComponentName?) { remote = null }
+    }
+
+    fun bind(): Boolean = context.bindService(
+        Intent(ACTION).setComponent(ComponentName(DPC_PACKAGE, SERVICE_CLASS)),
+        connection,
+        Context.BIND_AUTO_CREATE,
+    )
+
+    fun unbind() {
+        runCatching { context.unbindService(connection) }
+        remote = null
+    }
+
+    fun toggleWifi(enabled: Boolean, callback: (DeviceResult) -> Unit) {
+        val service = remote
+        if (service == null) {
+            callback(DeviceResult(STATUS_REJECTED, ERROR_DEVICE_OWNER_REQUIRED))
+            return
+        }
+        val id = sequence.incrementAndGet()
+        callbacks[id] = callback
+        val request = Message.obtain(null, MSG_TOGGLE_WIFI).apply {
+            arg1 = id
+            replyTo = incoming
+            data = Bundle().apply { putBoolean(KEY_ENABLED, enabled) }
+        }
+        runCatching { service.send(request) }.onFailure {
+            callbacks.remove(id)?.invoke(DeviceResult(STATUS_FAILED, ERROR_ACTION_TIMEOUT))
+        }
+    }
+
+    data class DeviceResult(val status: String, val errorCode: String?)
+
+    companion object {
+        private const val ACTION = "com.khuongnd.dexassistant.dpc.EXECUTE_DEVICE_ACTION"
+        private const val DPC_PACKAGE = "com.khuongnd.dexassistant.dpc"
+        private const val SERVICE_CLASS = "com.khuongnd.dexassistant.dpc.DeviceActionService"
+        private const val MSG_TOGGLE_WIFI = 1
+        private const val MSG_RESULT = 2
+        private const val KEY_ENABLED = "enabled"
+        private const val KEY_STATUS = "status"
+        private const val KEY_ERROR_CODE = "errorCode"
+        private const val STATUS_FAILED = "FAILED"
+        private const val STATUS_REJECTED = "REJECTED"
+        private const val ERROR_DEVICE_OWNER_REQUIRED = "DEVICE_OWNER_REQUIRED"
+        private const val ERROR_ACTION_TIMEOUT = "ACTION_TIMEOUT"
+    }
+}

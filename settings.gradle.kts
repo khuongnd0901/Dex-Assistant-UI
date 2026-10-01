@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Dex-Assistant-UI"
 include(":app")
+include(":dpc")

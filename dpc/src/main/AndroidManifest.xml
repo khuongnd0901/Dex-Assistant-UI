@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
+    <permission
+        android:name="com.khuongnd.dexassistant.dpc.permission.EXECUTE_DEVICE_ACTION"
+        android:protectionLevel="signature" />
+
+    <application
+        android:allowBackup="false"
+        android:label="DeX Assistant Device Policy">
+        <receiver
+            android:name=".DexDeviceAdminReceiver"
+            android:description="@string/admin_description"
+            android:exported="true"
+            android:label="DeX Assistant Device Policy"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".DeviceActionService"
+            android:exported="true"
+            android:permission="com.khuongnd.dexassistant.dpc.permission.EXECUTE_DEVICE_ACTION">
+            <intent-filter>
+                <action android:name="com.khuongnd.dexassistant.dpc.EXECUTE_DEVICE_ACTION" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

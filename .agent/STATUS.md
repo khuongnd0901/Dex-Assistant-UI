@@ -11,31 +11,31 @@ canonical task board.
 
 ## Current state
 
-- `main` contains the initial Kotlin/Jetpack Compose scaffold.
-- Package: `com.khuongnd.dexassistant.ui`.
+- The repository contains the Compose client (`com.khuongnd.dexassistant.ui`)
+  and separate DPC (`com.khuongnd.dexassistant.dpc`).
 - Current build configuration: compile/target API 35, min API 30, JDK 17.
-- The placeholder screen has no backend connection, authentication,
-  provisioning, action execution, INTERNET permission, or reconnect behavior.
-- Gradle wrapper 8.9 runs, but tests/build are unverified because Android SDK
-  Platform 35 is not configured locally.
+- The client provisions a Keystore-wrapped token, enforces WSS except loopback,
+  implements the V1 WebSocket/reconnect flow, launches apps, delegates Wi-Fi to
+  the signature-protected DPC, and emits non-sensitive latency markers.
+- The DPC verifies Device Owner status and observes Wi-Fi state before success.
+- `test`, `lint`, and `assembleDebug` pass for both modules with JDK 17/API 35.
 
 ## Relevant canonical tasks
 
-- Backend `T-004` is `IN_PROGRESS`: Android baseline proposals still require
-  owner approval and actual Fold3 firmware/API evidence.
-- Backend `T-003` is `BACKLOG`: Android client implementation must not proceed
-  beyond the scaffold until T-004 is accepted.
+- Backend `T-004` is `IN_PROGRESS`: owner decisions are accepted; actual Fold3
+  firmware and Device Owner evidence remain.
+- Backend `T-003` is `IN_PROGRESS`: automated implementation is complete, while
+  on-device provisioning, actions, and latency remain unverified.
 - Backend `T-005` establishes the main/backend/Android agent workflow.
 
-## Blockers and mismatch
+## Blockers
 
-The scaffold currently targets API 35, while the unaccepted T-004 candidate
-baseline proposes compile/target API 36 and min API 30. Do not silently resolve
-this mismatch in either direction. The main agent must coordinate the accepted
-T-004 decision and then update this repository.
+No Fold3 is visible through ADB in the current environment. Device Owner
+provisioning can require a clean/factory-reset device and is the remaining
+acceptance blocker.
 
 ## Next action
 
-Wait for T-004 owner review and device API evidence. Once accepted, let the main
-agent create/activate the T-003 implementation plan and assign bounded Android
-work with explicit protocol and validation criteria.
+Back up and provision the dedicated Fold3, install DPC before the main app, run
+the remote FakePlanner round trip for launch and Wi-Fi on/off, and capture API,
+owner state, results, and latency evidence.
