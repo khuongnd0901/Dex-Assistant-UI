@@ -37,7 +37,7 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Test, lint, and assemble debug APKs
-        run: ./gradlew --no-daemon test lint assembleDebug
+        run: ./gradlew --no-daemon --build-cache testDebugUnitTest lint assembleDebug
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4

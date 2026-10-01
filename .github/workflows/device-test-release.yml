@@ -83,7 +83,7 @@ jobs:
           printf 'DEVICE_TEST_KEYSTORE=%s\n' "$keystore" >> "$GITHUB_ENV"
 
       - name: Test, lint, and assemble debug APKs
-        run: ./gradlew --no-daemon test lint assembleDebug
+        run: ./gradlew --no-daemon --build-cache testDebugUnitTest lint assembleDebug
 
       - name: Sign, verify, and package release assets
         env:
