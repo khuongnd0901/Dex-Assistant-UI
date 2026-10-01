@@ -1,0 +1,56 @@
+name: Recover encrypted signing identity
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Encrypt keystore for local recovery
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DEVICE_TEST_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$KEYSTORE_BASE64"
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+          cat > "$tmpdir/recipient.pem" <<'CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIEKzCCApOgAwIBAgIUBO7X6dLN73574WL3daRSKpiTcAgwDQYJKoZIhvcNAQEL
+          BQAwJTEjMCEGA1UEAwwaRGV4LWxvY2FsLXNpZ25pbmctcmVjb3ZlcnkwHhcNMjYx
+          MDAxMTcxMTQyWhcNMjYxMDAzMTcxMTQyWjAlMSMwIQYDVQQDDBpEZXgtbG9jYWwt
+          c2lnbmluZy1yZWNvdmVyeTCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGB
+          ALQjxwDe66bZxJX8LFR5Mx6JgU3wFo0zAe2dmajKPgiDCoqxNUPIG3og/1zSlofy
+          /D3SZbv9mTdAofvCvEFfauZFjewIULlIglEvTaHVwoA4hglzATuLiQQ4z1Ah0EVO
+          3ZzOf28EzipxiDD57/ZXTo/xHNqfdBjfb1Ms62+SjU5kev6620FH0IgSXPLdAlEB
+          ym5sPVLbed5OuYIndqepw7AGxOX5CoA+8z/qoUE9C7xI+WsPzFzeAHLD4nrudUIR
+          3l/x41au3jrMSX5M2IInGwMX6APNexygwuoY2Nb7w8PSaTnDIjjimRF51MA2LQEc
+          ir7GqlkzRQSGeySBBxn5NNowGxt/UZ2Y0DgbQ9kCtsNowE4qmELXzGpZxtQq9zEN
+          ZGbStP+rgY+f9fcW0WqHqH1p5cAqPLNwpMaGX/DWKlsIwWLEne8acSh6Yz2d7TLi
+          WLGVRGWyNtCrkAOLefLZBt2x+30fcCS95CA51NDaxeBN5PA6KgReZ6hPBwXVaslM
+          tQIDAQABo1MwUTAdBgNVHQ4EFgQUAOIj2/UAhqDRd9VSo0Q2MAD+C74wHwYDVR0j
+          BBgwFoAUAOIj2/UAhqDRd9VSo0Q2MAD+C74wDwYDVR0TAQH/BAUwAwEB/zANBgkq
+          hkiG9w0BAQsFAAOCAYEAX38ndmBCHcPRvoPvm5u4oivzAHMP90RgUE2m1VrS5kKp
+          y3LS24+1Dt5yk8pXae+Awp89o/LN1S+0JJ3ZPHp+aXTZcrfKPIvWPa2KkedKGrVw
+          SuFUZ7ONBEGh8yg8O+mHyxwGN1c0TOXW4ROHWjokYzHG+WXRJUjqbujBAyHhmleD
+          OftXw7wEC8JusQv3cJGd6KMVPFqgSw0fI/EISwNZ450pSrvxd7iCYmTVAelznyV3
+          vSc31mBTQCUvVdYnNOQ/IwWWaC+m303Huot4Q72+kpTXJoyIlViNcryww8rO1Bc6
+          KTzM4imjjXOBxza9rOn610xM82YUpS/Horb6gzrnofuIwqW7ojGiDiy0jvlakD3h
+          BkvEdBGf6DxrBm0jw/JdDd2vOluBrW8bshuKY4RiIcZnsq/bEWfDnq9Is/C7I+cg
+          ufY2aSjUcqeq+QexjBGjcEwMLzVARDLUmGK72rWP4erGDW/RvmIpgEiBY3KV/pAh
+          h0f0czNiYB+VYS9Crquv
+          -----END CERTIFICATE-----
+          CERT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$tmpdir/keystore"
+          mkdir encrypted
+          openssl cms -encrypt -binary -aes-256-cbc -in "$tmpdir/keystore" -out encrypted/keystore.cms -outform DER "$tmpdir/recipient.pem"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-signing-recovery
+          path: encrypted/keystore.cms
+          retention-days: 1
+          if-no-files-found: error
