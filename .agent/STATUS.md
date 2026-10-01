@@ -83,6 +83,8 @@ Fold3 acceptance matrix; keep canonical T-006 `IN_PROGRESS` until it passes.
 - APK SHA-256: app
   `d6ada73dca07a823e2833a61908244e891b6a8a6dc64896564052c84ccee07a9`;
   DPC `17377af836a71fdafc184f33441f6fc0560ef07fadd6440f9fb19ea7074fa76b`.
+- GitHub prerelease `fold3-device-test-2026-10-01` publishes both verified
+  debug APKs for physical Fold3 testing; generated binaries remain outside Git.
 - `apksigner verify --print-certs` passed for both APKs; both use certificate
   SHA-256 `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
 - Windows `ZFold3_API35` (Google APIs x86_64) booted as Android 15/API 35;
