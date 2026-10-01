@@ -36,6 +36,8 @@ acceptance blocker.
 
 ## Next action
 
-Back up and provision the dedicated Fold3, install DPC before the main app, run
-the remote FakePlanner round trip for launch and Wi-Fi on/off, and capture API,
-owner state, results, and latency evidence.
+The main agent starts from backend `.agent/NEXT_SESSION.md` and coordinates this
+repository's Android agent in parallel with a backend agent. The Android agent
+first builds and collects read-only ADB facts, waits for the main-agent safety
+gate, then provisions the DPC before the main app and validates launch, Wi-Fi
+on/off, reconnect/retry, and latency evidence on the Fold3.
