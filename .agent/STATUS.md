@@ -1,6 +1,6 @@
 # Android repository status
 
-Last synchronized: 2026-10-02 (T-006 default-assistant slice)
+Last synchronized: 2026-10-02 (Fold3 recovery and session handoff)
 
 ## Canonical project memory
 
@@ -36,8 +36,8 @@ canonical task board.
   health, applies the permission profile, and starts/stops voice service.
 - Voice lifecycle/readiness transitions and permission result classification have unit
   coverage. Protocol V1 was not changed.
-- Android implementation commit `b424911` is pushed to `origin/main`; canonical
-  task/decision/provisioning commit `e23740a` is pushed in the backend repository.
+- Current branch is `main`; other branches were merged and deleted as requested.
+  Android main is `b25269a`; backend main is `f590e91`.
 
 ## Relevant canonical tasks
 
@@ -68,21 +68,17 @@ canonical task board.
 
 ## Next action
 
-Validate the startup reconciliation and live administration-health fixes with
-`test lint assembleDebug`, then build with the existing device-test signing
-identity through the manual workflow (`publish=false` supports branch artifacts).
-Do not install a local debug APK signed with a newly generated identity on Fold3.
-Verify app-update DPC health advancement, permission readiness, and fresh probe,
-then pause/resume/stop and live UI health. Retain boot/self-update recovery.
+Continue T-006 with offline KWS/STT/TTS, final-text handoff, credential gate,
+special-access Settings links and diagnostics. Obtain a dedicated test backend
+before V1/reconnect/actions/Keystore/latency acceptance. Keep T-006 IN_PROGRESS.
+No factory reset is authorized. Fold3 last seen on ADB port `32881`; rediscover
+the Wi-Fi debug port before use. Voice service ended STOPPED.
 
-Full KWS/STT/TTS, credential gate, Settings links and backend acceptance remain
-open; keep canonical T-006 IN_PROGRESS. No factory reset is authorized.
-
-Working-tree changes also explicitly set up Android SDK tools in both workflows,
-restore the Gradle wrapper executable bit, and bound permission IPC waits to ten
-seconds and startup attempts to three. Probe completion is invalidated by
-pause/stop, so a late worker cannot restore LISTENING after a user stop. Health
-observation attaches only while the administration Activity is started.
+Committed repairs set up Android SDK tools in both workflows, restore the Gradle
+wrapper executable bit, and bound permission IPC waits to ten seconds and startup
+attempts to three. Probe completion is invalidated by pause/stop, so a late worker
+cannot restore LISTENING after a user stop. Health observation attaches only
+while the administration Activity is started.
 
 ## Validation
 
@@ -157,3 +153,26 @@ Workflow30df640 explicitly signs final APKs after checking the restored key;
 run36898323611 passed test/lint/build/expected certificate checks. Encrypted
 keystore backup is stored in `signing/`, passphrase in separate Actions secret.
 No factory reset, backend protocol change, or full voice/backend acceptance.
+
+
+## Session handoff — 2026-10-02
+
+- Android main `b25269af661b9cb710aacd40d0fae123f6e78dd9`; backend main
+  `f590e913f713c2b9e7f9ad7287355870e9ea9b9d`. Only `main` remains locally
+  and remotely; both trees were clean at handoff.
+- Android local `test lint assembleDebug` passed150 tasks; 23 distinct tests
+  ran twice (46 executions). CI run36898323611 passed explicit signing and
+  expected certificate verification. No release was published.
+- Signing certificate SHA-256:
+  `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
+  Local keystore: `/home/kunrg/.local/share/dex-signing/device-test.keystore`.
+  Encrypted tracked backup `signing/device-test.keystore.enc`; passphrase in
+  Actions secret `DEVICE_TEST_BACKUP_PASSPHRASE`. Never commit decrypted material.
+- Physical repair checks pass: app-only permission reconciliation; provisioning
+  across reboot and changed ADB port; probe/FGS; UI emergency stop/start;
+  notification pause/resume/stop; shell permission/export boundaries. Final
+  voice state STOPPED. Detailed limits and evidence are in backend
+  `.agent/evidence/T-006-fold3-recovery-2026-10-02.md`.
+- Full wake recognition, STT/TTS, credential gate, diagnostics and backend
+  dependent acceptance are still open. Do not factory reset without explicit
+  owner confirmation.
