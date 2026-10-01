@@ -14,8 +14,33 @@ import android.os.Messenger
 
 class DeviceActionService : Service() {
     private val handler = Handler(Looper.getMainLooper()) { request ->
-        if (request.what != MSG_TOGGLE_WIFI) return@Handler false
         val reply = request.replyTo ?: return@Handler true
+        when (request.what) {
+            MSG_APPLY_PERMISSION_PROFILE -> {
+                respondReport(reply, request.arg1, PermissionProfileManager(this).apply())
+                return@Handler true
+            }
+            MSG_GET_CAPABILITY_REPORT -> {
+                respondReport(reply, request.arg1, PermissionProfileManager(this).capabilityReport())
+                return@Handler true
+            }
+            MSG_START_VOICE_SERVICE, MSG_STOP_VOICE_SERVICE -> {
+                val action = if (request.what == MSG_START_VOICE_SERVICE) RecoveryReceiver.ACTION_START
+                    else ACTION_STOP_VOICE
+                val intent = Intent(action).setClassName(
+                    PermissionProfileManager.TARGET_PACKAGE,
+                    RecoveryReceiver.TARGET_SERVICE,
+                )
+                val result = runCatching {
+                    if (request.what == MSG_START_VOICE_SERVICE) startForegroundService(intent) else startService(intent)
+                }
+                respond(reply, request.arg1, if (result.isSuccess) STATUS_SUCCESS else STATUS_FAILED,
+                    if (result.isSuccess) null else ERROR_VOICE_SERVICE_START_FAILED)
+                return@Handler true
+            }
+            MSG_TOGGLE_WIFI -> Unit
+            else -> return@Handler false
+        }
         val desired = request.data.getBoolean(KEY_ENABLED)
         val dpm = getSystemService(DevicePolicyManager::class.java)
         val ownerCheck = WifiDecision.preflight(dpm.isDeviceOwnerApp(packageName), true)
@@ -70,18 +95,38 @@ class DeviceActionService : Service() {
         runCatching { reply.send(response) }
     }
 
+    private fun respondReport(reply: Messenger, requestId: Int, report: Map<String, String>) {
+        val response = Message.obtain(null, MSG_RESULT).apply {
+            arg1 = requestId
+            data = Bundle().apply {
+                putString(KEY_STATUS, STATUS_SUCCESS)
+                putStringArrayList(KEY_CAPABILITY_NAMES, ArrayList(report.keys))
+                putStringArrayList(KEY_CAPABILITY_STATES, ArrayList(report.values))
+            }
+        }
+        runCatching { reply.send(response) }
+    }
+
     companion object {
         const val ACTION = "com.khuongnd.dexassistant.dpc.EXECUTE_DEVICE_ACTION"
         const val PACKAGE = "com.khuongnd.dexassistant.dpc"
         const val MSG_TOGGLE_WIFI = 1
         const val MSG_RESULT = 2
+        const val MSG_APPLY_PERMISSION_PROFILE = 3
+        const val MSG_GET_CAPABILITY_REPORT = 4
+        const val MSG_START_VOICE_SERVICE = 5
+        const val MSG_STOP_VOICE_SERVICE = 6
         const val KEY_ENABLED = "enabled"
         const val KEY_STATUS = "status"
         const val KEY_ERROR_CODE = "errorCode"
+        const val KEY_CAPABILITY_NAMES = "capabilityNames"
+        const val KEY_CAPABILITY_STATES = "capabilityStates"
         const val STATUS_SUCCESS = "SUCCESS"
         const val STATUS_FAILED = "FAILED"
         const val STATUS_REJECTED = "REJECTED"
         const val ERROR_DEVICE_STATE_MISMATCH = "DEVICE_STATE_MISMATCH"
+        const val ERROR_VOICE_SERVICE_START_FAILED = "VOICE_SERVICE_START_FAILED"
+        const val ACTION_STOP_VOICE = "com.khuongnd.dexassistant.ui.action.STOP_VOICE_SERVICE"
         private const val POLL_MS = 250L
         private const val MAX_ATTEMPTS = 40
     }

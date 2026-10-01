@@ -25,6 +25,7 @@ class AssistantController(
 
     fun start() {
         dpc.bind()
+        refreshHealth()
         publish()
     }
 
@@ -62,6 +63,37 @@ class AssistantController(
 
     fun retry() {
         if (!webSocket.retryLast()) update("NO_RETRY", "No command is available to retry")
+    }
+
+    fun refreshHealth() {
+        val voice = context.getSharedPreferences("voice_health", Context.MODE_PRIVATE)
+        state = state.copy(
+            voiceState = voice.getString("state", "STOPPED") ?: "STOPPED",
+            voiceDetail = voice.getString("detail", "Not started") ?: "Not started",
+        )
+        dpc.getCapabilityReport { result ->
+            state = state.copy(capabilities = result.capabilities,
+                deviceOwner = result.capabilities["deviceOwner"] == "GRANTED")
+            publish()
+        }
+        publish()
+    }
+
+    fun applyPermissions() = dpc.applyPermissionProfile { result ->
+        state = state.copy(capabilities = result.capabilities, message = "Permission profile checked")
+        publish()
+    }
+
+    fun startVoice() = dpc.startVoiceService { result ->
+        update(if (result.status == "SUCCESS") "VOICE_START_REQUESTED" else "VOICE_START_FAILED",
+            result.errorCode ?: "Voice service request sent")
+        refreshHealth()
+    }
+
+    fun stopVoice() = dpc.stopVoiceService { result ->
+        update(if (result.status == "SUCCESS") "VOICE_STOP_REQUESTED" else "VOICE_STOP_FAILED",
+            result.errorCode ?: "Voice service stop sent")
+        refreshHealth()
     }
 
     override fun onState(state: String) = onMain { update(state, state.lowercase().replace('_', ' ')) }
@@ -133,4 +165,8 @@ data class UiState(
     val status: String = "DISCONNECTED",
     val message: String = "Not configured",
     val lastRequestId: String? = null,
+    val voiceState: String = "STOPPED",
+    val voiceDetail: String = "Not started",
+    val deviceOwner: Boolean = false,
+    val capabilities: Map<String, String> = emptyMap(),
 )

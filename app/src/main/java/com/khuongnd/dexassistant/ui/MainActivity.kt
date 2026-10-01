@@ -35,7 +35,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             DexAssistantTheme {
                 AssistantScreen(uiState, controller::provision, controller::connect,
-                    controller::send, controller::retry)
+                    controller::refreshHealth, controller::applyPermissions,
+                    controller::startVoice, controller::stopVoice)
             }
         }
     }
@@ -51,13 +52,14 @@ fun AssistantScreen(
     state: UiState,
     onProvision: (String, String) -> Unit,
     onConnect: () -> Unit,
-    onSend: (String) -> Unit,
-    onRetry: () -> Unit,
+    onRefresh: () -> Unit,
+    onApplyPermissions: () -> Unit,
+    onStartVoice: () -> Unit,
+    onStopVoice: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var endpoint by rememberSaveable(state.endpoint) { mutableStateOf(state.endpoint) }
     var token by rememberSaveable { mutableStateOf("") }
-    var command by rememberSaveable { mutableStateOf("") }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -65,6 +67,7 @@ fun AssistantScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("DeX Assistant", style = MaterialTheme.typography.headlineMedium)
+            Text("Administration", style = MaterialTheme.typography.titleMedium)
             Text("${state.status}: ${state.message}")
             OutlinedTextField(endpoint, { endpoint = it }, Modifier.fillMaxWidth(),
                 label = { Text("WebSocket endpoint") },
@@ -77,14 +80,19 @@ fun AssistantScreen(
                 enabled = endpoint.isNotBlank() && token.isNotBlank(),
             ) { Text("Provision and connect") }
             Button(onClick = onConnect, enabled = state.endpoint.isNotBlank()) { Text("Connect") }
-            OutlinedTextField(command, { command = it }, Modifier.fillMaxWidth(),
-                label = { Text("Command") }, singleLine = true)
-            Button(
-                onClick = { onSend(command); command = "" },
-                enabled = state.status == "CONNECTED" || state.status == "COMPLETED",
-            ) { Text("Send") }
-            Button(onClick = onRetry, enabled = state.lastRequestId != null) { Text("Retry last request") }
-            state.lastRequestId?.let { Text("Request: $it", style = MaterialTheme.typography.bodySmall) }
+            Text("Health", style = MaterialTheme.typography.titleMedium)
+            Text("Device Owner: ${if (state.deviceOwner) "ready" else "not verified"}")
+            Text("Voice: ${state.voiceState} — ${state.voiceDetail}")
+            Text("Backend: ${state.status}")
+            Button(onClick = onRefresh) { Text("Refresh health") }
+            Button(onClick = onApplyPermissions) { Text("Apply permission profile") }
+            Button(onClick = onStartVoice) { Text("Start voice service") }
+            Button(onClick = onStopVoice) { Text("Emergency stop microphone") }
+            if (state.capabilities.isNotEmpty()) {
+                val granted = state.capabilities.values.count { it == "GRANTED" }
+                val action = state.capabilities.values.count { it == "USER_ACTION_REQUIRED" }
+                Text("Permissions: $granted granted, $action require Settings")
+            }
         }
     }
 }
