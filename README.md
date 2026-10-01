@@ -25,6 +25,25 @@ Studio if the SDK path needs to be configured through `local.properties`.
 Debug APKs are produced at `app/build/outputs/apk/debug/app-debug.apk` and
 `dpc/build/outputs/apk/debug/dpc-debug.apk`.
 
+## CI and device-test releases
+
+`Android CI` runs `test lint assembleDebug` for pull requests and pushes to
+`main`, then retains both debug APKs as short-lived workflow artifacts.
+
+Maintainers can run `Device-test release` from the GitHub Actions page against
+`main`. Supply a new tag matching `device-test-*`; the
+workflow tests and builds both APKs, verifies their shared certificate, creates
+`SHA256SUMS`, and publishes a GitHub prerelease tied to that commit.
+
+The manual release requires the repository Actions secret
+`DEVICE_TEST_KEYSTORE_BASE64`. It contains the base64-encoded existing test
+keystore so device-test releases remain upgrade-compatible and retain
+signature-protected app/DPC IPC. The workflow rejects any certificate other
+than SHA-256
+`9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
+This is a test-only debug identity, not a production signing design. Never add
+the keystore or its encoded value to Git, logs, artifacts, or release assets.
+
 ## Dedicated-device setup
 
 Device Owner provisioning can reset or constrain a device. Use only the

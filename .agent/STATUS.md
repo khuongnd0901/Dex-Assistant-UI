@@ -63,6 +63,10 @@ canonical task board.
 
 ## Next action
 
+Finish T-008 by configuring the encrypted device-test keystore secret, pushing
+the Android CI/manual prerelease workflows, and verifying a live workflow run
+and release assets. Then resume the Fold3 role/binding/probe validation below.
+
 Run role/binding/probe provisioning on the Fold3. If it passes, obtain and verify
 the official sherpa-onnx 1.13.8 AAR plus GigaSpeech 3.3M archive, then implement
 KWS -> Vietnamese on-device SpeechRecognizer (explicit

@@ -1,0 +1,143 @@
+name: Device-test release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "New tag, for example device-test-2026-10-02.1"
+        required: true
+        type: string
+      title:
+        description: "Release title"
+        required: true
+        default: "Fold3 device-test build"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "Device-test releases may only be dispatched from main" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG" =~ ^device-test-[0-9A-Za-z._-]+$ ]] || {
+            echo "Tag must match device-test-[0-9A-Za-z._-]+" >&2
+            exit 1
+          }
+
+      - name: Check out selected commit
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android API 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Restore device-test signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DEVICE_TEST_KEYSTORE_BASE64 }}
+        run: |
+          [[ -n "$KEYSTORE_BASE64" ]] || {
+            echo "DEVICE_TEST_KEYSTORE_BASE64 is not configured" >&2
+            exit 1
+          }
+          install -d -m 700 "$HOME/.android"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+
+      - name: Test, lint, and assemble signed debug APKs
+        run: ./gradlew --no-daemon test lint assembleDebug
+
+      - name: Verify and package release assets
+        env:
+          EXPECTED_CERT_SHA256: 9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03
+        run: |
+          set -euo pipefail
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          app_apk="app/build/outputs/apk/debug/app-debug.apk"
+          dpc_apk="dpc/build/outputs/apk/debug/dpc-debug.apk"
+          certificate_fingerprint() {
+            "$apksigner" verify --print-certs "$1" |
+              sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
+          }
+          app_cert="$(certificate_fingerprint "$app_apk")"
+          dpc_cert="$(certificate_fingerprint "$dpc_apk")"
+          [[ -n "$app_cert" && "$app_cert" == "$dpc_cert" ]] || {
+            echo "App and DPC certificate fingerprints differ" >&2
+            exit 1
+          }
+          [[ "$app_cert" == "$EXPECTED_CERT_SHA256" ]] || {
+            echo "Unexpected device-test certificate fingerprint: $app_cert" >&2
+            exit 1
+          }
+          mkdir release
+          cp "$app_apk" release/dex-assistant-app-debug.apk
+          cp "$dpc_apk" release/dex-assistant-dpc-debug.apk
+          (
+            cd release
+            sha256sum dex-assistant-app-debug.apk dex-assistant-dpc-debug.apk > SHA256SUMS
+          )
+          printf '%s\n' \
+            "Device-test artifacts only; not a production release." \
+            "Commit: $GITHUB_SHA" \
+            "Certificate SHA-256: $app_cert" \
+            "Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            > release/RELEASE_NOTES.md
+
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-test-release-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: release/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: device-test-release-${{ github.sha }}
+          path: release
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TITLE: ${{ inputs.title }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release or tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes-file release/RELEASE_NOTES.md \
+            --prerelease \
+            release/dex-assistant-app-debug.apk \
+            release/dex-assistant-dpc-debug.apk \
+            release/SHA256SUMS
