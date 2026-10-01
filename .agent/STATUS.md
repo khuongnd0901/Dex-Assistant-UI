@@ -160,9 +160,18 @@ No factory reset, backend protocol change, or full voice/backend acceptance.
 - Android main `b25269af661b9cb710aacd40d0fae123f6e78dd9`; backend main
   `f590e913f713c2b9e7f9ad7287355870e9ea9b9d`. Only `main` remains locally
   and remotely; both trees were clean at handoff.
-- Android local `test lint assembleDebug` passed150 tasks; 23 distinct tests
-  ran twice (46 executions). CI run36898323611 passed explicit signing and
-  expected certificate verification. No release was published.
+- Before CI optimization, local `test lint assembleDebug` passed150 tasks;
+  23 distinct tests ran in both variants (46 executions). CI run36898323611
+  passed explicit signing and expected certificate verification; no release was
+  published.
+- CI speed update commit `cda699f`: both workflows now use
+  `testDebugUnitTest lint assembleDebug --build-cache`. This runs all 23 shared
+  unit tests once on the Debug variant, which matches the only APK artifact and
+  retains `run-as` access for device health collection. It avoids the duplicate
+  Release test compilation; no Release APK was previously produced. Local warm
+  rerun passed in34s (100/102 tasks up-to-date). GitHub CI run36900750938 passed
+  the Gradle step in4m34s vs5m19s baseline (45s faster, one measurement); 11
+  tasks reported FROM-CACHE. `lint` and `assembleDebug` remain enabled.
 - Signing certificate SHA-256:
   `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
   Local keystore: `/home/kunrg/.local/share/dex-signing/device-test.keystore`.
