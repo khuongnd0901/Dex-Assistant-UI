@@ -61,26 +61,48 @@ jobs:
       - name: Restore device-test signing identity
         env:
           KEYSTORE_BASE64: ${{ secrets.DEVICE_TEST_KEYSTORE_BASE64 }}
+          EXPECTED_CERT_SHA256: 9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03
         run: |
+          set -euo pipefail
           [[ -n "$KEYSTORE_BASE64" ]] || {
             echo "DEVICE_TEST_KEYSTORE_BASE64 is not configured" >&2
             exit 1
           }
-          install -d -m 700 "$HOME/.android"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
+          # A dedicated path avoids Gradle's implicit debug-keystore selection.
+          signing_dir="$RUNNER_TEMP/device-test-signing"
+          install -d -m 700 "$signing_dir"
+          keystore="$signing_dir/device-test.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          restored_cert="$(keytool -exportcert -alias androiddebugkey \
+            -keystore "$keystore" -storepass android | sha256sum | cut -d ' ' -f 1)"
+          [[ "$restored_cert" == "$EXPECTED_CERT_SHA256" ]] || {
+            echo "Unexpected restored device-test certificate: $restored_cert" >&2
+            exit 1
+          }
+          printf 'DEVICE_TEST_KEYSTORE=%s\n' "$keystore" >> "$GITHUB_ENV"
 
-      - name: Test, lint, and assemble signed debug APKs
+      - name: Test, lint, and assemble debug APKs
         run: ./gradlew --no-daemon test lint assembleDebug
 
-      - name: Verify and package release assets
+      - name: Sign, verify, and package release assets
         env:
           EXPECTED_CERT_SHA256: 9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03
         run: |
           set -euo pipefail
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          app_apk="app/build/outputs/apk/debug/app-debug.apk"
-          dpc_apk="dpc/build/outputs/apk/debug/dpc-debug.apk"
+          mkdir release
+          # Sign final assets explicitly, even if Gradle restored build outputs.
+          # Gradle's generated debug identity is never used for device-test delivery.
+          for module in app dpc; do
+            "$apksigner" sign --ks "$DEVICE_TEST_KEYSTORE" \
+              --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android \
+              --v4-signing-enabled false \
+              --out "release/dex-assistant-$module-debug.apk" \
+              "$module/build/outputs/apk/debug/$module-debug.apk"
+          done
+          app_apk="release/dex-assistant-app-debug.apk"
+          dpc_apk="release/dex-assistant-dpc-debug.apk"
           certificate_fingerprint() {
             "$apksigner" verify --print-certs "$1" |
               sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
@@ -95,9 +117,6 @@ jobs:
             echo "Unexpected device-test certificate fingerprint: $app_cert" >&2
             exit 1
           }
-          mkdir release
-          cp "$app_apk" release/dex-assistant-app-debug.apk
-          cp "$dpc_apk" release/dex-assistant-dpc-debug.apk
           (
             cd release
             sha256sum dex-assistant-app-debug.apk dex-assistant-dpc-debug.apk > SHA256SUMS
@@ -108,6 +127,10 @@ jobs:
             "Certificate SHA-256: $app_cert" \
             "Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             > release/RELEASE_NOTES.md
+
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/device-test-signing/device-test.keystore"
 
       - name: Upload verified release bundle
         uses: actions/upload-artifact@v4
