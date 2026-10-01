@@ -165,7 +165,9 @@ No factory reset, backend protocol change, or full voice/backend acceptance.
   passed explicit signing and expected certificate verification; no release was
   published.
 - CI speed update commit `cda699f`: both workflows now use
-  `testDebugUnitTest lint assembleDebug --build-cache`. This runs all 23 shared
+  `testDebugUnitTest lint assembleDebug --build-cache`. Android CI also ignores
+  docs-only pushes/PRs: Markdown files, `docs/**`, and `.agent/**`; code/config
+  changes still trigger it. This runs all 23 shared
   unit tests once on the Debug variant, which matches the only APK artifact and
   retains `run-as` access for device health collection. It avoids the duplicate
   Release test compilation; no Release APK was previously produced. Local warm

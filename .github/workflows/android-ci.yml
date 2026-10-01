@@ -2,9 +2,19 @@ name: Android CI
 
 on:
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - '*.md'
+      - 'docs/**'
+      - '.agent/**'
   push:
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
+      - '*.md'
+      - 'docs/**'
+      - '.agent/**'
 
 permissions:
   contents: read
