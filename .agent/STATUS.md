@@ -1,6 +1,6 @@
 # Android repository status
 
-Last synchronized: 2026-10-01 (T-006 default-assistant slice)
+Last synchronized: 2026-10-02 (T-006 default-assistant slice)
 
 ## Canonical project memory
 
@@ -53,8 +53,8 @@ canonical task board.
   five adb reboot cycles, microphone probe/FGS, and notification controls in
   canonical `.agent/evidence/T-006-fold3-2026-10-01.md`. These are probe checks,
   not continuous voice acceptance. Startup reconciliation/UI fixes in this
-  working tree pass local test/lint/assemble; matching-signed APK physical
-  update acceptance remains pending.
+  repair branch pass local test/lint/assemble; matching-signed APK physical
+  update/reboot/probe/notification/live Voice UI acceptance now passes.
 - sherpa-onnx 1.13.8 and the official GigaSpeech 3.3M model were not added: the
   exact model archive was not available locally and no unverified/placeholder
   asset was fabricated. Until those assets and checksums are installed, the
@@ -136,4 +136,24 @@ verified with SHA-256 fingerprint
 matching the installed prerelease signing identity. Signing material remains
 outside the repositories in a host-local directory with restrictive permissions.
 Temporary recovery workflow logic was removed. Physical acceptance of these
-re-signed recovery APKs remains pending; this is not a device-test PASS.
+re-signed recovery APKs now passes the foundation recovery slice; full wake
+and backend acceptance remains open.
+
+## Physical recovery repair validation — 2026-10-02
+
+Both locally re-signed APK hashes matched installed Fold3 base APKs. Corrected
+backend provisioning script passed before/after a new boot and recovered the
+same device across a changed Wi-Fi ADB port. Main-app-only reinstall advanced
+DPC policy timestamp1790874975468 → 1790875077788 without replacing DPC or
+launching Activity. READY/LISTENING, short AudioRecord probe and mic FGS type0x80
+passed. Visible Voice UI emergency stop/start updated without Refresh.
+Owner-operated notification pause/resume/stop and negative shell service
+permission/export checks passed; final microphone state STOPPED. Notification
+UI hierarchy capture was unavailable, so direct notification-to-UI live updates
+are not separately claimed. Full report is canonical backend
+`.agent/evidence/T-006-fold3-recovery-2026-10-02.md`.
+
+Workflow30df640 explicitly signs final APKs after checking the restored key;
+run36898323611 passed test/lint/build/expected certificate checks. Encrypted
+keystore backup is stored in `signing/`, passphrase in separate Actions secret.
+No factory reset, backend protocol change, or full voice/backend acceptance.
