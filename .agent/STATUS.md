@@ -34,6 +34,8 @@ canonical task board.
   health, applies the permission profile, and starts/stops voice service.
 - Voice lifecycle/readiness transitions and permission result classification have unit
   coverage. Protocol V1 was not changed.
+- Android implementation commit `b424911` is pushed to `origin/main`; canonical
+  task/decision/provisioning commit `e23740a` is pushed in the backend repository.
 
 ## Relevant canonical tasks
 
@@ -79,11 +81,21 @@ Fold3 acceptance matrix; keep canonical T-006 `IN_PROGRESS` until it passes.
   (`BUILD SUCCESSFUL`, 150 tasks).
 - Passed: `git diff --check`.
 - APK SHA-256: app
-  `a3a25c3e57f0e0e8bd352aacc5525788bc50a0fa521b961b30a19000c21cb426`;
-  DPC `e899a415b419884336a744a4b3f8a5313d138e632884863a8dd17acb5ebbebf5`.
+  `d6ada73dca07a823e2833a61908244e891b6a8a6dc64896564052c84ccee07a9`;
+  DPC `17377af836a71fdafc184f33441f6fc0560ef07fadd6440f9fb19ea7074fa76b`.
 - `apksigner verify --print-certs` passed for both APKs; both use certificate
   SHA-256 `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
 - Windows `ZFold3_API35` (Google APIs x86_64) booted as Android 15/API 35;
   both APKs installed and MainActivity cold-launched without crash/ANR. The
   emulator reported CLOSED/HALF_OPENED/OPENED but kept 1768x2208 guest metrics.
   Device Owner and runtime permission checks passed before the final clean reset.
+
+## Resume commands
+
+- Build/validate: `env JAVA_HOME=/home/khuongnd/.local/opt/jdk17
+  ANDROID_HOME=/home/khuongnd/Android/Sdk ./gradlew test lint assembleDebug`.
+- Start the retained AVD from the backend repo with
+  `powershell.exe -ExecutionPolicy Bypass -File scripts/android/start-zfold3.ps1`.
+- Provision/verify using the backend script documented in its
+  `scripts/android/README.md`. The AVD is currently stopped and retains the
+  successful Device Owner/default-assistant state; do not reset casually.
