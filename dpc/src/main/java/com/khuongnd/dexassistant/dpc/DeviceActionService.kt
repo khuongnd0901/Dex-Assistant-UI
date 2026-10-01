@@ -17,7 +17,13 @@ class DeviceActionService : Service() {
         val reply = request.replyTo ?: return@Handler true
         when (request.what) {
             MSG_APPLY_PERMISSION_PROFILE -> {
-                respondReport(reply, request.arg1, PermissionProfileManager(this).apply())
+                val report = PermissionProfileManager(this).capabilityReport()
+                if (report["deviceOwner"] == "GRANTED") {
+                    createDeviceProtectedStorageContext()
+                        .getSharedPreferences(RecoveryReceiver.HEALTH_PREFERENCES, MODE_PRIVATE)
+                        .edit().putLong(RecoveryReceiver.KEY_LAST_POLICY_APPLY, System.currentTimeMillis()).apply()
+                }
+                respondReport(reply, request.arg1, report)
                 return@Handler true
             }
             MSG_GET_CAPABILITY_REPORT -> {

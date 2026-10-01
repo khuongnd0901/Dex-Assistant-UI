@@ -5,7 +5,7 @@ Last synchronized: 2026-10-01 (T-006 default-assistant slice)
 ## Canonical project memory
 
 Product-wide status, tasks, decisions, requirements, and protocol are owned by
-the backend repository at `/mnt/d/dex-assistant`. Start cross-repository work
+the backend repository at `/home/kunrg/DeX-Assistant` on the Fold3 test host. Start cross-repository work
 from its `.agent/STATUS.md`. This file is a concise Android handoff, not a second
 canonical task board.
 
@@ -21,7 +21,9 @@ canonical task board.
 - `test`, `lint`, and `assembleDebug` pass for both modules with JDK 17/API 35.
 - T-006 now has app-scoped DPC permission enumeration with verified grant
   results, typed permission/capability IPC, and Device Owner
-  boot/app-update recovery. The DPC target is fixed to
+  boot/self-update recovery. Main-app updates now reconcile through the system-bound
+  VoiceInteractionService and signature-protected permission-profile IPC; manifest
+  cross-package package-change broadcasts were skipped by One UI and removed. The DPC target is fixed to
   `com.khuongnd.dexassistant.ui`; it does not receive backend credentials.
 - The main APK is a qualified default-assistant candidate with voice interaction,
   session, and recognition services. Its private microphone FGS is started by
@@ -47,9 +49,12 @@ canonical task board.
 
 ## Blockers
 
-- No Fold3 is visible through ADB. Device Owner provisioning, signature IPC
-  rejection, five cold boots, microphone FGS behavior, and notification actions
-  still require device evidence.
+- Physical Fold3 Android 15/API 35 passed Device Owner, shell IPC rejection,
+  five adb reboot cycles, microphone probe/FGS, and notification controls in
+  canonical `.agent/evidence/T-006-fold3-2026-10-01.md`. These are probe checks,
+  not continuous voice acceptance. Startup reconciliation/UI fixes in this
+  working tree pass local test/lint/assemble; matching-signed APK physical
+  update acceptance remains pending.
 - sherpa-onnx 1.13.8 and the official GigaSpeech 3.3M model were not added: the
   exact model archive was not available locally and no unverified/placeholder
   asset was fabricated. Until those assets and checksums are installed, the
@@ -59,21 +64,35 @@ canonical task board.
 - API 35 testing validates the D-011 replacement for that failed DPC-start path:
   assistant role/binding, permission grant, self-started microphone FGS, real
   `AudioRecord` probe, and `LISTENING` persist across cold reboot. Fold3/One UI
-  remains unverified, and no AccessibilityService is declared.
+  now has probe evidence, and no AccessibilityService is declared.
 
 ## Next action
 
-Finish T-008 by configuring the encrypted device-test keystore secret, pushing
-the Android CI/manual prerelease workflows, and verifying a live workflow run
-and release assets. Then resume the Fold3 role/binding/probe validation below.
+Validate the startup reconciliation and live administration-health fixes with
+`test lint assembleDebug`, then build with the existing device-test signing
+identity through the manual workflow (`publish=false` supports branch artifacts).
+Do not install a local debug APK signed with a newly generated identity on Fold3.
+Verify app-update DPC health advancement, permission readiness, and fresh probe,
+then pause/resume/stop and live UI health. Retain boot/self-update recovery.
 
-Run role/binding/probe provisioning on the Fold3. If it passes, obtain and verify
-the official sherpa-onnx 1.13.8 AAR plus GigaSpeech 3.3M archive, then implement
-KWS -> Vietnamese on-device SpeechRecognizer (explicit
-system fallback) -> existing V1 command path and TTS. After that, run the full
-Fold3 acceptance matrix; keep canonical T-006 `IN_PROGRESS` until it passes.
+Full KWS/STT/TTS, credential gate, Settings links and backend acceptance remain
+open; keep canonical T-006 IN_PROGRESS. No factory reset is authorized.
+
+Working-tree changes also explicitly set up Android SDK tools in both workflows,
+restore the Gradle wrapper executable bit, and bound permission IPC waits to ten
+seconds and startup attempts to three. Probe completion is invalidated by
+pause/stop, so a late worker cannot restore LISTENING after a user stop. Health
+observation attaches only while the administration Activity is started.
 
 ## Validation
+
+- 2026-10-01 recovery fixes: JDK 17 / API 35 `./gradlew --no-daemon test
+  lint assembleDebug` passed (`BUILD SUCCESSFUL`, 150 tasks). App has 18 tests
+  and DPC 5, each passed in debug and release (46 executions; no failures).
+  This build includes binding-death/null-binding recovery and lifecycle/probe
+  fixes. JVM coordinator tests do not establish Android callback delivery.
+- Local debug signing identity is unrelated to the installed Fold3 identity;
+  generated local APKs are compile evidence only and must not be installed on it.
 
 - Passed: API 35 AVD provisioning script before/after cold reboot; role holder
   and bound voice component persisted, `RECORD_AUDIO` was policy-granted, health

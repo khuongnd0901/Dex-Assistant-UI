@@ -2,6 +2,7 @@ package com.khuongnd.dexassistant.ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +22,8 @@ class AssistantController(
     private val main = Handler(Looper.getMainLooper())
     private val credentials = CredentialStore(context)
     private val preferences = context.getSharedPreferences("assistant_config", Context.MODE_PRIVATE)
+    private val voicePreferences = context.getSharedPreferences("voice_health", Context.MODE_PRIVATE)
+    private val voiceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> refreshVoiceHealth() }
     private val dpc = DpcClient(context)
     private val webSocket = AssistantWebSocket(this)
     private var state = UiState(endpoint = preferences.getString("endpoint", "") ?: "")
@@ -31,7 +34,17 @@ class AssistantController(
         publish()
     }
 
+    fun observeVoiceHealth() {
+        voicePreferences.registerOnSharedPreferenceChangeListener(voiceListener)
+        refreshVoiceHealth()
+    }
+
+    fun stopObservingVoiceHealth() {
+        voicePreferences.unregisterOnSharedPreferenceChangeListener(voiceListener)
+    }
+
     fun stop() {
+        stopObservingVoiceHealth()
         webSocket.close()
         dpc.unbind()
     }
@@ -67,13 +80,18 @@ class AssistantController(
         if (!webSocket.retryLast()) update("NO_RETRY", "No command is available to retry")
     }
 
-    fun refreshHealth() {
-        val voice = context.getSharedPreferences("voice_health", Context.MODE_PRIVATE)
+    private fun refreshVoiceHealth() {
+        val voice = voicePreferences
         state = state.copy(
             voiceState = voice.getString("state", "STOPPED") ?: "STOPPED",
             voiceDetail = voice.getString("detail", "Not started") ?: "Not started",
             assistantReadiness = voice.getString(VoiceAssistantService.KEY_ASSISTANT_READINESS, "NOT_BOUND") ?: "NOT_BOUND",
         )
+        publish()
+    }
+
+    fun refreshHealth() {
+        refreshVoiceHealth()
         dpc.getCapabilityReport { result ->
             state = state.copy(capabilities = result.capabilities,
                 deviceOwner = result.capabilities["deviceOwner"] == "GRANTED")

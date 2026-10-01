@@ -14,6 +14,8 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.khuongnd.dexassistant.ui.MainActivity
@@ -22,6 +24,9 @@ class VoiceAssistantService : Service() {
     private val stateMachine = VoiceStateMachine()
     private val preferences by lazy { getSharedPreferences(HEALTH_PREFERENCES, MODE_PRIVATE) }
     @Volatile private var probe: AudioRecord? = null
+    private val main = Handler(Looper.getMainLooper())
+    private val probeCoordinator = ProbeCoordinator()
+    private val probeLock = Any()
 
     override fun onCreate() {
         super.onCreate()
@@ -39,10 +44,10 @@ class VoiceAssistantService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_PAUSE -> { stopProbe(); transitionSafely(VoiceEvent.PAUSE) }
-            ACTION_RESUME -> { transitionSafely(VoiceEvent.RESUME); runMicrophoneProbe() }
+            ACTION_RESUME -> transitionSafely(VoiceEvent.RESUME)
             else -> transitionSafely(VoiceEvent.START)
         }
-        val detail = "Opening microphone probe"
+        val detail = if (stateMachine.state == VoiceState.PAUSED) "Paused by user" else "Opening microphone probe"
         publishHealth(stateMachine.state, detail)
         startInForeground(notification(stateMachine.state, detail))
         if (stateMachine.state == VoiceState.LISTENING) runMicrophoneProbe()
@@ -57,46 +62,60 @@ class VoiceAssistantService : Service() {
     }
 
     private fun runMicrophoneProbe() {
-        if (probe != null) return
+        val generation = probeCoordinator.begin() ?: return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            probeCoordinator.complete(generation)
             transitionSafely(VoiceEvent.FAILURE)
             publishHealth(VoiceState.ERROR, "Microphone probe failed: RECORD_AUDIO_DENIED")
             updateNotification(VoiceState.ERROR, "Microphone probe failed: RECORD_AUDIO_DENIED")
             return
         }
         Thread {
+            var recorder: AudioRecord? = null
             val result = runCatching {
                 val sampleRate = 16_000
                 val minimum = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT)
                 check(minimum > 0) { "Unsupported audio format" }
-                val recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate,
+                val audio = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                     minimum.coerceAtLeast(sampleRate))
-                check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord initialization failed" }
-                probe = recorder
-                recorder.startRecording()
-                check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "AudioRecord start failed" }
-                check(recorder.read(ShortArray(320), 0, 320, AudioRecord.READ_BLOCKING) >= 0) { "AudioRecord read failed" }
+                recorder = audio
+                check(audio.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord initialization failed" }
+                synchronized(probeLock) {
+                    check(probeCoordinator.isCurrent(generation)) { "Probe cancelled" }
+                    probe = audio
+                    audio.startRecording()
+                }
+                check(audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "AudioRecord start failed" }
+                check(audio.read(ShortArray(320), 0, 320, AudioRecord.READ_BLOCKING) >= 0) { "AudioRecord read failed" }
             }
-            stopProbe()
-            if (result.isSuccess) {
-                publishHealth(VoiceState.LISTENING, "Microphone probe passed; wake-word runtime pending")
-                updateNotification(VoiceState.LISTENING, "Microphone probe passed; wake-word runtime pending")
-            } else {
-                transitionSafely(VoiceEvent.FAILURE)
-                val failure = "Microphone probe failed: ${result.exceptionOrNull()?.javaClass?.simpleName}"
-                publishHealth(VoiceState.ERROR, failure)
-                updateNotification(VoiceState.ERROR, failure)
+            runCatching { recorder?.stop() }
+            recorder?.release()
+            main.post {
+                if (!probeCoordinator.complete(generation)) return@post
+                probe = null
+                if (result.isSuccess) {
+                    publishHealth(VoiceState.LISTENING, "Microphone probe passed; wake-word runtime pending")
+                    updateNotification(VoiceState.LISTENING, "Microphone probe passed; wake-word runtime pending")
+                } else {
+                    transitionSafely(VoiceEvent.FAILURE)
+                    val failure = "Microphone probe failed: ${result.exceptionOrNull()?.javaClass?.simpleName}"
+                    publishHealth(VoiceState.ERROR, failure)
+                    updateNotification(VoiceState.ERROR, failure)
+                }
             }
         }.start()
     }
 
     private fun stopProbe() {
-        val recorder = probe ?: return
-        probe = null
-        runCatching { recorder.stop() }
-        recorder.release()
+        synchronized(probeLock) {
+            probeCoordinator.cancel()
+            val recorder = probe
+            probe = null
+            // The worker owns release; stop only interrupts its read.
+            runCatching { recorder?.stop() }
+        }
     }
 
     private fun transitionSafely(event: VoiceEvent) {

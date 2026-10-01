@@ -7,9 +7,8 @@ import android.content.Intent
 
 class RecoveryReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val relevantPackage = intent.data?.schemeSpecificPart
-        if (intent.action in setOf(Intent.ACTION_PACKAGE_ADDED, Intent.ACTION_PACKAGE_REPLACED) &&
-            relevantPackage != PermissionProfileManager.TARGET_PACKAGE) return
+        if (intent.action !in setOf(Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_LOCKED_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED)) return
         val dpm = context.getSystemService(DevicePolicyManager::class.java)
         if (!dpm.isDeviceOwnerApp(context.packageName)) return
         val pending = goAsync()

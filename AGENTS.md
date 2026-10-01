@@ -5,8 +5,7 @@ backend repository remains the canonical source for product-wide tasks,
 decisions, requirements, and protocol.
 
 This repository contains the Android client. The canonical backend and protocol
-repository is `https://github.com/khuongnd0901/DeX-Assistant` and is commonly
-checked out locally at `/mnt/d/dex-assistant`.
+repository is `https://github.com/khuongnd0901/DeX-Assistant` and is checked out locally at `/home/kunrg/DeX-Assistant` on the Fold3 test host.
 
 Before changing WebSocket messages, authentication, or action/result types,
 inspect the backend's `docs/PROTOCOL.md` and corresponding protocol tests. Keep
@@ -14,9 +13,8 @@ tokens, signing material, local SDK paths, and environment-specific endpoints
 out of Git.
 
 Use JDK 17 and the Gradle wrapper. The baseline targets Android 15/API 35 and
-supports API 30+ in the current scaffold. This is not an accepted product
-baseline: backend task T-004 proposes API 36 and still requires owner approval
-and an actual Galaxy Z Fold3 API-level check.
+supports API 30+ in the current scaffold. The physical Fold3 has been verified as Android 15/API 35; use canonical
+D-011 and T-006 evidence for the accepted assistant test baseline.
 
 ## Agent ownership
 
@@ -25,7 +23,7 @@ serialization, local token provisioning and Keystore use, native actions,
 on-device policy and confirmation, wake word/STT/TTS, Accessibility execution,
 device measurements, and Android tests.
 
-Do not edit `/mnt/d/dex-assistant` from the Android-agent role. Do not redefine
+Do not edit the canonical backend repository from the Android-agent role. Do not redefine
 protocol envelopes, authentication, action/result types, error codes,
 deduplication, or reconnect semantics independently. Return shared changes to
 the main agent, who coordinates both repositories.
@@ -37,7 +35,7 @@ the main agent, who coordinates both repositories.
    assigned task.
 3. For integration work, read backend `.agent/STATUS.md`, the relevant T-003 or
    T-004 task/plan, decisions D-003/D-004/D-006/D-007, and
-   `/mnt/d/dex-assistant/docs/PROTOCOL.md`.
+   the canonical backend `docs/PROTOCOL.md`.
 4. Read BRD/SRS only when changing product or platform behavior claims.
 
 ## Validation

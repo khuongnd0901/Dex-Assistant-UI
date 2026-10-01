@@ -3,6 +3,11 @@ name: Device-test release
 on:
   workflow_dispatch:
     inputs:
+      publish:
+        description: "Publish prerelease (main only); false builds verified artifacts only"
+        required: true
+        default: true
+        type: boolean
       tag:
         description: "New tag, for example device-test-2026-10-02.1"
         required: true
@@ -24,8 +29,9 @@ jobs:
       - name: Validate release tag
         env:
           RELEASE_TAG: ${{ inputs.tag }}
+          PUBLISH_RELEASE: ${{ inputs.publish }}
         run: |
-          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+          [[ "$PUBLISH_RELEASE" != "true" || "$GITHUB_REF" == "refs/heads/main" ]] || {
             echo "Device-test releases may only be dispatched from main" >&2
             exit 1
           }
@@ -45,6 +51,9 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v4
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -109,6 +118,7 @@ jobs:
           path: release/
 
   publish:
+    if: ${{ inputs.publish }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10

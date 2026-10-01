@@ -43,6 +43,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        controller.observeVoiceHealth()
+    }
+
+    override fun onStop() {
+        controller.stopObservingVoiceHealth()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         controller.stop()
         super.onDestroy()
