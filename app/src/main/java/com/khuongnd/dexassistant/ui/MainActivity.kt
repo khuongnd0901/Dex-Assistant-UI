@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.khuongnd.dexassistant.ui.theme.DexAssistantTheme
+import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
 
 class MainActivity : ComponentActivity() {
     private var uiState by mutableStateOf(UiState())
@@ -38,7 +39,7 @@ class MainActivity : ComponentActivity() {
             DexAssistantTheme {
                 AssistantScreen(uiState, controller::provision, controller::connect,
                     controller::refreshHealth, controller::applyPermissions,
-                    controller::startVoice, controller::stopVoice)
+                    controller::startVoice, controller::stopVoice, controller::send, controller::clearHistory)
             }
         }
     }
@@ -68,10 +69,13 @@ fun AssistantScreen(
     onApplyPermissions: () -> Unit,
     onStartVoice: () -> Unit,
     onStopVoice: () -> Unit,
+    onSend: (String) -> Unit,
+    onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var endpoint by rememberSaveable(state.endpoint) { mutableStateOf(state.endpoint) }
     var token by rememberSaveable { mutableStateOf("") }
+    var command by rememberSaveable { mutableStateOf("") }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -92,11 +96,24 @@ fun AssistantScreen(
                 enabled = endpoint.isNotBlank() && token.isNotBlank(),
             ) { Text("Provision and connect") }
             Button(onClick = onConnect, enabled = state.endpoint.isNotBlank()) { Text("Connect") }
+            OutlinedTextField(command, { command = it }, Modifier.fillMaxWidth(), label = { Text("Vietnamese command") })
+            Button(onClick = { onSend(command); command = "" }, enabled = command.isNotBlank()) { Text("Run command") }
             Text("Health", style = MaterialTheme.typography.titleMedium)
             Text("Device Owner: ${if (state.deviceOwner) "ready" else "not verified"}")
             Text("Voice: ${state.voiceState} — ${state.voiceDetail}")
             Text("Default assistant readiness: ${state.assistantReadiness}")
             Text("Backend: ${state.status}")
+            Text("AI quota", style = MaterialTheme.typography.titleMedium)
+            val quota = state.quota
+            if (quota == null) Text("Quota: unknown") else {
+                Text("Snapshot: ${if (state.quotaStale || QuotaFreshness.isStale(quota.staleAfter)) "stale" else "fresh"}")
+                quota.providers.forEach { provider ->
+                    Text("${provider.providerAlias} / ${provider.modelAlias}: ${provider.state}")
+                    provider.budgets.forEach { budget ->
+                        Text("${budget.unit}: ${budget.used?.toString() ?: "unknown"}/${budget.limit?.toString() ?: "unknown"}, remaining ${budget.remaining?.toString() ?: "unknown"} (${budget.source})")
+                    }
+                }
+            }
             Button(onClick = onRefresh) { Text("Refresh health") }
             Button(onClick = onApplyPermissions) { Text("Apply permission profile") }
             Button(onClick = onStartVoice) { Text("Start voice service") }
@@ -106,6 +123,9 @@ fun AssistantScreen(
                 val action = state.capabilities.values.count { it == "USER_ACTION_REQUIRED" }
                 Text("Permissions: $granted granted, $action require Settings")
             }
+            Text("Command history (${state.history.size})", style = MaterialTheme.typography.titleMedium)
+            state.history.take(10).forEach { Text("${it.route}: ${it.originalText} — ${it.outcome ?: "unknown"}") }
+            Button(onClick = onClearHistory, enabled = state.history.isNotEmpty()) { Text("Clear command history") }
         }
     }
 }

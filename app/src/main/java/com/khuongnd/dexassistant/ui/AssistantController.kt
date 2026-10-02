@@ -9,8 +9,16 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.khuongnd.dexassistant.ui.device.DpcClient
+import com.khuongnd.dexassistant.ui.actions.LocalActionExecutor
+import com.khuongnd.dexassistant.ui.history.CommandHistoryStore
 import com.khuongnd.dexassistant.ui.protocol.AssistantWebSocket
 import com.khuongnd.dexassistant.ui.protocol.DeviceAction
+import com.khuongnd.dexassistant.ui.protocol.ProtocolParser
+import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
+import com.khuongnd.dexassistant.ui.routing.LocalCommandParser
+import com.khuongnd.dexassistant.ui.routing.CapabilityRegistry
+import com.khuongnd.dexassistant.ui.routing.CommandRouter
+import com.khuongnd.dexassistant.ui.routing.Route
 import com.khuongnd.dexassistant.ui.security.CredentialStore
 import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
@@ -26,12 +34,17 @@ class AssistantController(
     private val voiceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> refreshVoiceHealth() }
     private val dpc = DpcClient(context)
     private val webSocket = AssistantWebSocket(this)
+    private val parser = LocalCommandParser()
+    private val router = CommandRouter(parser, CapabilityRegistry(context))
+    private val localExecutor = LocalActionExecutor(context, dpc)
+    private val history = CommandHistoryStore(context)
     private var state = UiState(endpoint = preferences.getString("endpoint", "") ?: "")
 
     fun start() {
         dpc.bind()
         refreshHealth()
         publish()
+        refreshHistory()
     }
 
     fun observeVoiceHealth() {
@@ -71,9 +84,21 @@ class AssistantController(
 
     fun send(text: String) {
         if (text.isBlank()) return
-        runCatching { webSocket.sendCommand(text) }
-            .onSuccess { state = state.copy(lastRequestId = it.toString(), message = "Command sent"); publish() }
-            .onFailure { update("SEND_FAILED", it.message ?: "Command not sent") }
+        val decision = router.route(text)
+        val routed = decision.command
+        when (routed.route) {
+            Route.LOCAL -> if (decision.capability?.available == false) {
+                val error = decision.capability.unavailableReason ?: "POLICY_DENIED"
+                history.record(text, routed.route.name, routed.intent?.name, error); update("FAILED", error); refreshHistory()
+            } else localExecutor.execute(routed) { result -> onMain {
+                history.record(text, routed.route.name, routed.intent?.name, result.errorCode ?: result.outcome.name)
+                state = state.copy(status = result.outcome.name, message = result.errorCode ?: result.outcome.name); refreshHistory()
+            } }
+            Route.UNSUPPORTED -> { history.record(text, routed.route.name, null, "UNSUPPORTED_COMMAND"); update("UNSUPPORTED", "Lệnh chưa được hỗ trợ"); refreshHistory() }
+            Route.BACKEND_REQUIRED -> runCatching { webSocket.sendCommand(text) }
+                .onSuccess { history.record(text, routed.route.name, null, "SENT"); state = state.copy(lastRequestId = it.toString(), message = "Command sent"); refreshHistory() }
+                .onFailure { history.record(text, routed.route.name, null, "AI_UNAVAILABLE"); update("SEND_FAILED", "Khó quá, không làm được"); refreshHistory() }
+        }
     }
 
     fun retry() {
@@ -167,6 +192,15 @@ class AssistantController(
         update("AUTHENTICATION_FAILED", "Credential rejected and removed; provision again")
     }
 
+    override fun onQuotaSnapshot(snapshot: ProtocolParser.QuotaSnapshot) = onMain {
+        state = state.copy(quota = snapshot, quotaStale = QuotaFreshness.isStale(snapshot.staleAfter)); publish()
+    }
+    override fun onQuotaUnsupported() = onMain { state = state.copy(quota = null, quotaStale = true); publish() }
+    override fun onDisconnected() = onMain { state = state.copy(quotaStale = true); publish() }
+
+    fun clearHistory() { history.clear(); refreshHistory() }
+    private fun refreshHistory() { state = state.copy(history = history.read()); publish() }
+
     override fun onMetric(event: String, correlationId: String, elapsedNanos: Long) {
         // Deliberately excludes command text and credentials.
         android.util.Log.i("DexMetric", "$event correlationId=$correlationId elapsedNanos=$elapsedNanos")
@@ -193,4 +227,7 @@ data class UiState(
     val assistantReadiness: String = "NOT_BOUND",
     val deviceOwner: Boolean = false,
     val capabilities: Map<String, String> = emptyMap(),
+    val quota: ProtocolParser.QuotaSnapshot? = null,
+    val quotaStale: Boolean = true,
+    val history: List<com.khuongnd.dexassistant.ui.history.HistoryEntry> = emptyList(),
 )

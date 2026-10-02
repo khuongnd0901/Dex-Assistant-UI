@@ -24,6 +24,7 @@ class AssistantWebSocket(
     private var reconnectAttempt = 0
     private var closedByUser = false
     private var lastRequest: PendingRequest? = null
+    private var quotaRequestId: UUID? = null
     private val reconnectScheduler = Executors.newSingleThreadScheduledExecutor()
 
     fun connect(endpoint: String, token: String) {
@@ -60,14 +61,13 @@ class AssistantWebSocket(
     fun sendCommand(text: String, requestId: UUID = UUID.randomUUID()): UUID {
         val request = PendingRequest(requestId, text)
         lastRequest = request
-        send(request)
+        check(send(request)) { "WebSocket is not connected" }
         return requestId
     }
 
     fun retryLast(): Boolean {
         val request = lastRequest ?: return false
-        send(request)
-        return true
+        return send(request)
     }
 
     fun sendActionResult(planId: String, actionId: String, status: String, errorCode: String?) {
@@ -79,16 +79,18 @@ class AssistantWebSocket(
         sendEnvelope("action.result", UUID.randomUUID(), payload)
     }
 
-    private fun send(request: PendingRequest) {
+    private fun send(request: PendingRequest): Boolean {
         val payload = JSONObject()
             .put("conversationId", "primary")
             .put("text", request.text)
             .put("locale", "vi-VN")
         if (!sendEnvelope("command.request", request.id, payload)) {
             listener.onState("COMMAND_NOT_SENT")
+            return false
         } else {
             listener.onMetric("ws.send", request.id.toString(), SystemClock.elapsedRealtimeNanos())
         }
+        return true
     }
 
     private fun sendEnvelope(type: String, messageId: UUID, payload: JSONObject): Boolean {
@@ -107,6 +109,7 @@ class AssistantWebSocket(
             if (socket !== webSocket) return
             reconnectAttempt = 0
             listener.onState("CONNECTED")
+            quotaRequestId = UUID.randomUUID().also { sendEnvelope("quota.snapshot.request", it, JSONObject()) }
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -119,7 +122,16 @@ class AssistantWebSocket(
                     }
                     "command.completed" -> listener.onState("COMPLETED")
                     "command.accepted" -> listener.onState("ACCEPTED")
-                    "error" -> listener.onError(ProtocolParser.errorSummary(text))
+                    "quota.snapshot" -> {
+                        val envelope = JSONObject(text)
+                        if (envelope.optString("correlationId") == quotaRequestId?.toString()) listener.onQuotaSnapshot(ProtocolParser.quotaSnapshot(text))
+                    }
+                    "error" -> {
+                        val code = ProtocolParser.errorCode(text)
+                        val correlationId = JSONObject(text).optString("correlationId")
+                        if (code == "UNSUPPORTED_MESSAGE" && correlationId == quotaRequestId?.toString()) listener.onQuotaUnsupported()
+                        else listener.onError(if (code in AI_ERRORS) "Khó quá, không làm được" else ProtocolParser.errorSummary(text))
+                    }
                 }
             }.onFailure { listener.onError("INVALID_MESSAGE: ${it.message}") }
         }
@@ -132,6 +144,7 @@ class AssistantWebSocket(
                 return
             }
             listener.onState("RECONNECTING")
+            listener.onDisconnected()
             scheduleReconnect()
         }
 
@@ -139,6 +152,7 @@ class AssistantWebSocket(
             if (socket !== webSocket) return
             if (!closedByUser) {
                 listener.onState("RECONNECTING")
+                listener.onDisconnected()
                 scheduleReconnect()
             }
         }
@@ -160,12 +174,16 @@ class AssistantWebSocket(
         fun onActions(actions: List<DeviceAction>)
         fun onError(message: String)
         fun onAuthenticationFailure()
+        fun onQuotaSnapshot(snapshot: ProtocolParser.QuotaSnapshot)
+        fun onQuotaUnsupported()
+        fun onDisconnected()
         fun onMetric(event: String, correlationId: String, elapsedNanos: Long)
     }
 
     private data class PendingRequest(val id: UUID, val text: String)
 
     companion object {
+        private val AI_ERRORS = setOf("AI_QUOTA_EXHAUSTED", "AI_TIMEOUT", "AI_UNAVAILABLE")
         internal fun isLoopback(endpoint: String): Boolean =
             endpoint.startsWith("ws://127.0.0.1") || endpoint.startsWith("ws://localhost")
     }

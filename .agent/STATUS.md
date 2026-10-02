@@ -189,3 +189,34 @@ No factory reset, backend protocol change, or full voice/backend acceptance.
 - Full wake recognition, STT/TTS, credential gate, diagnostics and backend
   dependent acceptance are still open. Do not factory reset without explicit
   owner confirmation.
+
+## T-009 Android implementation — 2026-10-02
+
+- Implemented canonical D-014 / `vi-local-v1` routing on Android: NFC Vietnamese
+  normalization, whole-input grammar, deterministic LOCAL/BACKEND_REQUIRED/
+  UNSUPPORTED routes, capability gates, and local app/Wi-Fi/volume/brightness/
+  media/YouTube execution. Only BACKEND_REQUIRED creates a WebSocket command.
+  Bluetooth remains a typed local `CAPABILITY_UNAVAILABLE` on API 35 because no
+  verified DPC path exists; it never falls back or reports synthetic success.
+- Added additive authenticated quota snapshot requests after each connection,
+  correlation-aware parsing, nullable unknown counters, stale/disconnected state,
+  provider aliases/aggregate monitoring, old-server unknown fallback, and exact
+  Vietnamese rendering for all three canonical `AI_*` terminal errors.
+- Added an independent Android Keystore AES-256-GCM history key and bounded
+  encrypted local command history. Insert/startup/read prune at the earlier of
+  seven days or 100 commands; clear rotates only the history key. Sensitive
+  credential-like text is redacted before storage. Audio, backend payloads, and
+  provider credentials have no history input path.
+- Canonical quota/error fixtures from backend contract commit `8e73a08` are
+  mirrored under `app/src/test/resources`. Routing, normalization, ambiguity,
+  YouTube query, retention, nullable quota, error, and stale-boundary tests were
+  added.
+- Validation: JDK 17 / API 35 `./gradlew --no-daemon test lint assembleDebug`
+  passed (`BUILD SUCCESSFUL`, 150 tasks). App 27 and DPC 5 distinct tests run in
+  debug and release (64 executions), with no failures/errors. `git diff --check`
+  passed; source/manifest scan found no committed runtime credentials.
+- Not yet device evidence: Fold3 execution of local actions, Android Keystore
+  persistence/clear, intent dispatch, live quota UI, and offline/backend-stopped
+  acceptance remain for main-agent integration. Media is truthfully DISPATCHED,
+  not VERIFIED; app/YouTube intents are also DISPATCHED. T-009 completion remains
+  canonical backend/main-agent authority.
