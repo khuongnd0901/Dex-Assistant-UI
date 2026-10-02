@@ -97,6 +97,38 @@ class LocalFirstDeviceTest {
         store.clear()
     }
 
+    @Test fun privateCommandIsRejectedLocallyAndHistoryIsRedacted() {
+        val store = CommandHistoryStore(context)
+        store.clear()
+        command("truy cập Wi-Fi abc, mật khẩu nhiều từ bí mật")
+        compose.waitUntil(10_000) { store.read().firstOrNull()?.outcome == "LOCAL_ONLY_UNSUPPORTED" }
+        assertEquals("UNSUPPORTED", store.read().first().route)
+        assertEquals("[REDACTED]", store.read().first().originalText)
+        store.clear()
+    }
+
+    @Test fun historicalSensitiveEntryIsRedactedOnReadAndPersist() {
+        val store = CommandHistoryStore(context)
+        store.clear()
+        store.record("ordinary", "LOCAL", null, "VERIFIED")
+        val prefs = context.getSharedPreferences("command_history_v1", Context.MODE_PRIVATE)
+        val array = org.json.JSONArray(prefs.getString("records", "[]"))
+        val entry = array.getJSONObject(0)
+        val keys = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, keys.getKey("dex-assistant-history-v1", null))
+        val legacy = org.json.JSONObject().put("text", "mật khẩu một chuỗi nhiều từ bí mật")
+            .put("route", "BACKEND_REQUIRED").put("intent", org.json.JSONObject.NULL).put("outcome", "password several secret words")
+        entry.put("iv", android.util.Base64.encodeToString(cipher.iv, android.util.Base64.NO_WRAP))
+        entry.put("ciphertext", android.util.Base64.encodeToString(cipher.doFinal(legacy.toString().toByteArray()), android.util.Base64.NO_WRAP))
+        prefs.edit().putString("records", array.toString()).commit()
+        val migrated = store.read().first()
+        assertEquals("[REDACTED]", migrated.originalText)
+        assertEquals("[REDACTED]", migrated.outcome)
+        assertEquals("[REDACTED]", CommandHistoryStore(context).read().first().originalText)
+        store.clear()
+    }
+
     private fun command(text: String) {
         compose.onNodeWithText("Vietnamese command").performScrollTo().performTextInput(text)
         compose.onNodeWithText("Run command").performScrollTo().performClick()

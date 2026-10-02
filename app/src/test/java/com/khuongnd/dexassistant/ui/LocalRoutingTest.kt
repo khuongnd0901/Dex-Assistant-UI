@@ -30,7 +30,7 @@ class LocalRoutingTest {
         listOf("đừng bật wifi", "bật wifi và mở youtube", "đặt âm lượng", "mở nhạc phù hợp tâm trạng")
             .forEach { assertEquals(Route.BACKEND_REQUIRED, parser.route(it).route) }
         assertEquals(Route.UNSUPPORTED, parser.route("chia đôi màn hình").route)
-        assertEquals(Route.BACKEND_REQUIRED, parser.route("ket noi wifi nha").route)
+        assertEquals(Route.UNSUPPORTED, parser.route("ket noi wifi nha").route)
     }
 
     @Test fun youtubeRetainsNormalizedPhrase() {

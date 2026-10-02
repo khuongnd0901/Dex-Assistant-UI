@@ -15,6 +15,7 @@ import com.khuongnd.dexassistant.ui.protocol.AssistantWebSocket
 import com.khuongnd.dexassistant.ui.protocol.DeviceAction
 import com.khuongnd.dexassistant.ui.protocol.ProtocolParser
 import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
+import com.khuongnd.dexassistant.ui.routing.CommandPrivacy
 import com.khuongnd.dexassistant.ui.routing.LocalCommandParser
 import com.khuongnd.dexassistant.ui.routing.CapabilityRegistry
 import com.khuongnd.dexassistant.ui.routing.CommandRouter
@@ -84,6 +85,12 @@ class AssistantController(
 
     fun send(text: String) {
         if (text.isBlank()) return
+        if (CommandPrivacy.requiresLocalHandling(text)) {
+            history.record(text, Route.UNSUPPORTED.name, null, "LOCAL_ONLY_UNSUPPORTED")
+            update("UNSUPPORTED", "Lệnh chứa thông tin đăng nhập hoặc kết nối Wi-Fi chỉ được xử lý trên máy; tính năng này chưa được hỗ trợ")
+            refreshHistory()
+            return
+        }
         val decision = router.route(text)
         val routed = decision.command
         when (routed.route) {

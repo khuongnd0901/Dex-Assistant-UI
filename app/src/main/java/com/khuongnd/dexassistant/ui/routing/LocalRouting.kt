@@ -34,6 +34,7 @@ object VietnameseNormalizer {
 class LocalCommandParser(private val appAliases: Set<String> = DEFAULT_APP_ALIASES.keys) {
     fun route(original: String): RoutedCommand {
         val text = VietnameseNormalizer.normalize(original)
+        if (CommandPrivacy.requiresLocalHandling(original)) return RoutedCommand(Route.UNSUPPORTED, text)
         if (text.isBlank()) return backend(text)
         if (NEGATION.containsMatchIn(text) || MULTI_INTENT.containsMatchIn(text)) return backend(text)
 

@@ -1,3 +1,26 @@
+## T-006 / T-009 D-015 local-only privacy milestone — 2026-10-02
+
+- Added a shared pre-routing privacy boundary for known credential markers and
+  Wi-Fi provisioning phrases, including multiword passwords, hyphenated
+  mật-khẩu, unaccented Vietnamese and reconnect phrases. Parser and controller
+  reject these locally; controller reports `LOCAL_ONLY_UNSUPPORTED` while
+  provisioning is absent. They never enter the WebSocket send path. Ordinary
+  backend-required commands and local Wi-Fi toggles retain their routes.
+- History redacts the entire guarded utterance/outcome before encryption and
+  sanitizes legacy decrypted entries before read/re-persist. This detects known
+  markers/phrases; arbitrary unmarked secrets cannot be identified reliably.
+- Validation: JDK17/API35 `./gradlew --no-daemon testDebugUnitTest lint
+  assembleDebug assembleDebugAndroidTest` passed (152 tasks, 1m47s); app29 +
+  DPC5 unit tests passed. `git diff --check` passed. Retained API35 AVD
+  `emulator-5554` received app/test APK updates only, no reset/DPC replacement;
+  focused privacy runner passed `OK (2 tests)` in9.218s: actual controller local
+  rejection/redacted history, and injected legacy encrypted multiword-password
+  history sanitization/reopening. Test history was cleared.
+- No physical Fold3, backend wire, speech runtime or provisioning capability
+  changes. Owner authorized source commit and push to main. Full T-006/T-009 acceptance remains open in the
+  canonical backend plans; next action is reviewed Vietnamese offline speech
+  runtime/model selection and incremental dialogue/provisioning implementation.
+
 # Android repository status
 
 ## T-009 emulator integration — 2026-10-02
