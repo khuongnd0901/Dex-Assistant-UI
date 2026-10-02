@@ -1,5 +1,25 @@
 # Android repository status
 
+## T-009 emulator integration — 2026-10-02
+
+Retained Windows AVD `ZFold3_API35` (`emulator-5554`, Android 15/API 35) was
+reconnected without wiping data; Device Owner and assistant role remain.
+Six `LocalFirstDeviceTest` instrumentation cases pass: local volume, Wi-Fi
+state transition through signature DPC (restored afterward), YouTube intent
+dispatch, backend-required offline rendering, actual Android Keystore encrypted
+history/reopening/redaction/clear, and age/count pruning. A separate
+`BackendMonitoringDeviceTest` passes authenticated Docker quota display with
+fresh/ESTIMATED state through `adb reverse tcp:8081 tcp:8081`.
+
+Validation: JDK 17/API 35 `test lint assembleDebug` passes 150 tasks; final lint
+including instrumentation sources passes. Instrumentation builds pass and AVD
+runners report `OK (6 tests)` plus `OK (1 test)`. These are emulator results,
+not Samsung Fold3/One UI evidence. YouTube launches its installed app's upgrade
+screen; relevant search results are not accepted from intent dispatch alone.
+Live multi-provider selection, settings-granted brightness, and physical Fold3
+acceptance remain open in canonical T-009. Test history was cleared on the AVD;
+volume/Wi-Fi were restored. The AVD uses a public isolated test bearer token.
+
 Last synchronized: 2026-10-02 (Fold3 recovery and session handoff)
 
 ## Canonical project memory
