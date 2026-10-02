@@ -1,8 +1,8 @@
 package com.khuongnd.dexassistant.ui.voice
 
-enum class VoiceState { STOPPED, LISTENING, WAKE_DETECTED, TRANSCRIBING, SENDING, EXECUTING, PAUSED, ERROR }
+enum class VoiceState { STOPPED, LISTENING, WAKE_DETECTED, TRANSCRIBING, ROUTING, SENDING, EXECUTING, SPEAKING, PAUSED, ERROR }
 
-enum class VoiceEvent { START, WAKE, STT_STARTED, FINAL_TEXT, PLAN_RECEIVED, COMMAND_FINISHED, FAILURE, PAUSE, RESUME, STOP }
+enum class VoiceEvent { START, WAKE, STT_STARTED, FINAL_TEXT, BACKEND_SENT, PLAN_RECEIVED, COMMAND_FINISHED, SPEAK, FEEDBACK_FINISHED, FAILURE, PAUSE, RESUME, STOP }
 
 class VoiceStateMachine(initial: VoiceState = VoiceState.STOPPED) {
     var state: VoiceState = initial
@@ -13,9 +13,12 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.STOPPED) {
             VoiceEvent.START -> if (state == VoiceState.STOPPED || state == VoiceState.ERROR) VoiceState.LISTENING else state
             VoiceEvent.WAKE -> requireState(VoiceState.LISTENING, VoiceState.WAKE_DETECTED)
             VoiceEvent.STT_STARTED -> requireState(VoiceState.WAKE_DETECTED, VoiceState.TRANSCRIBING)
-            VoiceEvent.FINAL_TEXT -> requireState(VoiceState.TRANSCRIBING, VoiceState.SENDING)
-            VoiceEvent.PLAN_RECEIVED -> requireState(VoiceState.SENDING, VoiceState.EXECUTING)
-            VoiceEvent.COMMAND_FINISHED -> if (state in setOf(VoiceState.SENDING, VoiceState.EXECUTING)) VoiceState.LISTENING else invalid(event)
+            VoiceEvent.FINAL_TEXT -> requireState(VoiceState.TRANSCRIBING, VoiceState.ROUTING)
+            VoiceEvent.BACKEND_SENT -> requireState(VoiceState.ROUTING, VoiceState.SENDING)
+            VoiceEvent.PLAN_RECEIVED -> if (state in setOf(VoiceState.ROUTING, VoiceState.SENDING)) VoiceState.EXECUTING else invalid(event)
+            VoiceEvent.COMMAND_FINISHED -> if (state in setOf(VoiceState.ROUTING, VoiceState.SENDING, VoiceState.EXECUTING)) VoiceState.LISTENING else invalid(event)
+            VoiceEvent.SPEAK -> if (state in setOf(VoiceState.TRANSCRIBING, VoiceState.ROUTING, VoiceState.SENDING, VoiceState.EXECUTING)) VoiceState.SPEAKING else invalid(event)
+            VoiceEvent.FEEDBACK_FINISHED -> requireState(VoiceState.SPEAKING, VoiceState.LISTENING)
             VoiceEvent.FAILURE -> VoiceState.ERROR
             VoiceEvent.PAUSE -> if (state != VoiceState.STOPPED) VoiceState.PAUSED else invalid(event)
             VoiceEvent.RESUME -> requireState(VoiceState.PAUSED, VoiceState.LISTENING)

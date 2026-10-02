@@ -1,265 +1,109 @@
-## T-006 / T-009 D-015 local-only privacy milestone — 2026-10-02
-
-- Added a shared pre-routing privacy boundary for known credential markers and
-  Wi-Fi provisioning phrases, including multiword passwords, hyphenated
-  mật-khẩu, unaccented Vietnamese and reconnect phrases. Parser and controller
-  reject these locally; controller reports `LOCAL_ONLY_UNSUPPORTED` while
-  provisioning is absent. They never enter the WebSocket send path. Ordinary
-  backend-required commands and local Wi-Fi toggles retain their routes.
-- History redacts the entire guarded utterance/outcome before encryption and
-  sanitizes legacy decrypted entries before read/re-persist. This detects known
-  markers/phrases; arbitrary unmarked secrets cannot be identified reliably.
-- Validation: JDK17/API35 `./gradlew --no-daemon testDebugUnitTest lint
-  assembleDebug assembleDebugAndroidTest` passed (152 tasks, 1m47s); app29 +
-  DPC5 unit tests passed. `git diff --check` passed. Retained API35 AVD
-  `emulator-5554` received app/test APK updates only, no reset/DPC replacement;
-  focused privacy runner passed `OK (2 tests)` in9.218s: actual controller local
-  rejection/redacted history, and injected legacy encrypted multiword-password
-  history sanitization/reopening. Test history was cleared.
-- No physical Fold3, backend wire, speech runtime or provisioning capability
-  changes. Owner authorized source commit and push to main. Full T-006/T-009 acceptance remains open in the
-  canonical backend plans; next action is reviewed Vietnamese offline speech
-  runtime/model selection and incremental dialogue/provisioning implementation.
-
 # Android repository status
 
-## T-009 emulator integration — 2026-10-02
+Last synchronized: 2026-10-02. Canonical project memory and task ownership are
+in `/mnt/d/DeX-Assistant/.agent/STATUS.md`; Android source is in this repository.
+T-006/T-009 remain IN_PROGRESS. No commit, push, physical-device install or reset
+was performed in this implementation session.
 
-Retained Windows AVD `ZFold3_API35` (`emulator-5554`, Android 15/API 35) was
-reconnected without wiping data; Device Owner and assistant role remain.
-Six `LocalFirstDeviceTest` instrumentation cases pass: local volume, Wi-Fi
-state transition through signature DPC (restored afterward), YouTube intent
-dispatch, backend-required offline rendering, actual Android Keystore encrypted
-history/reopening/redaction/clear, and age/count pruning. A separate
-`BackendMonitoringDeviceTest` passes authenticated Docker quota display with
-fresh/ESTIMATED state through `adb reverse tcp:8081 tcp:8081`.
+## Implemented: D-016 hybrid voice
 
-Validation: JDK 17/API 35 `test lint assembleDebug` passes 150 tasks; final lint
-including instrumentation sources passes. Instrumentation builds pass and AVD
-runners report `OK (6 tests)` plus `OK (1 test)`. These are emulator results,
-not Samsung Fold3/One UI evidence. YouTube launches its installed app's upgrade
-screen; relevant search results are not accepted from intent dispatch alone.
-Live multi-provider selection, settings-granted brightness, and physical Fold3
-acceptance remain open in canonical T-009. Test history was cleared on the AVD;
-volume/Wi-Fi were restored. The AVD uses a public isolated test bearer token.
+- Offline “Hey DeX” uses sherpa-onnx 1.13.8 and the official GigaSpeech 3.3M
+  2024-01-01 int8 KWS model, CPU one thread. The wake worker owns its native
+  stream and AudioRecord (mono PCM16/16 kHz), stopping/releasing the microphone
+  before command STT. Native model/stream are recreated for each wake session;
+  initialization cost and resource implications need measurement before tuning.
+- SpeechRecognizer requests `vi-VN`, permits the service's online path, and uses
+  the configured external recognition service (excludes this app's assistant
+  contract stub). Only final text dispatches; partial/duplicate/late results do
+  not. Recognition has a 30-second watchdog. Ready callback plays a cue; say the
+  command after that cue, not in the wake phrase's breath.
+- Audio focus ducks media during command/feedback. Wake is suspended during STT,
+  command execution and TTS. A partial wake lock keeps the opt-in active pipeline
+  running when the screen sleeps; pause/stop/runtime error release it. This is
+  a battery tradeoff, not a measured Fold3 power claim.
+- Canned Vietnamese feedback prefers installed offline exact-locale voices,
+  then network voices; missing data, initialization failure, playback error and
+  timeout remain observable via `voice_health.ttsStatus` and wake health detail.
+  No raw transcript/password is spoken or logged. Tone fallback resumes wake
+  without claiming usable Vietnamese synthesis.
+- The application-scoped AssistantCoordinator owns DPC/WebSocket/routing/history.
+  Activity destruction detaches its observer; headless service dispatch survives.
+  Request IDs enforce one command and one terminal callback, cancel queued
+  dispatch, and invalidate old callbacks. Backend plans are correlated,
+  deduplicated as a whole and executed serially. Timeout/disconnect never replay.
+- Whole-input supported simple commands remain local. Complex/multiple clauses
+  route entirely to backend. Credential-like commands remain guarded from the
+  backend/Gemini and redacted in history; online STT audio is authorized, but
+  password Wi-Fi provisioning and new backend tools are not implemented here.
+- V1 wire messages/authentication/types are unchanged. Terminal feedback
+  distinguishes verified local state, dispatched intents and unexecuted plans.
 
-Last synchronized: 2026-10-02 (Fold3 recovery and session handoff)
+## Reproducible artifact preparation
 
-## Canonical project memory
+Run `python3 scripts/prepare-voice-assets.py` before Gradle. AAR/model downloads
+are pinned by SHA-256, extracted into ignored `.cache/voice`, and verified before
+build; no runtime download or generated binary/audio is committed. Both CI
+workflows prepare the same assets. Apache 2.0 runtime/model and ONNX Runtime MIT
+license/third-party notices are packaged. Keyword encoding was checked against
+upstream SentencePiece: `▁HE Y ▁DE X @HEY_DEX`.
 
-Product-wide status, tasks, decisions, requirements, and protocol are owned by
-the backend repository at `/home/kunrg/DeX-Assistant` on the Fold3 test host. Start cross-repository work
-from its `.agent/STATUS.md`. This file is a concise Android handoff, not a second
-canonical task board.
+Only `arm64-v8a` (Fold3) and `x86_64` (retained AVD) are packaged. Final app APK
+is 98,203,815 bytes; binary size is not runtime RAM usage. See README and packaged
+`assets/licenses/voice-PROVENANCE.txt` for hashes/source URLs.
 
-## Current state
+## Verified in this session
 
-- The repository contains the Compose client (`com.khuongnd.dexassistant.ui`)
-  and separate DPC (`com.khuongnd.dexassistant.dpc`).
-- Current build configuration: compile/target API 35, min API 30, JDK 17.
-- The client provisions a Keystore-wrapped token, enforces WSS except loopback,
-  implements the V1 WebSocket/reconnect flow, launches apps, delegates Wi-Fi to
-  the signature-protected DPC, and emits non-sensitive latency markers.
-- The DPC verifies Device Owner status and observes Wi-Fi state before success.
-- `test`, `lint`, and `assembleDebug` pass for both modules with JDK 17/API 35.
-- T-006 now has app-scoped DPC permission enumeration with verified grant
-  results, typed permission/capability IPC, and Device Owner
-  boot/self-update recovery. Main-app updates now reconcile through the system-bound
-  VoiceInteractionService and signature-protected permission-profile IPC; manifest
-  cross-package package-change broadcasts were skipped by One UI and removed. The DPC target is fixed to
-  `com.khuongnd.dexassistant.ui`; it does not receive backend credentials.
-- The main APK is a qualified default-assistant candidate with voice interaction,
-  session, and recognition services. Its private microphone FGS is started by
-  the main app only after role/unlock/permission/policy readiness. Its persistent
-  notification supports pause/resume, stop, and opening administration; health
-  is persisted without command text or credentials.
-- DPC boot/update recovery only reapplies permissions and records health; it does
-  not start the cross-package microphone FGS. The daily chat controls were removed from the Activity. The remaining
-  administration surface provisions/connects, shows basic owner/voice/backend
-  health, applies the permission profile, and starts/stops voice service.
-- Voice lifecycle/readiness transitions and permission result classification have unit
-  coverage. Protocol V1 was not changed.
-- Current branch is `main`; other branches were merged and deleted as requested.
-  Android main is `b25269a`; backend main is `f590e91`.
+- JDK17/API35 full `testDebugUnitTest lint assembleDebug
+  assembleDebugAndroidTest` passes: final ABI-filtered build 153 tasks, 1m31s;
+  37 app and 5 DPC unit tests, zero failures/errors. An earlier integrated full
+  build also passed 153 tasks/2m5s. New tests cover session invalidation,
+  queued cancellation, one-in-flight correlation, routing/execution/feedback
+  states and pause/stop across active phases. `git diff --check` is required at
+  final handoff.
+- Retained Windows AVD `ZFold3_API35` / `emulator-5554` received app/test APK
+  updates only, no DPC replacement/reset. Focused native/coordinator/protocol
+  runner passes `OK (7 tests)`/42.135s: native silence decode/release over three
+  cycles; continuous microphone pause/resume/stop; headless local dispatch;
+  multi-clause atomic backend routing/privacy; queued cancel; offline RFC6455
+  fixture with two ordered remote results, duplicate plan and reconnect/no replay.
+- Final narrowed APK was installed and native + microphone lifecycle smoke
+  passes `OK (2 tests)`/7.126s. Runner ends STOPPED. Native silence is a negative
+  fixture, not positive “Hey DeX” detection/accuracy evidence.
+- Legacy local-first/privacy/history/device-action regression and offline speech
+  inventory pass `OK (9 tests)`/82.318s; volume/Wi-Fi restored and test history
+  cleared. Existing offline vi-VN STT/TTS inventories remain UNAVAILABLE on AVD.
+- Actual generic recognizer diagnostic selects GoogleTTSRecognitionService,
+  reaches `onReadyForSpeech`, and ends at the 30-second bound without a terminal
+  callback when no speech is supplied. This is invocation/lifecycle evidence;
+  no Vietnamese transcript, language accuracy or online recognition is proven.
+- Opt-in real backend connected and accepted a headless complex utterance, then
+  returned AI_TIMEOUT in10.891s. Its success assertion correctly fails; it was
+  not retried. Deterministic transport/action evidence passes, while real
+  provider end-to-end execution remains unverified.
+- Actual canned Vietnamese TTS diagnostic is pending final runner below; do not
+  equate voice metadata with successful synthesis.
 
-## Relevant canonical tasks
+## Remaining acceptance and next action
 
-- Backend `T-004` is `IN_PROGRESS`: owner decisions are accepted; actual Fold3
-  firmware and Device Owner evidence remain.
-- Backend `T-003` is `IN_PROGRESS`: automated implementation is complete, while
-  on-device provisioning, actions, and latency remain unverified.
-- Backend `T-005` establishes the main/backend/Android agent workflow.
+Physical Fold3 is unavailable. Keep T-006/T-009 IN_PROGRESS: positive wake/audio
+fixtures, wake accuracy/false activation soak, actual Vietnamese utterances,
+headless/screen-off speech, reboot continuity, CPU/PSS RAM/pin/thermal baseline
+with Maps+music, 100-session resource stability and live provider completion
+remain unverified. Do not change signing or reset to fill this evidence gap.
 
-## Blockers
+Next: finish the bounded canned TTS diagnostic, then test wake/real Vietnamese
+speech and resource behavior on the same-signed Fold3 when available. If its
+selected system recognizer cannot handle vi-VN online, evaluate a separate
+cloud STT adapter using measured failures; do not silently change engines.
 
-- Physical Fold3 Android 15/API 35 passed Device Owner, shell IPC rejection,
-  five adb reboot cycles, microphone probe/FGS, and notification controls in
-  canonical `.agent/evidence/T-006-fold3-2026-10-01.md`. These are probe checks,
-  not continuous voice acceptance. Startup reconciliation/UI fixes in this
-  repair branch pass local test/lint/assemble; matching-signed APK physical
-  update/reboot/probe/notification/live Voice UI acceptance now passes.
-- sherpa-onnx 1.13.8 and the official GigaSpeech 3.3M model were not added: the
-  exact model archive was not available locally and no unverified/placeholder
-  asset was fabricated. Until those assets and checksums are installed, the
-  service performs only a real microphone probe and reports wake runtime pending.
-- STT, TTS, real wake detection, WebSocket voice handoff, device-credential
-  gating, special-access Settings links, and full diagnostics remain T-006 work.
-- API 35 testing validates the D-011 replacement for that failed DPC-start path:
-  assistant role/binding, permission grant, self-started microphone FGS, real
-  `AudioRecord` probe, and `LISTENING` persist across cold reboot. Fold3/One UI
-  now has probe evidence, and no AccessibilityService is declared.
+## Foundation retained
 
-## Next action
-
-Continue T-006 with offline KWS/STT/TTS, final-text handoff, credential gate,
-special-access Settings links and diagnostics. Obtain a dedicated test backend
-before V1/reconnect/actions/Keystore/latency acceptance. Keep T-006 IN_PROGRESS.
-No factory reset is authorized. Fold3 last seen on ADB port `32881`; rediscover
-the Wi-Fi debug port before use. Voice service ended STOPPED.
-
-Committed repairs set up Android SDK tools in both workflows, restore the Gradle
-wrapper executable bit, and bound permission IPC waits to ten seconds and startup
-attempts to three. Probe completion is invalidated by pause/stop, so a late worker
-cannot restore LISTENING after a user stop. Health observation attaches only
-while the administration Activity is started.
-
-## Validation
-
-- 2026-10-01 recovery fixes: JDK 17 / API 35 `./gradlew --no-daemon test
-  lint assembleDebug` passed (`BUILD SUCCESSFUL`, 150 tasks). App has 18 tests
-  and DPC 5, each passed in debug and release (46 executions; no failures).
-  This build includes binding-death/null-binding recovery and lifecycle/probe
-  fixes. JVM coordinator tests do not establish Android callback delivery.
-- Local debug signing identity is unrelated to the installed Fold3 identity;
-  generated local APKs are compile evidence only and must not be installed on it.
-
-- Passed: API 35 AVD provisioning script before/after cold reboot; role holder
-  and bound voice component persisted, `RECORD_AUDIO` was policy-granted, health
-  became `READY`/`LISTENING`, microphone FGS type was `0x80`, and the real probe
-  passed without `ForegroundServiceStartNotAllowedException`.
-
-- Passed: `env JAVA_HOME=/home/khuongnd/.local/opt/jdk17
-  ANDROID_HOME=/home/khuongnd/Android/Sdk ./gradlew test lint assembleDebug`
-  (`BUILD SUCCESSFUL`, 150 tasks).
-- Passed: `git diff --check`.
-- APK SHA-256: app
-  `d6ada73dca07a823e2833a61908244e891b6a8a6dc64896564052c84ccee07a9`;
-  DPC `17377af836a71fdafc184f33441f6fc0560ef07fadd6440f9fb19ea7074fa76b`.
-- GitHub prerelease `fold3-device-test-2026-10-01` publishes both verified
-  debug APKs for physical Fold3 testing; generated binaries remain outside Git.
-- `apksigner verify --print-certs` passed for both APKs; both use certificate
-  SHA-256 `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
-- Windows `ZFold3_API35` (Google APIs x86_64) booted as Android 15/API 35;
-  both APKs installed and MainActivity cold-launched without crash/ANR. The
-  emulator reported CLOSED/HALF_OPENED/OPENED but kept 1768x2208 guest metrics.
-  Device Owner and runtime permission checks passed before the final clean reset.
-
-## Resume commands
-
-- Build/validate: `env JAVA_HOME=/home/khuongnd/.local/opt/jdk17
-  ANDROID_HOME=/home/khuongnd/Android/Sdk ./gradlew test lint assembleDebug`.
-- Start the retained AVD from the backend repo with
-  `powershell.exe -ExecutionPolicy Bypass -File scripts/android/start-zfold3.ps1`.
-- Provision/verify using the backend script documented in its
-  `scripts/android/README.md`. The AVD is currently stopped and retains the
-  successful Device Owner/default-assistant state; do not reset casually.
-
-## Authorized local signing recovery — 2026-10-02
-
-The owner authorized recovery of DEVICE_TEST_KEYSTORE_BASE64 for local signing.
-Workflow run 36897677667 exported only CMS-encrypted signing material, encrypted
-for a locally generated recipient whose private key never left this host.
-The recovered keystore certificate and both locally re-signed app/DPC APKs were
-verified with SHA-256 fingerprint
-`9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`,
-matching the installed prerelease signing identity. Signing material remains
-outside the repositories in a host-local directory with restrictive permissions.
-Temporary recovery workflow logic was removed. Physical acceptance of these
-re-signed recovery APKs now passes the foundation recovery slice; full wake
-and backend acceptance remains open.
-
-## Physical recovery repair validation — 2026-10-02
-
-Both locally re-signed APK hashes matched installed Fold3 base APKs. Corrected
-backend provisioning script passed before/after a new boot and recovered the
-same device across a changed Wi-Fi ADB port. Main-app-only reinstall advanced
-DPC policy timestamp1790874975468 → 1790875077788 without replacing DPC or
-launching Activity. READY/LISTENING, short AudioRecord probe and mic FGS type0x80
-passed. Visible Voice UI emergency stop/start updated without Refresh.
-Owner-operated notification pause/resume/stop and negative shell service
-permission/export checks passed; final microphone state STOPPED. Notification
-UI hierarchy capture was unavailable, so direct notification-to-UI live updates
-are not separately claimed. Full report is canonical backend
-`.agent/evidence/T-006-fold3-recovery-2026-10-02.md`.
-
-Workflow30df640 explicitly signs final APKs after checking the restored key;
-run36898323611 passed test/lint/build/expected certificate checks. Encrypted
-keystore backup is stored in `signing/`, passphrase in separate Actions secret.
-No factory reset, backend protocol change, or full voice/backend acceptance.
-
-
-## Session handoff — 2026-10-02
-
-- Android main `ce3ed9b2d82aa855a522b1a182f98e4386d01a0d`; backend main
-  `380646c5f267d990f3ae06931edc17a12c67755b`. Only `main` remains locally
-  and remotely; both trees were clean at handoff.
-- Before CI optimization, local `test lint assembleDebug` passed150 tasks;
-  23 distinct tests ran in both variants (46 executions). CI run36898323611
-  passed explicit signing and expected certificate verification; no release was
-  published.
-- CI speed update commit `cda699f`: both workflows now use
-  `testDebugUnitTest lint assembleDebug --build-cache`. Android CI also ignores
-  docs-only pushes/PRs: Markdown files, `docs/**`, and `.agent/**`; code/config
-  changes still trigger it. This runs all 23 shared
-  unit tests once on the Debug variant, which matches the only APK artifact and
-  retains `run-as` access for device health collection. It avoids the duplicate
-  Release test compilation; no Release APK was previously produced. Local warm
-  rerun passed in34s (100/102 tasks up-to-date). GitHub CI run36900750938 passed
-  the Gradle step in4m34s vs5m19s baseline (45s faster, one measurement); 11
-  tasks reported FROM-CACHE. `lint` and `assembleDebug` remain enabled. Follow-up workflow validation
-  run36902191262 passed; Gradle took40s with warm cache (whole job about1m11s).
-  This is a warm-cache result, separate from the4m34s first optimized run.
-- Signing certificate SHA-256:
-  `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
-  Local keystore: `/home/kunrg/.local/share/dex-signing/device-test.keystore`.
-  Encrypted tracked backup `signing/device-test.keystore.enc`; passphrase in
-  Actions secret `DEVICE_TEST_BACKUP_PASSPHRASE`. Never commit decrypted material.
-- Physical repair checks pass: app-only permission reconciliation; provisioning
-  across reboot and changed ADB port; probe/FGS; UI emergency stop/start;
-  notification pause/resume/stop; shell permission/export boundaries. Final
-  voice state STOPPED. Detailed limits and evidence are in backend
-  `.agent/evidence/T-006-fold3-recovery-2026-10-02.md`.
-- Full wake recognition, STT/TTS, credential gate, diagnostics and backend
-  dependent acceptance are still open. Do not factory reset without explicit
-  owner confirmation.
-
-## T-009 Android implementation — 2026-10-02
-
-- Implemented canonical D-014 / `vi-local-v1` routing on Android: NFC Vietnamese
-  normalization, whole-input grammar, deterministic LOCAL/BACKEND_REQUIRED/
-  UNSUPPORTED routes, capability gates, and local app/Wi-Fi/volume/brightness/
-  media/YouTube execution. Only BACKEND_REQUIRED creates a WebSocket command.
-  Bluetooth remains a typed local `CAPABILITY_UNAVAILABLE` on API 35 because no
-  verified DPC path exists; it never falls back or reports synthetic success.
-- Added additive authenticated quota snapshot requests after each connection,
-  correlation-aware parsing, nullable unknown counters, stale/disconnected state,
-  provider aliases/aggregate monitoring, old-server unknown fallback, and exact
-  Vietnamese rendering for all three canonical `AI_*` terminal errors.
-- Added an independent Android Keystore AES-256-GCM history key and bounded
-  encrypted local command history. Insert/startup/read prune at the earlier of
-  seven days or 100 commands; clear rotates only the history key. Sensitive
-  credential-like text is redacted before storage. Audio, backend payloads, and
-  provider credentials have no history input path.
-- Canonical quota/error fixtures from backend contract commit `8e73a08` are
-  mirrored under `app/src/test/resources`. Routing, normalization, ambiguity,
-  YouTube query, retention, nullable quota, error, and stale-boundary tests were
-  added.
-- Validation: JDK 17 / API 35 `./gradlew --no-daemon test lint assembleDebug`
-  passed (`BUILD SUCCESSFUL`, 150 tasks). App 27 and DPC 5 distinct tests run in
-  debug and release (64 executions), with no failures/errors. `git diff --check`
-  passed; source/manifest scan found no committed runtime credentials.
-- Not yet device evidence: Fold3 execution of local actions, Android Keystore
-  persistence/clear, intent dispatch, live quota UI, and offline/backend-stopped
-  acceptance remain for main-agent integration. Media is truthfully DISPATCHED,
-  not VERIFIED; app/YouTube intents are also DISPATCHED. T-009 completion remains
-  canonical backend/main-agent authority.
+API35 Fold3 Device Owner, assistant binding, permission reconciliation, reboot,
+app-only update and notification controls previously passed the foundation
+probe slice in canonical evidence `T-006-fold3-2026-10-01.md` and
+`T-006-fold3-recovery-2026-10-02.md`. Those were short microphone probes, not
+wake/STT/TTS acceptance. DPC has no backend credentials; signature-protected
+permission/actions retain the established signing identity. Locally generated
+current debug APKs are for this AVD and must not be installed on Fold3 under an
+unrelated certificate. The encrypted signing backup remains in `signing/`;
+never commit decrypted signing material.

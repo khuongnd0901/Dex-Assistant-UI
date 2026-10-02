@@ -12,12 +12,23 @@ The Spring Boot backend and canonical protocol are maintained in the private
 - JDK 17
 - Android SDK Platform 35
 - Android SDK Build Tools
+- Python 3.10+ for checksum-pinned build-time voice asset preparation
 
 ## Build and test
 
 ```bash
+python3 scripts/prepare-voice-assets.py
 ./gradlew test lint assembleDebug
 ```
+
+The preparation step downloads official sherpa-onnx1.13.8 and English
+GigaSpeech3.3M int8 KWS archives, verifies pinned SHA-256 hashes, and extracts
+only production model files to ignored `.cache/voice`. APKs include arm64-v8a
+for Fold3 and x86_64 for the retained AVD; unused32-bit ABIs are excluded. CI performs this step
+before Gradle. Use `--offline` to require existing verified archives. `clean`
+does not remove this cache; no runtime download or vendor key is used.
+License/provenance files are packaged in APK assets. The tracked keyword file
+encodes “Hey DeX” using the original model BPE (`▁HE Y ▁DE X`).
 
 On Windows, use `gradlew.bat` instead. Open the repository root in Android
 Studio if the SDK path needs to be configured through `local.properties`.
@@ -78,3 +89,26 @@ environment-specific server URLs. The main app wraps its bearer token with an
 AndroidKeyStore AES-GCM key and excludes app data from backup. The DPC has no
 backend credential or network permission; its exported service requires a
 signature-level permission, so both APKs must retain the same signing identity.
+
+## Hybrid voice (T-006 / D-016)
+
+Provision the default assistant and DPC as documented in canonical backend
+`scripts/android/README.md`; no reset is authorized for the retained devices.
+Start voice from administration or its assistant lifecycle, say “Hey DeX”,
+wait for the readiness cue, then say the Vietnamese command. Wake is offline;
+Android SpeechRecognizer vi-VN may send command audio, including sensitive
+speech, to its recognition service. There is no per-command online consent.
+Network loss can prevent recognition even when execution would be local.
+
+Supported whole-input local commands execute on-device; complex/multi-clause
+final text routes to the backend's current tools. Credentials/provisioning
+remain guarded from backend/Gemini and are redacted from history; Wi-Fi
+password association is not introduced by this voice milestone. Recognition
+partial results never dispatch. Pause/Stop in the persistent notification
+cancel recording/recognition; timeout/reconnect never automatically replay.
+
+Vietnamese TTS prefers an installed offline voice and may use a network voice.
+If no usable voice exists, health reports that limitation. App/YouTube/media
+intents remain dispatch evidence, not proof of playback or visible completion.
+Actual Fold3 audio, false activation, CPU/RAM, battery and thermal acceptance
+must be recorded separately from AVD instrumentation and builds.

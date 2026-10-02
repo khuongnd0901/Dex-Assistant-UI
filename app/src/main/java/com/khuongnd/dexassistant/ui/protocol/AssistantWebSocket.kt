@@ -118,9 +118,13 @@ class AssistantWebSocket(
                 when (ProtocolParser.type(text)) {
                     "execution.plan" -> {
                         listener.onMetric("ws.plan_received", "plan", SystemClock.elapsedRealtimeNanos())
-                        listener.onActions(ProtocolParser.actions(text))
+                        listener.onCorrelatedActions(JSONObject(text).optString("correlationId"), ProtocolParser.actions(text))
                     }
-                    "command.completed" -> listener.onState("COMPLETED")
+                    "command.completed" -> {
+                        val envelope = JSONObject(text)
+                        listener.onState("COMPLETED")
+                        listener.onCommandCompleted(envelope.optString("correlationId"), envelope.getJSONObject("payload").optString("status"))
+                    }
                     "command.accepted" -> listener.onState("ACCEPTED")
                     "quota.snapshot" -> {
                         val envelope = JSONObject(text)
@@ -130,7 +134,11 @@ class AssistantWebSocket(
                         val code = ProtocolParser.errorCode(text)
                         val correlationId = JSONObject(text).optString("correlationId")
                         if (code == "UNSUPPORTED_MESSAGE" && correlationId == quotaRequestId?.toString()) listener.onQuotaUnsupported()
-                        else listener.onError(if (code in AI_ERRORS) "Khó quá, không làm được" else ProtocolParser.errorSummary(text))
+                        else {
+                            val message = if (code in AI_ERRORS) "Khó quá, không làm được" else ProtocolParser.errorSummary(text)
+                            listener.onError(message)
+                            listener.onCommandError(correlationId, code, message)
+                        }
                     }
                 }
             }.onFailure { listener.onError("INVALID_MESSAGE: ${it.message}") }
@@ -172,6 +180,9 @@ class AssistantWebSocket(
     interface Listener {
         fun onState(state: String)
         fun onActions(actions: List<DeviceAction>)
+        fun onCorrelatedActions(requestId: String, actions: List<DeviceAction>) = onActions(actions)
+        fun onCommandCompleted(requestId: String, status: String) = Unit
+        fun onCommandError(requestId: String, code: String, message: String) = Unit
         fun onError(message: String)
         fun onAuthenticationFailure()
         fun onQuotaSnapshot(snapshot: ProtocolParser.QuotaSnapshot)
