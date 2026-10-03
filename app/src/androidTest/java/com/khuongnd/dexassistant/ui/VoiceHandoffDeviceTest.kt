@@ -69,6 +69,10 @@ class VoiceHandoffDeviceTest {
                 }
                 Thread.sleep(2000)
                 instrumentation.runOnMainSync {
+                    assertTrue("Visual readiness must match provider readiness", VoiceLiveState.state.value.ready)
+                    val feedback = service.javaClass.getDeclaredField("feedback").apply { isAccessible = true }.get(service) as com.khuongnd.dexassistant.ui.voice.VoiceFeedback
+                    assertTrue("Media cue must dispatch and finish, not leak", feedback.readyCueDescription.startsWith("READY_CUE_MEDIA_FINISHED"))
+                    assertNull(feedback.javaClass.getDeclaredField("cue").apply { isAccessible = true }.get(feedback))
                     assertFalse(service.javaClass.getDeclaredField("focusHeld").apply { isAccessible = true }.getBoolean(service))
                     assertEquals("TRANSCRIBING", context.getSharedPreferences("voice_health", 0).getString("state", ""))
                     assertTrue(context.getSharedPreferences("voice_health", 0).getString("detail", "").orEmpty().startsWith("Ready for Vietnamese command"))
@@ -79,9 +83,15 @@ class VoiceHandoffDeviceTest {
     @Test fun actualPartialFinalDiagnosticPathsNeverExecuteAndLateCallbackCannotUpdate() {
         ActivityScenario.launch(MainActivity::class.java).use {
             val before = CommandHistoryStore(context).read()
-            val (_, listener) = diagnostic()
+            val (service, listener) = diagnostic()
             try {
                 instrumentation.runOnMainSync {
+                    listener.onReadyForSpeech(Bundle())
+                    val feedback = service.javaClass.getDeclaredField("feedback").apply { isAccessible = true }.get(service) as com.khuongnd.dexassistant.ui.voice.VoiceFeedback
+                    val cue = feedback.javaClass.getDeclaredField("cue").apply { isAccessible = true }.get(feedback)
+                    assertNotNull("Readiness must allocate media cue", cue)
+                    listener.onReadyForSpeech(Bundle())
+                    assertSame("Duplicate readiness must not replay", cue, feedback.javaClass.getDeclaredField("cue").apply { isAccessible = true }.get(feedback))
                     listener.onPartialResults(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("mật khẩu secret")) })
                     assertEquals("[REDACTED]", VoiceLiveState.state.value.transcript)
                     assertFalse(VoiceLiveState.state.value.final)
@@ -91,6 +101,10 @@ class VoiceHandoffDeviceTest {
                 assertEquals("bấm ô 11", VoiceLiveState.state.value.transcript)
                 action(VoiceAssistantService.ACTION_STOP)
                 instrumentation.runOnMainSync {
+                    listener.onReadyForSpeech(Bundle())
+                    assertFalse("Stale readiness cannot reactivate cue/UI", VoiceLiveState.state.value.ready)
+                    val feedback = service.javaClass.getDeclaredField("feedback").apply { isAccessible = true }.get(service) as com.khuongnd.dexassistant.ui.voice.VoiceFeedback
+                    assertNull(feedback.javaClass.getDeclaredField("cue").apply { isAccessible = true }.get(feedback))
                     listener.onPartialResults(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("late")) })
                     listener.onResults(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("mở youtube")) })
                 }

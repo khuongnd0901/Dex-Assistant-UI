@@ -95,7 +95,7 @@ signature-level permission, so both APKs must retain the same signing identity.
 Provision the default assistant and DPC as documented in canonical backend
 `scripts/android/README.md`; no reset is authorized for the retained devices.
 Start voice from administration or its assistant lifecycle, say “Hey Hey”,
-wait for the readiness cue, then say the Vietnamese command. Wake is offline;
+wait for the rising two-note media readiness cue and “Sẵn sàng — nói lệnh”, then say the Vietnamese command. The cue plays once after the STT provider reports ready, without requesting audio focus or changing system volume, and stops on cancellation. Wake is offline;
 Android SpeechRecognizer vi-VN may send command audio, including sensitive
 speech, to its recognition service. There is no per-command online consent.
 Network loss can prevent recognition even when execution would be local.
@@ -118,7 +118,7 @@ must be recorded separately from AVD instrumentation and builds.
 Open **Mở cài đặt Trợ năng DeX** in the app and explicitly enable the DeX
 accessibility service. Connect Samsung DeX to an external display, start voice,
 and say “Hey Hey”. The app prepares numbered clickable controls before the STT
-ready cue. Say “bấm vào số một”, “bấm ô mười một”, “chia ô 11”, “hiện lưới”,
+ready cue. Repeated content notifications preserve the mapping when fresh node/window identity and bounds stay unchanged; changed targets invalidate it, and image targets are checked again before a tap. Say “bấm vào số một”, “bấm ô mười một”, “chia ô 11”, “hiện lưới”,
 or “hủy”. Grid mode has 6 columns × 4 rows (1–24); subdivision is bounded to
 three levels. A grid switch or subdivision starts another listening turn without
 another wake phrase. Other commands continue through the existing local/backend

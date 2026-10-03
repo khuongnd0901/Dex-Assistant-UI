@@ -103,3 +103,9 @@ object ScreenDisplays {
         return current?.first == displayId && current.second == bounds
     }
 }
+
+/** Stable content notification is harmless; missing/freshly changed topology or identity is not. */
+object ScreenContentStability {
+    fun <T : Any> invalidates(frozen: T, fresh: T?, windowStateChanged: Boolean = false): Boolean =
+        windowStateChanged || fresh != frozen
+}

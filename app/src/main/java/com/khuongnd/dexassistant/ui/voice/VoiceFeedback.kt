@@ -1,6 +1,9 @@
 package com.khuongnd.dexassistant.ui.voice
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Handler
@@ -60,7 +63,55 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         main.postDelayed(initTimeout, 10_000)
     }
 
-    fun readyTone() { if (!closed) tone.startTone(ToneGenerator.TONE_PROP_BEEP, 80) }
+    private var cue: AudioTrack? = null
+    private var cueRelease: Runnable? = null
+    var readyCueDescription = "READY_CUE_IDLE"
+        private set
+
+    /** No audio focus request: the recognizer already owns its listening session. */
+    fun readyTone() {
+        if (closed) return
+        cancelReadyTone()
+        var track: AudioTrack? = null
+        try {
+            val samples = ReadyCueSignal.samples()
+            track = AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                .setAudioFormat(AudioFormat.Builder().setSampleRate(ReadyCueSignal.SAMPLE_RATE)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
+                .setTransferMode(AudioTrack.MODE_STATIC).setBufferSizeInBytes(samples.size * 2).build()
+            check(track.write(samples, 0, samples.size) == samples.size)
+            cue = track
+            track.play()
+            readyCueDescription = "READY_CUE_MEDIA_DISPATCHED"
+            android.util.Log.i("DexVoice", readyCueDescription)
+            val current = track
+            val release = Runnable {
+                if (cue === current) {
+                    readyCueDescription = "READY_CUE_MEDIA_FINISHED_route_${current.routedDevice?.type ?: -1}"
+                    android.util.Log.i("DexVoice", readyCueDescription)
+                    cancelReadyTone()
+                }
+            }
+            cueRelease = release
+            main.postDelayed(release, ReadyCueSignal.DURATION_MS + 250L)
+        } catch (failure: RuntimeException) {
+            if (cue === track) cue = null
+            runCatching { track?.release() }
+            readyCueDescription = "READY_CUE_FAILED_${failure.javaClass.simpleName}"
+            android.util.Log.w("DexVoice", readyCueDescription)
+        }
+    }
+
+    fun cancelReadyTone() {
+        cueRelease?.let(main::removeCallbacks)
+        cueRelease = null
+        val old = cue
+        cue = null
+        runCatching { old?.stop() }
+        runCatching { old?.release() }
+    }
 
     fun speak(text: String, id: String, done: () -> Unit) {
         if (closed) { done(); return }
@@ -89,6 +140,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
     fun timeout() { describe("TTS_PLAYBACK_TIMEOUT"); cancel() }
 
     fun cancel() {
+        cancelReadyTone()
         pending = null
         completion = null
         utterance = null

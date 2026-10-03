@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NumberedScreenTest {
+    @Test fun recurringContentPreservesFrozenTargetsButFreshIdentityAndTopologyChangesInvalidate() {
+        data class Frozen(val bounds: ScreenRect, val nodeIdentity: String, val windows: List<Int>)
+        val frozen = Frozen(ScreenRect(20, 30, 80, 90), "window1/node3/action16/labelHash4", listOf(1, 2))
+        repeat(100) { assertFalse(ScreenContentStability.invalidates(frozen, frozen.copy())) }
+        assertTrue(ScreenContentStability.invalidates(frozen, frozen.copy(bounds = ScreenRect(21,30,81,90))))
+        assertTrue(ScreenContentStability.invalidates(frozen, frozen.copy(nodeIdentity = "replacement")))
+        assertTrue(ScreenContentStability.invalidates(frozen, frozen.copy(windows = listOf(1,2,3))))
+        assertTrue(ScreenContentStability.invalidates(frozen, null))
+        assertTrue(ScreenContentStability.invalidates(frozen, frozen, windowStateChanged = true))
+    }
     @Test fun vietnameseWholeInputAndLocalReservation() {
         assertEquals(ScreenCommand(ScreenVerb.CLICK_TARGET, 1), ScreenCommandParser.parse("bấm vào số một"))
         assertEquals(ScreenCommand(ScreenVerb.CLICK_CELL, 11), ScreenCommandParser.parse("bấm ô mười một"))

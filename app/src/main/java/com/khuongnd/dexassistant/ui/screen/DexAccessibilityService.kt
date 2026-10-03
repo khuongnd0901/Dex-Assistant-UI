@@ -61,10 +61,15 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED)) {
             val changedWindow = windowsOnAllDisplays[displayId].orEmpty().firstOrNull { it.id == event?.windowId }
             if (changedWindow?.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) return
-            if (event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
-                if (current != null && snapshot() != current.snapshot) { android.util.Log.i("DexScreen", "session.invalidated stage=windows_snapshot"); clear() }
-                else if (current == null && changedWindow != null) { android.util.Log.i("DexScreen", "session.invalidated stage=preparing_windows eventType=${event?.eventType}"); clear() }
-            } else if (changedWindow != null || current != null && snapshot() != current.snapshot) { android.util.Log.i("DexScreen", "session.invalidated stage=content eventType=${event?.eventType}"); clear() }
+            val expected = current?.snapshot ?: preparingSnapshot ?: return
+            // Video/clock content events do not imply target movement. Compare the frozen
+            // node/window identity for both preparation and active sessions; image pixels
+            // are separately revalidated from a fresh screenshot immediately before a tap.
+            val stateChange = event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && changedWindow != null
+            if (ScreenContentStability.invalidates(expected, snapshot(), stateChange)) {
+                android.util.Log.i("DexScreen", "session.invalidated stage=snapshot eventType=${event?.eventType}")
+                clear()
+            }
         }
     }
 

@@ -105,7 +105,7 @@ fun AssistantScreen(
                     androidx.compose.material3.Card(modifier.testTag("transcript").clickable(enabled = live.transcript.isNotBlank()) { detail = live.transcript; dialog = "detail" }) {
                         Column(Modifier.fillMaxSize().padding(8.dp)) {
                             if (!compact) Text(if (live.diagnostic) "Nghe thử" else if (live.final) "Đã nghe" else "Đang nghe", style = MaterialTheme.typography.labelLarge)
-                            Text(live.transcript.ifBlank { "Nói Hey Hey, hoặc chọn Nghe thử." }, Modifier.weight(1f).testTag("transcriptText"), maxLines = if (compact) 1 else 8,
+                            Text(live.transcript.ifBlank { if (live.ready) "Sẵn sàng — nói lệnh." else "Nói Hey Hey, hoặc chọn Nghe thử." }, Modifier.weight(1f).testTag("transcriptText"), maxLines = if (compact) 1 else 8,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                             if (!compact) androidx.compose.material3.TextButton(onClick = { detail = live.transcript; dialog = "detail" }, enabled = live.transcript.isNotBlank()) { Text("Xem toàn bộ") }
                         }

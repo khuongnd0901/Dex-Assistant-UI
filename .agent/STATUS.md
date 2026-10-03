@@ -5,6 +5,41 @@ Updated 2026-10-03. Canonical tasks/contracts/acceptance remain in
 T-006/T-009/T-010 remain IN_PROGRESS. V1/backend tools and DPC/signing identity
 are unchanged. No reset, global microphone routing change or provider replacement.
 
+## Current follow-up: audible command readiness
+
+Owner confirmed two successive real Hey Hey sessions: opening YouTube and then
+showing numbered controls. Canned TTS is audible but the former 80 ms notification
+ready beep was not heard. Read-only device evidence shows notification/music both
+unmuted; a mute explanation is not established. Readiness now dispatches one
+360 ms rising two-note media PCM cue only after provider `onReadyForSpeech`, with
+visible “Sẵn sàng — nói lệnh”. It requests no audio focus and changes no volume or
+route. AudioTrack is released within 610 ms or immediately on turn cancellation;
+duplicate/stale readiness callbacks cannot replay/reactivate it. Sanitized cue
+status/output-device type only are logged, with no captured audio/transcript.
+Latest full checks and Fold3 provider playback test pass (see validation below).
+The provider test verifies cue dispatch, bounded finish and HDMI route9 without
+held app focus. Owner-perceived audibility still requires confirmation; successful
+AudioTrack playback alone is not proof of hearing the cue. “Tắt YouTube” remains outside
+the current local capability contract; numbered close-X tapping is the existing
+workflow. No app-close/force-kill/back/home action was added.
+
+## Current follow-up: stable content events
+
+Video/clock content notifications now compare the fresh Accessibility snapshot
+against the frozen preparing/active mapping. Identical bounds, node identity and
+window topology preserve the session; changed/missing snapshots invalidate it.
+Target-window state changes and desktop identity/geometry guards remain active.
+Image-derived taps still remove the overlay and verify fresh screenshot patches
+before dispatch; no automatic renumbering or retry was introduced. Unit coverage
+includes recurring stable events and changed bounds/identity/topology; the device
+expiry case also injects stable content events before waiting for the real timer.
+JDK 17 full checks passed: 57 unit tests, lint, app/test assembly and diff check
+(`/tmp/t010-stable-content-gradle.log`).
+Latest Fold3 six numbered cases plus the real-provider cue case pass:7tests,
+66.241s,zero failures/skips (`/tmp/t010-stable-content-fold3-final.log`).
+The expiry case preserves ten injected stable content notifications and remains
+active at34s before actual35s cleanup; changed window/node guards still pass.
+
 ## Current source: D-021 automatic listening
 
 Foreground app opening and the existing default-assistant readiness loop request
@@ -55,8 +90,9 @@ no-scroll and Resume/diagnostic control clicks. Direct Compose semantics avoids
 coroutine TestScope initialization in preserved `--no-restart` processes.
 Signed test hash `bfcdc87274ff1cd7b00a9b14aa18e1afed2758a77df0293117f96105a738dbb7`.
 Owner confirms real Hey Hey recognition, visible text and complete one-page UI.
-Two uninterrupted wake→command cycles remain pending; an observed stop overlapped
-instrumentation STOP setup and is not attributed to a YouTube/focus product defect.
+Owner subsequently confirmed two successive real Hey Hey sessions: YouTube opened
+and numbered controls appeared. Earlier STOP overlapped instrumentation setup
+and is not attributed to a YouTube/focus product defect.
 No automatic permission grant exists in these tests. Owner re-enabled
 Accessibility; main readback confirms bound capability161 before numbered tests.
 
@@ -74,13 +110,11 @@ DeX/service; snapshot collection had aborted on any unrefreshable Samsung node.
 Current fix excludes that node while preserving window occlusion and logs only
 stage/class/visited/skipped/target counts. The intermediate copied-fix runner skipped five desktop cases while the owner's
 shortcut had disabled Accessibility; skips are not acceptance. Owner enabled the
-main switch and disabled the shortcut; current six-case desktop + automatic run
-executes all seven with no skips:6PASS and1expiry assertion failure/63.017s,
-`/tmp/t010-display-scoped-fold3-final.log`. Canvas image/patch/tap, grid, local
-routing, same-bounds node changes and automatic listening pass. Expiry case
-correctly invalidates on a real content event after7s (eventType2048), then fails
-its34s-active assertion; required quiet35s expiry proof remains open. Content
-invalidation is retained, not relaxed to pass a timing assertion.
+main switch and disabled the shortcut. The prior six-case desktop + automatic
+run had6PASS/1early-content expiry failure; recurring stable content events were
+then fixed as described above. Latest six numbered cases and provider cue test
+pass without skips. Canvas image/patch/tap, grid, local routing, same-bounds node
+changes, changed windows, stable content and actual35s expiry are verified.
 
 Current display callbacks validate unique Samsung desktop identity/geometry;
 unrelated phone metadata does not expire a stable DeX session. Fixture preparation
@@ -91,8 +125,7 @@ Actual Fold3/API35 normal suite passes4tests/no skips in8.817s:
 unoccluded fixture tap/display coordinates, live overlay pass-through, grid
 subdivision/cancel, fresh no-node canvas-X close and local malformed routing.
 Owner verified historical Hey DeX→grid→split→cancel with continued listening.
-Node-change/window checks now pass; uninterrupted quiet35s-expiry verification
-remains open because real content invalidates the session earlier. Explicit `screenResourceSmoke=true` opts into100 synthetic prepare/clear
+Node-change/window checks and35s-expiry verification now pass. Explicit `screenResourceSmoke=true` opts into100 synthetic prepare/clear
 cycles with preparation percentiles/processCPU/PSS/release checks; this does not
 replace100 spoken-session acceptance. No images/transcripts are exported.
 
@@ -108,11 +141,13 @@ Those artifacts precede D-020 and do not prove the current correction.
 ## Validation and next action
 
 JDK17 pinned voice preparation, unit tests, lint and app/test assemblies pass;
-current full run `/tmp/t010-display-identity-final.log`:55units
-(50app+5DPC),zero failures/errors,153tasks/28s. Unit/lint/app/test assemblies and
-source diff check pass. Source/APKs are frozen for main's matching-signed
-installation completed; integrated hardware result is6PASS/1early-content-expiry
-assertion failure. Source/APKs remain frozen.
+latest full run `/tmp/t010-stable-content-gradle.log`:57units
+(52app+5DPC),zero failures/errors,153tasks/28s; diff check passes.
+Matching-signed app/test installed successfully on Fold3/API35:
+app SHA `5219bb8586dbf81fc89d71329cf3e06e7fef47140a9f21f91264a02bbf025646`,
+test SHA `c472f0cfc2533b9e5c2958b61b92fd95c468e70d9f93580483b373380d05435c`.
+Latest hardware seven cases pass in66.241s/no skips:
+`/tmp/t010-stable-content-fold3-final.log`. Source/APKs remain frozen.
 The controlled three-cycle test reuses one service and exercises actual
 STT/local invalid final/TTS/native wake capture, with no taps/backend command,
 restoring history ciphertext without key rotation. It is not owner wake accuracy.

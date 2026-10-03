@@ -380,6 +380,15 @@ class NumberedScreenDeviceTest {
             launchFixture(display)
             ScreenControlFixtureActivity.lastTap = null
             assertEquals("READY", prepare(service))
+            instrumentation.runOnMainSync {
+                val field = service.javaClass.getDeclaredField("session").apply { isAccessible = true }
+                val frozen = requireNotNull(field.get(service))
+                repeat(10) {
+                    val notification = android.view.accessibility.AccessibilityEvent.obtain(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                    try { service.onAccessibilityEvent(notification) } finally { notification.recycle() }
+                    assertSame("Stable content notification must preserve prepared mapping", frozen, field.get(service))
+                }
+            }
             // Confirm the session survives until near its deadline, then the actual timer expires.
             SystemClock.sleep(34_000)
             instrumentation.runOnMainSync {

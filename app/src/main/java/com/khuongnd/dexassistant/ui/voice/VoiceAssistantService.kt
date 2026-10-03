@@ -272,8 +272,14 @@ class VoiceAssistantService : Service() {
     private fun isRecognizing(id: Long) = sessions.isCurrent(id) && recognizerEpoch == id && recognizer != null
 
     private inner class CommandListener(private val id: Long) : RecognitionListener {
+        private var announcedReady = false
         override fun onReadyForSpeech(params: Bundle?) {
-            if (isRecognizing(id)) { feedback.readyTone(); report("Ready for Vietnamese command") }
+            if (isRecognizing(id) && !announcedReady) {
+                announcedReady = true
+                VoiceLiveState.ready(true)
+                feedback.readyTone()
+                report("Ready for Vietnamese command; ${feedback.readyCueDescription}")
+            }
         }
         override fun onBeginningOfSpeech() = Unit
         override fun onRmsChanged(rmsdB: Float) {
@@ -383,6 +389,8 @@ class VoiceAssistantService : Service() {
     }
 
     private fun destroyRecognizer() {
+        VoiceLiveState.ready(false)
+        feedback.cancelReadyTone()
         watchdog?.let(main::removeCallbacks)
         watchdog = null
         val old = recognizer
