@@ -23,6 +23,10 @@ import org.junit.Test
 class VoiceRuntimeDeviceTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
+    private var originalPolicy: Map<String, *> = emptyMap<String, Any>()
+    @org.junit.Before fun backupPolicy() { instrumentation.getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES); originalPolicy = context.getSharedPreferences("voice_policy", 0).all }
+    @org.junit.After fun restorePolicy() { restoreVoicePolicy(context, originalPolicy) }
+
 
     @Test fun pinnedNativeModelLoadsDecodesSilenceAndReleases() {
         repeat(3) {
@@ -108,7 +112,7 @@ class VoiceRuntimeDeviceTest {
                 .setAction(VoiceAssistantService.ACTION_START))
         }
         try {
-            waitFor(20_000) { health.getString(VoiceAssistantService.KEY_DETAIL, "")!!.startsWith("Listening for Hey DeX offline") }
+            waitFor(20_000) { health.getString(VoiceAssistantService.KEY_DETAIL, "")!!.startsWith("Listening for Hey Hey offline") }
             instrumentation.runOnMainSync {
                 context.startService(Intent(context, VoiceAssistantService::class.java)
                     .setAction(VoiceAssistantService.ACTION_PAUSE))
@@ -120,7 +124,7 @@ class VoiceRuntimeDeviceTest {
                 context.startService(Intent(context, VoiceAssistantService::class.java)
                     .setAction(VoiceAssistantService.ACTION_RESUME))
             }
-            waitFor(20_000) { health.getString(VoiceAssistantService.KEY_DETAIL, "")!!.startsWith("Listening for Hey DeX offline") }
+            waitFor(20_000) { health.getString(VoiceAssistantService.KEY_DETAIL, "")!!.startsWith("Listening for Hey Hey offline") }
         } finally {
             instrumentation.runOnMainSync {
                 context.startService(Intent(context, VoiceAssistantService::class.java)

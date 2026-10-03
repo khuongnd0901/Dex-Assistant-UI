@@ -1,109 +1,131 @@
 # Android repository status
 
-Last synchronized: 2026-10-02. Canonical project memory and task ownership are
-in `/mnt/d/DeX-Assistant/.agent/STATUS.md`; Android source is in this repository.
-T-006/T-009 remain IN_PROGRESS. No commit, push, physical-device install or reset
-was performed in this implementation session.
+Updated 2026-10-03. Canonical tasks/contracts/acceptance remain in
+[/home/kunrg/DeX-Assistant/.agent/STATUS.md](/home/kunrg/DeX-Assistant/.agent/STATUS.md).
+T-006/T-009/T-010 remain IN_PROGRESS. V1/backend tools and DPC/signing identity
+are unchanged. No reset, global microphone routing change or provider replacement.
 
-## Implemented: D-016 hybrid voice
+## Current source: D-021 automatic listening
 
-- Offline “Hey DeX” uses sherpa-onnx 1.13.8 and the official GigaSpeech 3.3M
-  2024-01-01 int8 KWS model, CPU one thread. The wake worker owns its native
-  stream and AudioRecord (mono PCM16/16 kHz), stopping/releasing the microphone
-  before command STT. Native model/stream are recreated for each wake session;
-  initialization cost and resource implications need measurement before tuning.
-- SpeechRecognizer requests `vi-VN`, permits the service's online path, and uses
-  the configured external recognition service (excludes this app's assistant
-  contract stub). Only final text dispatches; partial/duplicate/late results do
-  not. Recognition has a 30-second watchdog. Ready callback plays a cue; say the
-  command after that cue, not in the wake phrase's breath.
-- Audio focus ducks media during command/feedback. Wake is suspended during STT,
-  command execution and TTS. A partial wake lock keeps the opt-in active pipeline
-  running when the screen sleeps; pause/stop/runtime error release it. This is
-  a battery tradeoff, not a measured Fold3 power claim.
-- Canned Vietnamese feedback prefers installed offline exact-locale voices,
-  then network voices; missing data, initialization failure, playback error and
-  timeout remain observable via `voice_health.ttsStatus` and wake health detail.
-  No raw transcript/password is spoken or logged. Tone fallback resumes wake
-  without claiming usable Vietnamese synthesis.
-- The application-scoped AssistantCoordinator owns DPC/WebSocket/routing/history.
-  Activity destruction detaches its observer; headless service dispatch survives.
-  Request IDs enforce one command and one terminal callback, cancel queued
-  dispatch, and invalidate old callbacks. Backend plans are correlated,
-  deduplicated as a whole and executed serially. Timeout/disconnect never replay.
-- Whole-input supported simple commands remain local. Complex/multiple clauses
-  route entirely to backend. Credential-like commands remain guarded from the
-  backend/Gemini and redacted in history; online STT audio is authorized, but
-  password Wi-Fi provisioning and new backend tools are not implemented here.
-- V1 wire messages/authentication/types are unchanged. Terminal feedback
-  distinguishes verified local state, dispatched intents and unexecuted plans.
+Foreground app opening and the existing default-assistant readiness loop request
+listening automatically when policy/microphone permission/unlock allow it. Shared
+recovery guard admits four-attempt bursts with backoff, a pending-start bound and
+five-minute cooldown before a fresh burst;
+active transcription/routing/feedback is never taken over. The default-assistant
+loop requires held role and completed permission reconciliation; foreground
+Activity auto-start uses foreground eligibility plus unlocked/mic/policy gates. External pause can
+resume when no deliberate suppression and no call/communication audio mode.
+User Pause and emergency Stop persist suppression across reopen/boot; only
+explicit Start/Resume clears it. No new permission/DPC/global microphone setting.
+Accessibility remains owner-mediated: actual service status and Settings explain
+service switch vs optional shortcut. System call-stack evidence attributes recent
+disabling to the Accessibility shortcut, not package update or instrumentation.
 
-## Reproducible artifact preparation
+`AutomaticListeningDeviceTest` covers foreground auto-open, unintentional loss
+recovery, explicit pause/stop/resume. Provider test also checks recovery cannot
+take over active STT. Voice tests back up/restore policy; UI fixture temporarily
+suppresses auto-start and restores it. All tests preserve enabled services.
+D-021 physical auto-open/recovery/manual-pause/stop test passes on Fold3:
+`/tmp/t006-autolistening-fold3-stop-barrier.log`,1test/3.478s. Its initial failed
+wait was a test STOP-delivery ordering issue; the corrected helper waits actual
+STOP suppression/health/service termination before clearing policy. Current
+integrated automatic case passes again; production recovery is not weakened.
 
-Run `python3 scripts/prepare-voice-assets.py` before Gradle. AAR/model downloads
-are pinned by SHA-256, extracted into ignored `.cache/voice`, and verified before
-build; no runtime download or generated binary/audio is committed. Both CI
-workflows prepare the same assets. Apache 2.0 runtime/model and ONNX Runtime MIT
-license/third-party notices are packaged. Keyword encoding was checked against
-upstream SentencePiece: `▁HE Y ▁DE X @HEY_DEX`.
+## Current source: D-020 handoff and single-page dashboard
 
-Only `arm64-v8a` (Fold3) and `x86_64` (retained AVD) are packaged. Final app APK
-is 98,203,815 bytes; binary size is not runtime RAM usage. See README and packaged
-`assets/licenses/voice-PROVENANCE.txt` for hashes/source URLs.
+App requests audio focus only for its own feedback, yielding capture/focus to
+system STT. Per-request generations and session epochs reject stale callbacks;
+genuine owned feedback interruptions pause distinctly, and Resume uses RESUME.
+Diagnostic listening releases wake capture before STT, never prepares overlays
+or dispatches commands, and restores prior LISTENING/PAUSED/STOPPED state.
+Partial/final transcript is credential-masked RAM-only state, never preferences,
+logs or diagnostic history. Final remains until next command or explicit stop.
+Capture health reports human-readable route, RMS and client-silenced status;
+system STT route remains managed by its provider, not claimed as app-verified.
 
-## Verified in this session
+Main page does not scroll. It has adaptive columns, primary voice controls and
+transcript, dynamic DeX/Accessibility status, with configuration/quota/history/
+manual-command/full-text dialogs. Minimum supported viewport is 320×480dp;
+compact 600×320dp and wide 800×400dp are included in built layout tests.
+Actual Fold3 runner now passes all three D-020 tests in5.081s:
+`/tmp/t006-dashboard-fold3-renderer-tests.log`. This proves actual Google ready≥2s
+without competing app focus/PAUSED, controlled actual partial/final diagnostic
+paths/no-dispatch/late-callback protection, and real-renderer layout bounds,
+no-scroll and Resume/diagnostic control clicks. Direct Compose semantics avoids
+coroutine TestScope initialization in preserved `--no-restart` processes.
+Signed test hash `bfcdc87274ff1cd7b00a9b14aa18e1afed2758a77df0293117f96105a738dbb7`.
+Owner confirms real Hey Hey recognition, visible text and complete one-page UI.
+Two uninterrupted wake→command cycles remain pending; an observed stop overlapped
+instrumentation STOP setup and is not attributed to a YouTube/focus product defect.
+No automatic permission grant exists in these tests. Owner re-enabled
+Accessibility; main readback confirms bound capability161 before numbered tests.
 
-- JDK17/API35 full `testDebugUnitTest lint assembleDebug
-  assembleDebugAndroidTest` passes: final ABI-filtered build 153 tasks, 1m31s;
-  37 app and 5 DPC unit tests, zero failures/errors. An earlier integrated full
-  build also passed 153 tasks/2m5s. New tests cover session invalidation,
-  queued cancellation, one-in-flight correlation, routing/execution/feedback
-  states and pause/stop across active phases. `git diff --check` is required at
-  final handoff.
-- Retained Windows AVD `ZFold3_API35` / `emulator-5554` received app/test APK
-  updates only, no DPC replacement/reset. Focused native/coordinator/protocol
-  runner passes `OK (7 tests)`/42.135s: native silence decode/release over three
-  cycles; continuous microphone pause/resume/stop; headless local dispatch;
-  multi-clause atomic backend routing/privacy; queued cancel; offline RFC6455
-  fixture with two ordered remote results, duplicate plan and reconnect/no replay.
-- Final narrowed APK was installed and native + microphone lifecycle smoke
-  passes `OK (2 tests)`/7.126s. Runner ends STOPPED. Native silence is a negative
-  fixture, not positive “Hey DeX” detection/accuracy evidence.
-- Legacy local-first/privacy/history/device-action regression and offline speech
-  inventory pass `OK (9 tests)`/82.318s; volume/Wi-Fi restored and test history
-  cleared. Existing offline vi-VN STT/TTS inventories remain UNAVAILABLE on AVD.
-- Actual generic recognizer diagnostic selects GoogleTTSRecognitionService,
-  reaches `onReadyForSpeech`, and ends at the 30-second bound without a terminal
-  callback when no speech is supplied. This is invocation/lifecycle evidence;
-  no Vietnamese transcript, language accuracy or online recognition is proven.
-- Opt-in real backend connected and accepted a headless complex utterance, then
-  returned AI_TIMEOUT in10.891s. Its success assertion correctly fails; it was
-  not retried. Deterministic transport/action evidence passes, while real
-  provider end-to-end execution remains unverified.
-- Actual canned Vietnamese TTS diagnostic is pending final runner below; do not
-  equate voice metadata with successful synthesis.
+## Numbered DeX control and current wake
 
-## Remaining acceptance and next action
+Samsung desktop selection fails closed; immutable numbered Accessibility/image
+mappings invalidate on changes. Grid6×4 has depth3 and continued listening.
+Bounded on-device X/outline analysis and target-patch revalidation use RAM only.
+API34+ raw Accessibility Surface overlay has no input channel/focus; API35 fresh
+image capture waits for detach presentation. Gestures consume session once and
+report DISPATCHED, not verified popup closure. Node refresh/identity signatures
+protect same-bounds replacements; cleanup covers cancel/pause/stop/timeouts.
+A later physical six-case regression found preparation unavailable despite valid
+DeX/service; snapshot collection had aborted on any unrefreshable Samsung node.
+Current fix excludes that node while preserving window occlusion and logs only
+stage/class/visited/skipped/target counts. The intermediate copied-fix runner skipped five desktop cases while the owner's
+shortcut had disabled Accessibility; skips are not acceptance. Owner enabled the
+main switch and disabled the shortcut; current six-case desktop + automatic run
+executes all seven with no skips:6PASS and1expiry assertion failure/63.017s,
+`/tmp/t010-display-scoped-fold3-final.log`. Canvas image/patch/tap, grid, local
+routing, same-bounds node changes and automatic listening pass. Expiry case
+correctly invalidates on a real content event after7s (eventType2048), then fails
+its34s-active assertion; required quiet35s expiry proof remains open. Content
+invalidation is retained, not relaxed to pass a timing assertion.
 
-Physical Fold3 is unavailable. Keep T-006/T-009 IN_PROGRESS: positive wake/audio
-fixtures, wake accuracy/false activation soak, actual Vietnamese utterances,
-headless/screen-off speech, reboot continuity, CPU/PSS RAM/pin/thermal baseline
-with Maps+music, 100-session resource stability and live provider completion
-remain unverified. Do not change signing or reset to fill this evidence gap.
+Current display callbacks validate unique Samsung desktop identity/geometry;
+unrelated phone metadata does not expire a stable DeX session. Fixture preparation
+waits bounded Accessibility snapshot stability before numbering, without retries.
 
-Next: finish the bounded canned TTS diagnostic, then test wake/real Vietnamese
-speech and resource behavior on the same-signed Fold3 when available. If its
-selected system recognizer cannot handle vi-VN online, evaluate a separate
-cloud STT adapter using measured failures; do not silently change engines.
+Actual Fold3/API35 normal suite passes4tests/no skips in8.817s:
+`/tmp/t010-fold3-center-selector-normal.log`. It verifies visible overlay, focused
+unoccluded fixture tap/display coordinates, live overlay pass-through, grid
+subdivision/cancel, fresh no-node canvas-X close and local malformed routing.
+Owner verified historical Hey DeX→grid→split→cancel with continued listening.
+Node-change/window checks now pass; uninterrupted quiet35s-expiry verification
+remains open because real content invalidates the session earlier. Explicit `screenResourceSmoke=true` opts into100 synthetic prepare/clear
+cycles with preparation percentiles/processCPU/PSS/release checks; this does not
+replace100 spoken-session acceptance. No images/transcripts are exported.
 
-## Foundation retained
+Current wake is only “Hey Hey”: `▁HE Y ▁HE Y @HEY_HEY`, packaged and inspected.
+Pinned sherpa-onnx1.13.8/GigaSpeech3.3M model and thresholds are unchanged. Owner
+requested this phrase; unrun phone-input/PCM prototype was removed. SYSTEM mic
+routing and online-permitted Vietnamese SpeechRecognizer remain unchanged.
+Previous matching-signed Hey Hey app/test installed successfully; app hash
+`805ea2f1361c8cbbef33ebbf019e760c7cc92f9d847a4a1710378ea826270349`, test
+`3502e5998dd69117c6298c11bb47dbbb331e3695c6a18f361eb18abda4533ece`.
+Those artifacts precede D-020 and do not prove the current correction.
 
-API35 Fold3 Device Owner, assistant binding, permission reconciliation, reboot,
-app-only update and notification controls previously passed the foundation
-probe slice in canonical evidence `T-006-fold3-2026-10-01.md` and
-`T-006-fold3-recovery-2026-10-02.md`. Those were short microphone probes, not
-wake/STT/TTS acceptance. DPC has no backend credentials; signature-protected
-permission/actions retain the established signing identity. Locally generated
-current debug APKs are for this AVD and must not be installed on Fold3 under an
-unrelated certificate. The encrypted signing backup remains in `signing/`;
-never commit decrypted signing material.
+## Validation and next action
+
+JDK17 pinned voice preparation, unit tests, lint and app/test assemblies pass;
+current full run `/tmp/t010-display-identity-final.log`:55units
+(50app+5DPC),zero failures/errors,153tasks/28s. Unit/lint/app/test assemblies and
+source diff check pass. Source/APKs are frozen for main's matching-signed
+installation completed; integrated hardware result is6PASS/1early-content-expiry
+assertion failure. Source/APKs remain frozen.
+The controlled three-cycle test reuses one service and exercises actual
+STT/local invalid final/TTS/native wake capture, with no taps/backend command,
+restoring history ciphertext without key rotation. It is not owner wake accuracy.
+
+Main owns matching-signed physical installation and integration validation.
+Main reviewed this source and approved publication to Android main; remaining
+hardware acceptance stays open. Run instrumentation
+with UiAutomation preserving services and `am instrument --no-restart`, never
+force-stop setup. Check bound Accessibility/actual dynamic display beforehand.
+Physical device ports/displays can change; do not hardcode prior IDs/serials.
+
+Remaining: uninterrupted repeated Hey Hey→Vietnamese command/action, actual popup/YouTube,
+resize/disconnect/permission-revoke/error cleanup,100spoken sessions/latency/
+CPU/RAM/battery/thermal, wake accuracy/false activation and live provider end-to-end
+completion. T-006/T-009 acceptance stays open. Historical details live in canonical
+T-006/T-010 evidence and plans; builds alone cannot mark these tasks DONE.

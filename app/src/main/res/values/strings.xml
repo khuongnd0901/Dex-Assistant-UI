@@ -4,4 +4,5 @@
     <string name="connection_not_configured">Backend connection is not configured</string>
     <string name="command_label">Command</string>
     <string name="send_command">Send</string>
+    <string name="dex_accessibility_description">Đọc và đánh số màn hình DeX, bấm theo lệnh giọng nói. Ảnh được xử lý trên máy và không lưu.</string>
 </resources>

@@ -15,7 +15,9 @@ import android.service.voice.VoiceInteractionService
 import androidx.core.content.ContextCompat
 
 class AssistantVoiceInteractionService : VoiceInteractionService() {
-    private val coordinator = AssistantStartCoordinator()
+    private val recovery = object : Runnable {
+        override fun run() { if (active) { evaluateAndStart(); handler.postDelayed(this, 10_000) } }
+    }
     private var unlockReceiver: BroadcastReceiver? = null
     private val handler = Handler(Looper.getMainLooper())
     private var active = false
@@ -42,6 +44,7 @@ class AssistantVoiceInteractionService : VoiceInteractionService() {
             publishReadiness(AssistantReadiness.Blocked("DPC_BIND_FAILED"))
         }
         evaluateAndStart()
+        handler.postDelayed(recovery, 10_000)
         if (!getSystemService(UserManager::class.java).isUserUnlocked && unlockReceiver == null) {
             unlockReceiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
@@ -72,7 +75,6 @@ class AssistantVoiceInteractionService : VoiceInteractionService() {
         dpc.unbind()
         unlockReceiver?.let { runCatching { unregisterReceiver(it) } }
         unlockReceiver = null
-        coordinator.serviceStopped()
     }
 
     private fun reconcilePermissions() {
@@ -116,15 +118,7 @@ class AssistantVoiceInteractionService : VoiceInteractionService() {
             ),
         )
         publishReadiness(readiness)
-        if (coordinator.shouldStart(readiness)) {
-            runCatching { ContextCompat.startForegroundService(
-                this,
-                Intent(this, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_START),
-            ) }.onFailure {
-                coordinator.serviceStopped()
-                publishReadiness(AssistantReadiness.Blocked("VOICE_START_FAILED_${it.javaClass.simpleName}"))
-            }
-        }
+        if (readiness is AssistantReadiness.Ready) VoiceAutoStart.evaluate(this)
     }
 
     private fun granted(permission: String) =

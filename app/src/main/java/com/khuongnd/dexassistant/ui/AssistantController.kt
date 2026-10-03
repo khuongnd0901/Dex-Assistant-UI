@@ -23,12 +23,14 @@ import com.khuongnd.dexassistant.ui.routing.Route
 import com.khuongnd.dexassistant.ui.security.CredentialStore
 import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
+import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
+import com.khuongnd.dexassistant.ui.screen.ScreenCommandParser
 
 data class VoiceCommandResult(val requestId: String, val status: String, val message: String)
 
 /** Activity facade; closing a screen only detaches its observer. */
-class AssistantController(context: Context, private val stateChanged: (UiState) -> Unit) {
-    private val core = shared(context)
+class AssistantController(private val contextForVoice: Context, private val stateChanged: (UiState) -> Unit) {
+    private val core = shared(contextForVoice)
     fun start() { core.addObserver(stateChanged); core.start() }
     fun stop() { core.removeObserver(stateChanged) }
     fun observeVoiceHealth() = core.observeVoiceHealth()
@@ -40,7 +42,11 @@ class AssistantController(context: Context, private val stateChanged: (UiState) 
     fun refreshHealth() = core.refreshHealth()
     fun applyPermissions() = core.applyPermissions()
     fun startVoice() = core.startVoice()
+    fun autoStartVoice() = com.khuongnd.dexassistant.ui.voice.VoiceAutoStart.evaluate(contextForVoice)
     fun stopVoice() = core.stopVoice()
+    fun resumeVoice() = core.voiceAction(VoiceAssistantService.ACTION_RESUME)
+    fun pauseVoice() = core.voiceAction(VoiceAssistantService.ACTION_PAUSE)
+    fun diagnosticListen() = core.voiceAction(VoiceAssistantService.ACTION_DIAGNOSTIC)
     fun clearHistory() = core.clearHistory()
     companion object {
         @Volatile private var instance: AssistantCoordinator? = null
@@ -87,7 +93,10 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
     }
     fun cancelVoice(requestId: String) {
         commandGate.cancelQueued(requestId)
-        onMain { if (pendingId == requestId) finish("CANCELLED", "Đã dừng") }
+        onMain { if (pendingId == requestId) {
+            DexAccessibilityService.active?.clear()
+            finish("CANCELLED", "Đã dừng")
+        } }
     }
     private fun finish(status: String, message: String) {
         val id = pendingId ?: return
@@ -111,6 +120,11 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
     fun start() {
         if (started) return
         started = true
+        context.getSystemService(android.hardware.display.DisplayManager::class.java).registerDisplayListener(object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = refreshVoiceHealth()
+            override fun onDisplayChanged(displayId: Int) = refreshVoiceHealth()
+            override fun onDisplayRemoved(displayId: Int) = refreshVoiceHealth()
+        }, main)
         dpc.bind()
         observeVoiceHealth()
         refreshHealth()
@@ -159,6 +173,21 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
             if (pendingDispatched) { update("COMMAND_IN_PROGRESS", "Đang xử lý lệnh trước"); return }
             pendingDispatched = true
         } else { dispatchVoice(text) { }; return }
+        val screenCommand = ScreenCommandParser.parse(text)
+        if (screenCommand != null) {
+            val service = DexAccessibilityService.active
+            val screenRequestId = pendingId
+            val complete: (String) -> Unit = { status -> onMain {
+                if (pendingId == screenRequestId) {
+                    history.record(text, Route.LOCAL.name, screenCommand.verb.name, status)
+                    state = state.copy(status = status, message = status); refreshHistory()
+                    finish(status, status)
+                }
+            } }
+            if (service == null) complete("ACCESSIBILITY_PERMISSION_REQUIRED") else service.execute(screenCommand, complete)
+            return
+        }
+        DexAccessibilityService.active?.clear()
         if (CommandPrivacy.requiresLocalHandling(text)) {
             history.record(text, Route.UNSUPPORTED.name, null, "LOCAL_ONLY_UNSUPPORTED")
             update("UNSUPPORTED", "Lệnh chứa thông tin đăng nhập hoặc kết nối Wi-Fi chỉ được xử lý trên máy; tính năng này chưa được hỗ trợ")
@@ -204,7 +233,14 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
 
     private fun refreshVoiceHealth() {
         val voice = voicePreferences
+        val desktop = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+            .getDisplays(DexAccessibilityService.SAMSUNG_DESKTOP_CATEGORY).any { it.isValid && it.displayId != android.view.Display.DEFAULT_DISPLAY }
+        val enabled = android.provider.Settings.Secure.getString(context.contentResolver, "enabled_accessibility_services")
+            .orEmpty().split(':').mapNotNull(android.content.ComponentName::unflattenFromString)
+            .contains(android.content.ComponentName(context, DexAccessibilityService::class.java))
         state = state.copy(
+            dexStatus = if (desktop) "DeX: kết nối" else "DeX: chưa kết nối",
+            accessibilityStatus = if (DexAccessibilityService.active != null) "Trợ năng: sẵn sàng" else if (enabled) "Trợ năng: đang kết nối" else "Trợ năng: chưa bật",
             voiceState = voice.getString("state", "STOPPED") ?: "STOPPED",
             voiceDetail = voice.getString("detail", "Not started") ?: "Not started",
             assistantReadiness = voice.getString(VoiceAssistantService.KEY_ASSISTANT_READINESS, "NOT_BOUND") ?: "NOT_BOUND",
@@ -235,6 +271,10 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
         refreshHealth()
     }
 
+    fun voiceAction(action: String) {
+        runCatching { ContextCompat.startForegroundService(context, Intent(context, VoiceAssistantService::class.java).setAction(action)) }
+            .onFailure { update("VOICE_ACTION_FAILED", it.javaClass.simpleName) }
+    }
     fun stopVoice() {
         context.startService(Intent(context, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_STOP))
         update("VOICE_STOP_REQUESTED", "App requested microphone stop")
@@ -352,6 +392,8 @@ data class UiState(
     val status: String = "DISCONNECTED",
     val message: String = "Not configured",
     val lastRequestId: String? = null,
+    val dexStatus: String = "DeX: chưa kiểm tra",
+    val accessibilityStatus: String = "Trợ năng: chưa kiểm tra",
     val voiceState: String = "STOPPED",
     val voiceDetail: String = "Not started",
     val assistantReadiness: String = "NOT_BOUND",

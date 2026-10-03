@@ -30,6 +30,7 @@ import androidx.core.app.ServiceCompat
 import com.khuongnd.dexassistant.ui.AssistantController
 import com.khuongnd.dexassistant.ui.MainActivity
 import java.util.concurrent.Executors
+import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
 
 /** Microphone ownership is sequential: wake recorder -> STT service -> feedback -> wake. */
 class VoiceAssistantService : Service() {
@@ -50,27 +51,32 @@ class VoiceAssistantService : Service() {
     private val coordinator by lazy { AssistantController.shared(this) }
     private val audioManager by lazy { getSystemService(AudioManager::class.java) }
     private var focusHeld = false
+    private var diagnosticOnly = false
+    private var diagnosticRestore = VoiceState.STOPPED
+    private var lastMicUpdate = 0L
     private val wakeLock by lazy {
         getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DeX:Voice")
             .apply { setReferenceCounted(false) }
     }
-    private val focusRequest by lazy {
+    private var focusRequest: AudioFocusRequest? = null
+    private var focusGeneration = 0L
+    private fun newFocusRequest(generation: Long): AudioFocusRequest =
         AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setOnAudioFocusChangeListener({ change ->
                 if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
-                    if (stateMachine.state !in setOf(VoiceState.STOPPED, VoiceState.PAUSED, VoiceState.ERROR)) {
+                    if (VoiceFocusPolicy.pauseForLoss(focusHeld, stateMachine.state, generation, focusGeneration)) {
                         cancelSession()
                         transitionSafely(VoiceEvent.PAUSE)
-                        report("AUDIO_FOCUS_LOST; resume when microphone is available")
+                        report("PAUSED_EXTERNAL_AUDIO_FOCUS; nhấn Tiếp tục để nghe lại")
                     }
                 }
             }, main).build()
-    }
 
     override fun onCreate() {
         super.onCreate()
+        active = this
         createChannel()
         feedback = VoiceFeedback(this) { status ->
             preferences.edit().putString(KEY_TTS_STATUS, status).apply()
@@ -80,9 +86,30 @@ class VoiceAssistantService : Service() {
         coordinator.connect()
     }
 
+    fun currentVoiceState(): VoiceState = stateMachine.state
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action ?: ACTION_START) {
+        val action = intent?.action ?: ACTION_AUTO_START
+        if (action == ACTION_AUTO_START && !VoiceAutoStart.allowed(this)) {
+            if (stateMachine.state != VoiceState.STOPPED) return START_STICKY
+            startInForeground(notification(VoiceState.STOPPED, "Tự nghe bị tạm dừng theo lựa chọn của người dùng"))
+            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY
+        }
+        if (action == ACTION_START || action == ACTION_RESUME) VoiceAutoStart.userResume(this)
+        if (intent?.action == ACTION_DIAGNOSTIC) {
+            val previous = stateMachine.state
+            cancelSession(); VoiceLiveState.begin(true); diagnosticOnly = true
+            diagnosticRestore = if (previous == VoiceState.LISTENING) VoiceState.LISTENING else if (previous == VoiceState.STOPPED) VoiceState.STOPPED else VoiceState.PAUSED
+            transitionSafely(VoiceEvent.STOP); transitionSafely(VoiceEvent.START); transitionSafely(VoiceEvent.WAKE)
+            startInForeground(notification(stateMachine.state, "Nghe thử — không thực hiện lệnh"))
+            val id = sessions.begin()
+            // Queue behind the prior wake task so stop AND release precede external STT capture.
+            wakeWorker.execute { main.post { if (sessions.isCurrent(id)) startRecognition(id) } }
+            return START_NOT_STICKY
+        }
+        when (action) {
             ACTION_STOP -> {
+                VoiceAutoStart.suppress(this, "USER_STOPPED")
+                VoiceLiveState.clear()
                 cancelSession()
                 transitionSafely(VoiceEvent.STOP)
                 publishHealth(VoiceState.STOPPED, "Stopped by user")
@@ -91,10 +118,13 @@ class VoiceAssistantService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_PAUSE -> {
+                VoiceAutoStart.suppress(this, "USER_PAUSED")
                 cancelSession()
                 if (stateMachine.state != VoiceState.STOPPED) transitionSafely(VoiceEvent.PAUSE)
             }
+            ACTION_AUTO_START -> if (stateMachine.state == VoiceState.PAUSED) transitionSafely(VoiceEvent.RESUME) else transitionSafely(VoiceEvent.START)
             ACTION_RESUME -> if (stateMachine.state == VoiceState.PAUSED) transitionSafely(VoiceEvent.RESUME)
+                else if (stateMachine.state in setOf(VoiceState.STOPPED, VoiceState.ERROR)) transitionSafely(VoiceEvent.START)
             else -> transitionSafely(VoiceEvent.START)
         }
         val detail = if (stateMachine.state == VoiceState.PAUSED) "Paused by user" else "Voice pipeline active"
@@ -106,6 +136,7 @@ class VoiceAssistantService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
+        active = null
         cancelSession()
         wakeWorker.shutdownNow()
         feedback.close()
@@ -129,7 +160,7 @@ class VoiceAssistantService : Service() {
             report("WAKE_PERMISSION_DENIED")
             return
         }
-        report("Loading offline Hey DeX wake model")
+        report("Loading offline Hey Hey wake model")
         wakeWorker.execute {
             if (!sessions.isCurrent(id)) return@execute
             var detected = false
@@ -150,12 +181,27 @@ class VoiceAssistantService : Service() {
                         input.startRecording()
                     }
                     check(input.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone start failed" }
-                    main.post { if (sessions.isCurrent(id)) report("Listening for Hey DeX offline") }
+                    main.post { if (sessions.isCurrent(id)) report("Listening for Hey Hey offline") }
                     val samples = ShortArray(320)
                     while (sessions.isCurrent(id)) {
                         val count = input.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
                         if (!sessions.isCurrent(id)) break
                         check(count > 0) { "Microphone read failed" }
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastMicUpdate >= 1000) {
+                            lastMicUpdate = now
+                            val rms = kotlin.math.sqrt(samples.take(count).sumOf { it.toDouble() * it } / count) / 32768.0
+                            val device = input.routedDevice
+                            val route = when (device?.type) {
+                                android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Micro điện thoại"
+                                android.media.AudioDeviceInfo.TYPE_USB_DEVICE, android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "Micro USB"
+                                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET -> "Micro Bluetooth"
+                                null -> "Micro chưa xác minh"
+                                else -> "Micro hệ thống"
+                            }
+                            val blocked = when (input.activeRecordingConfiguration?.isClientSilenced) { true -> "âm thanh bị hệ thống chặn"; false -> "đang nhận âm thanh"; null -> "chưa xác minh âm thanh" }
+                            VoiceLiveState.microphone("$route · $blocked · RMS %.3f".format(java.util.Locale.ROOT, rms))
+                        }
                         if (engine.accept(samples, count)) { detected = true; break }
                     }
                 }
@@ -173,7 +219,13 @@ class VoiceAssistantService : Service() {
                     detected -> {
                         transitionSafely(VoiceEvent.WAKE)
                         report("Wake detected; opening Vietnamese STT")
-                        startRecognition(id)
+                        val screen = DexAccessibilityService.active
+                        if (screen == null) startRecognition(id) else screen.prepare { status ->
+                            if (sessions.isCurrent(id)) {
+                                report("Numbered screen: $status; opening Vietnamese STT")
+                                startRecognition(id)
+                            }
+                        }
                     }
                     result.isFailure -> {
                         transitionSafely(VoiceEvent.FAILURE)
@@ -194,12 +246,10 @@ class VoiceAssistantService : Service() {
             finishWithFeedback(id, "Không có dịch vụ nhận dạng tiếng Việt.", "STT_SERVICE_UNAVAILABLE")
             return
         }
-        if (audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            transitionSafely(VoiceEvent.STT_STARTED)
-            finishWithFeedback(id, "Micro đang bận. Hãy gọi lại sau.", "AUDIO_FOCUS_DENIED")
-            return
-        }
-        focusHeld = true
+        // The external recognizer owns its capture/focus. Abandon app feedback focus before handoff.
+        abandonFocus()
+        if (!diagnosticOnly) VoiceLiveState.begin(false)
+        VoiceLiveState.microphone("STT: ${component.packageName} · route do dịch vụ nhận dạng quản lý")
         transitionSafely(VoiceEvent.STT_STARTED)
         report("STT vi-VN via ${component.packageName}; online permitted")
         runCatching {
@@ -226,10 +276,17 @@ class VoiceAssistantService : Service() {
             if (isRecognizing(id)) { feedback.readyTone(); report("Ready for Vietnamese command") }
         }
         override fun onBeginningOfSpeech() = Unit
-        override fun onRmsChanged(rmsdB: Float) = Unit
+        override fun onRmsChanged(rmsdB: Float) {
+            if (isRecognizing(id) && SystemClock.elapsedRealtime() - lastMicUpdate >= 500) {
+                lastMicUpdate = SystemClock.elapsedRealtime()
+                VoiceLiveState.microphone("STT RMS %.1f dB · micro do dịch vụ nhận dạng quản lý".format(java.util.Locale.ROOT, rmsdB))
+            }
+        }
         override fun onBufferReceived(buffer: ByteArray?) = Unit // Raw audio is never stored.
         override fun onEndOfSpeech() = Unit
-        override fun onPartialResults(partialResults: Bundle?) = Unit
+        override fun onPartialResults(partialResults: Bundle?) {
+            if (isRecognizing(id)) VoiceLiveState.text(partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty(), false)
+        }
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
         override fun onError(error: Int) {
             if (!isRecognizing(id)) return
@@ -242,7 +299,12 @@ class VoiceAssistantService : Service() {
         override fun onResults(results: Bundle?) {
             if (!isRecognizing(id) || !sessions.consumeFinal(id)) return
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+            VoiceLiveState.text(text, true)
             destroyRecognizer()
+            if (diagnosticOnly) {
+                finishDiagnostic(id, "COMPLETE")
+                return
+            }
             if (text.isBlank()) { finishWithFeedback(id, "Chưa nghe rõ. Hãy gọi lại.", "STT_EMPTY"); return }
             android.util.Log.i("DexMetric", "stt.final sessionId=$id elapsedNanos=${SystemClock.elapsedRealtimeNanos()}")
             transitionSafely(VoiceEvent.FINAL_TEXT)
@@ -261,16 +323,33 @@ class VoiceAssistantService : Service() {
                 if (!sessions.isCurrent(id)) return@dispatchVoice
                 completedSynchronously = true
                 if (commandId == result.requestId || returnedId == null) commandId = null
-                finishWithFeedback(id, spokenResult(result.status), result.status)
+                if (result.status == "SCREEN_CONTINUE") {
+                    transitionSafely(VoiceEvent.COMMAND_FINISHED)
+                    transitionSafely(VoiceEvent.WAKE)
+                    startRecognition(sessions.begin())
+                } else finishWithFeedback(id, spokenResult(result.status), result.status)
             }
             returnedId = requestId
             if (!completedSynchronously && sessions.isCurrent(id)) commandId = requestId
         }
     }
 
+    private fun finishDiagnostic(id: Long, outcome: String) {
+        if (!sessions.isCurrent(id)) return
+        diagnosticOnly = false
+        when (diagnosticRestore) {
+            VoiceState.LISTENING -> { transitionSafely(VoiceEvent.PAUSE); transitionSafely(VoiceEvent.RESUME); report("DIAGNOSTIC_$outcome; không thực hiện lệnh"); startWake() }
+            VoiceState.STOPPED -> { transitionSafely(VoiceEvent.STOP); report("DIAGNOSTIC_$outcome; không thực hiện lệnh"); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            else -> { transitionSafely(VoiceEvent.PAUSE); report("DIAGNOSTIC_$outcome; không thực hiện lệnh") }
+        }
+    }
     private fun spokenResult(status: String): String = when (status) {
         "SUCCESS", "VERIFIED", "COMPLETED" -> "Đã thực hiện."
         "DISPATCHED" -> "Đã gửi yêu cầu."
+        "CANCELLED" -> "Đã hủy."
+        "ACCESSIBILITY_PERMISSION_REQUIRED" -> "Hãy bật dịch vụ Trợ năng DeX trong cài đặt."
+        "SCREEN_SESSION_EXPIRED", "SCREEN_CHANGED" -> "Màn hình đã thay đổi. Hãy gọi lại."
+        "INVALID_SCREEN_NUMBER", "INVALID_SCREEN_CELL", "INVALID_SCREEN_COMMAND" -> "Số hoặc lệnh chưa hợp lệ. Hãy gọi lại."
         "PLANNED" -> "Đã lập kế hoạch, chưa thực hiện trên máy."
         "UNSUPPORTED", "LOCAL_ONLY_UNSUPPORTED" -> "Lệnh này chưa được hỗ trợ."
         "AI_UNAVAILABLE", "AI_TIMEOUT", "AI_QUOTA_EXHAUSTED", "SEND_FAILED" -> "Khó quá, không làm được."
@@ -279,7 +358,9 @@ class VoiceAssistantService : Service() {
 
     private fun finishWithFeedback(id: Long, message: String, code: String) {
         if (!sessions.isCurrent(id)) return
+        DexAccessibilityService.active?.clear()
         destroyRecognizer()
+        if (diagnosticOnly) { finishDiagnostic(id, code); return }
         transitionSafely(VoiceEvent.SPEAK)
         report("$code; ${feedback.voiceDescription}")
         val completed = {
@@ -295,7 +376,10 @@ class VoiceAssistantService : Service() {
             feedback.timeout()
             completed()
         }.also { main.postDelayed(it, 25_000) }
-        feedback.speak(message, "voice-$id", completed)
+        val request = newFocusRequest(++focusGeneration)
+        focusRequest = request
+        focusHeld = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        if (focusHeld) feedback.speak(message, "voice-$id", completed) else completed()
     }
 
     private fun destroyRecognizer() {
@@ -308,6 +392,8 @@ class VoiceAssistantService : Service() {
     }
 
     private fun cancelSession() {
+        diagnosticOnly = false
+        DexAccessibilityService.active?.clear()
         sessions.cancel()
         if (wakeLock.isHeld) wakeLock.release()
         activeWakeEpoch = null
@@ -322,8 +408,9 @@ class VoiceAssistantService : Service() {
     }
 
     private fun abandonFocus() {
-        if (focusHeld) audioManager.abandonAudioFocusRequest(focusRequest)
-        focusHeld = false
+        val held = focusHeld; val request = focusRequest
+        focusHeld = false; focusRequest = null; focusGeneration++
+        if (held && request != null) audioManager.abandonAudioFocusRequest(request)
     }
 
     private fun transitionSafely(event: VoiceEvent) {
@@ -383,6 +470,10 @@ class VoiceAssistantService : Service() {
     }
 
     companion object {
+        @Volatile var active: VoiceAssistantService? = null
+            private set
+        const val ACTION_AUTO_START = "com.khuongnd.dexassistant.ui.action.AUTO_START_VOICE"
+        const val ACTION_DIAGNOSTIC = "com.khuongnd.dexassistant.ui.action.DIAGNOSTIC_LISTEN"
         const val ACTION_START = "com.khuongnd.dexassistant.ui.action.START_VOICE_SERVICE"
         const val ACTION_STOP = "com.khuongnd.dexassistant.ui.action.STOP_VOICE_SERVICE"
         const val ACTION_PAUSE = "com.khuongnd.dexassistant.ui.action.PAUSE_VOICE_SERVICE"

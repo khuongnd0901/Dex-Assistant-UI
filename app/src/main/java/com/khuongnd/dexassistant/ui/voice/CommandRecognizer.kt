@@ -30,7 +30,7 @@ object CommandRecognizer {
     fun intent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "vi-VN")
-        .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         // Explicitly permit the selected service's online path. This is a service hint.
         .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)

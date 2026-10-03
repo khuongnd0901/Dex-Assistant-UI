@@ -9,7 +9,7 @@ Released model README declares Apache License 2.0; retained with generated asset
 https://github.com/k2-fsa/sherpa-onnx/releases/tag/kws-models
 The Apache-2.0 text supplied here applies to runtime and declared model license.
 Model trained by upstream on GigaSpeech XL. No upstream test audio is bundled.
-Runtime/model binaries are unmodified; Hey DeX keyword file is project-created.
+Runtime/model binaries are unmodified; Hey Hey keyword file is project-created.
 
 Runtime archive SHA256: 633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96
 Model archive SHA256: f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a
