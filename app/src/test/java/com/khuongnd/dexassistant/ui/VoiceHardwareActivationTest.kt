@@ -2,6 +2,7 @@ package com.khuongnd.dexassistant.ui
 
 import android.view.KeyEvent
 import android.content.Intent
+import android.speech.RecognizerIntent
 import com.khuongnd.dexassistant.ui.voice.VoiceButtonActions
 import com.khuongnd.dexassistant.ui.voice.VoiceActivationGate
 import com.khuongnd.dexassistant.ui.voice.VoiceHardwareKeyGate
@@ -13,7 +14,10 @@ class VoiceHardwareActivationTest {
     @Test fun voiceButtonIntentActionsRejectUnknownActions() {
         assertTrue(VoiceButtonActions.supported(Intent.ACTION_VOICE_COMMAND))
         assertTrue(VoiceButtonActions.supported(Intent.ACTION_ASSIST))
-        listOf(null, "", Intent.ACTION_VIEW, Intent.ACTION_MAIN, Intent.ACTION_SEARCH).forEach {
+        assertTrue(VoiceButtonActions.supported(RecognizerIntent.ACTION_WEB_SEARCH))
+        listOf(null, "", Intent.ACTION_VIEW, Intent.ACTION_MAIN, Intent.ACTION_SEARCH,
+            Intent.ACTION_WEB_SEARCH, RecognizerIntent.ACTION_RECOGNIZE_SPEECH,
+            RecognizerIntent.ACTION_VOICE_SEARCH_HANDS_FREE).forEach {
             assertFalse(VoiceButtonActions.supported(it))
         }
     }

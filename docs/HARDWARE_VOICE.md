@@ -16,13 +16,16 @@ lệnh từ bản nhận dạng chưa hoàn chỉnh.
 
 ## Chuột hoặc thiết bị Bluetooth
 
-Một số nút thoại gửi Android `VOICE_COMMAND` thay vì gọi trợ lý mặc định.
+Chuột đang thử nghiệm thực tế mở hộp chọn ứng dụng bằng speech `WEB_SEARCH`
+(`android.speech.action.WEB_SEARCH`), không gọi thẳng trợ lý mặc định. Ứng dụng
+đăng ký đúng route này; một số thiết bị khác gửi `VOICE_COMMAND` hoặc `ASSIST`.
 Nếu lần bấm hiển thị hộp chọn ứng dụng, chọn **DeX Assistant**. Chọn
 **Luôn luôn** nếu muốn Android dùng ứng dụng này cho các lần bấm tiếp theo.
 Ứng dụng không tự thay đổi lựa chọn của hệ thống.
 
 Nút thoại trên vô lăng dùng cùng đường đi nếu đầu xe/thiết bị Bluetooth gửi
-`VOICE_COMMAND`, gọi phiên trợ lý Android hoặc gửi phím ASSIST/VOICE_ASSIST.
+speech `WEB_SEARCH`, `VOICE_COMMAND`, `ASSIST`, gọi phiên trợ lý Android hoặc
+gửi phím ASSIST/VOICE_ASSIST.
 Mỗi đầu xe cần kiểm chứng thực tế; không bảo đảm mọi giao thức vô lăng đều gửi
 một trong các tín hiệu này.
 
@@ -45,7 +48,7 @@ trễ mạng/endpoint của dịch vụ đó chưa được thay đổi bởi ch
 - `VoiceHardwareActivationTest`: admission, debounce, phím ngoài, cặp down/up,
   repeat, phím không hỗ trợ và intent không hỗ trợ.
 - `VoiceHardwareDeviceTest#registeredVoiceCommandResolverIncludesDex`: kiểm tra
-  DeX có trong resolver VOICE_COMMAND/ASSIST sau khi cài đúng APK.
+  DeX có trong resolver speech WEB_SEARCH/VOICE_COMMAND/ASSIST sau khi cài đúng APK.
 - `runDirectButtonProbe=true`: chạy probe direct activation khi trợ lý đang
   LISTENING và giữ im lặng. Probe dùng cờ diagnostic hiện có trước khi callback
   STT chạy, kiểm tra recorder cũ đã release, readiness thực, từ chối trigger
@@ -56,3 +59,9 @@ trễ mạng/endpoint của dịch vụ đó chưa được thay đổi bởi ch
 
 Chạy instrumentation với `--no-restart`; probe giữ các dịch vụ Trợ năng đã bật.
 Compilation hoặc direct probe không thay thế thao tác bấm chuột/vô lăng thật.
+Speech `WEB_SEARCH` là action `android.speech.action.WEB_SEARCH`; generic
+`android.intent.action.WEB_SEARCH`, `ACTION_SEARCH`, ASR intents và hands-free
+actions chưa quan sát không nằm trong allowlist. Nội dung query/extras bên ngoài
+không được dùng làm câu lệnh.
+
+Tham khảo: [Android RecognizerIntent.ACTION_WEB_SEARCH](https://developer.android.com/reference/android/speech/RecognizerIntent#ACTION_WEB_SEARCH).

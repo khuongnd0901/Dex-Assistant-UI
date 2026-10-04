@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.os.SystemClock
+import android.speech.RecognizerIntent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.khuongnd.dexassistant.ui.actions.LocalActionExecutor
@@ -26,7 +27,7 @@ class VoiceHardwareDeviceTest {
     private val context get() = instrumentation.targetContext
 
     @Test fun registeredVoiceCommandResolverIncludesDex() {
-        for (action in listOf(Intent.ACTION_VOICE_COMMAND, Intent.ACTION_ASSIST)) {
+        for (action in listOf(Intent.ACTION_VOICE_COMMAND, Intent.ACTION_ASSIST, RecognizerIntent.ACTION_WEB_SEARCH)) {
             val candidates = context.packageManager.queryIntentActivities(Intent(action), PackageManager.MATCH_DEFAULT_ONLY)
             assertTrue("DeX voice button entry missing from supported action resolver", candidates.any {
                 it.activityInfo.packageName == context.packageName && it.activityInfo.name == VoiceButtonActivity::class.java.name

@@ -2,13 +2,15 @@ package com.khuongnd.dexassistant.ui.voice
 
 import android.app.Activity
 import android.content.Intent
+import android.speech.RecognizerIntent
 import android.widget.Toast
 
 object VoiceButtonActions {
-    fun supported(action: String?): Boolean = action == Intent.ACTION_VOICE_COMMAND || action == Intent.ACTION_ASSIST
+    fun supported(action: String?): Boolean = action == Intent.ACTION_VOICE_COMMAND ||
+        action == Intent.ACTION_ASSIST || action == RecognizerIntent.ACTION_WEB_SEARCH
 }
 
-/** Entry for hands-free devices that launch VOICE_COMMAND rather than the assistant session. */
+/** Entry for hands-free devices that launch speech WEB_SEARCH/VOICE_COMMAND instead of a session. */
 class VoiceButtonActivity : Activity() {
     private var handled = false
     override fun onResume() {

@@ -1,7 +1,7 @@
 # Current Android status — 2026-10-04
 
 T-006 hardware voice + local command integration: shared direct activation from
-default-assistant session, lightweight VOICE_COMMAND/ASSIST activity and external
+default-assistant session, lightweight speech WEB_SEARCH/VOICE_COMMAND/ASSIST activity and external
 ASSIST/VOICE_ASSIST keys now enters normal command STT without wake detection.
 Worker FIFO preserves old recorder stop AND release before STT. Busy/debounce,
 unlocked screen, assistant role/READY, permissions, call-mode and explicit
@@ -20,12 +20,32 @@ includes DeX alongside Google/Bixby. Resolver device PASS0.018s; actual parser/
 executor volume40%+100% readback and initial volume/mute restoration PASS0.071s
 (no assumption skip); direct activation/provider readiness/old recorder release/
 busy rejection/cancel and actual refreshed wake capture PASS2.143s, policy/history
-unchanged. Physical owner mouse trial requested but not yet confirmed; actual
-wheel/SCO microphone compatibility and natural spoken latency remain unverified.
+unchanged. First physical owner mouse trial FAILED; actual action fix is recorded
+below. Wheel/SCO microphone compatibility and natural spoken latency remain unverified.
 No playback verification implied. T-006 remains IN_PROGRESS. Next: owner selects
 DeX in VOICE_COMMAND chooser and verifies actual button, then natural speech/
 latency and representative vehicle testing. Source publication is reviewed Git
 history; no build artifacts/logs/secrets committed.
+
+Physical follow-up FAILED on first deployed build: owner still saw only Bixby/
+Google. Main captured actual chooser intent `android.speech.action.WEB_SEARCH`
+(ResolverActivity,flags0x10800000), not assumed VOICE_COMMAND. Narrow follow-up
+adds RecognizerIntent.ACTION_WEB_SEARCH to button activity/action allowlist and
+resolver regression. Generic Intent.ACTION_WEB_SEARCH/ACTION_SEARCH and
+unobserved ASR/hands-free actions remain rejected; external extras ignored.
+Readiness/worker handoff/route/policy unchanged. Docs now describe observed route.
+Frozen JDK17 test/lint/app+testAPK PASS201tasks/35s;75debug+75release units,
+diffcheck PASS; log `/tmp/t006-hardware-speech-websearch-frozen-gradle.log`.
+Unsigned appSHAd60f55c41c1daffdae97b6f8908922f8027ddbe0bc1fd2723125f75b00a7cebd;
+testSHA47c1dfccc3cda0a0fc195653f9a79b6dcdf8550562a2c2399f69ed47b0d84218.
+Main installed original-cert matching follow-up app
+SHA64b375c3f1887f5ce4738d1f8f788af98d3c7860c821f6eadbdc2fbae7b2c253,
+certificate unchanged. Exact speech WEB_SEARCH resolver now includes DeX,
+Google and Bixby. Updated resolver device test covering VOICE_COMMAND/ASSIST/
+speech WEB_SEARCH PASS0.010s, status0. Owner reopen/physical chooser/new spoken
+trial requested and pending; first physical trial FAILED remains prior evidence.
+Earlier direct activation/volume passes do not prove physical-button acceptance.
+Wheel/SCO and natural speech latency remain unverified.
 
 T-006 YouTube search regression: main device comparison found legacy default
 SEARCH FAIL15.282s (YouTube window not visible, inconclusive query failure),
