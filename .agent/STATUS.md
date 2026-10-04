@@ -42,10 +42,13 @@ Main installed original-cert matching follow-up app
 SHA64b375c3f1887f5ce4738d1f8f788af98d3c7860c821f6eadbdc2fbae7b2c253,
 certificate unchanged. Exact speech WEB_SEARCH resolver now includes DeX,
 Google and Bixby. Updated resolver device test covering VOICE_COMMAND/ASSIST/
-speech WEB_SEARCH PASS0.010s, status0. Owner reopen/physical chooser/new spoken
-trial requested and pending; first physical trial FAILED remains prior evidence.
-Earlier direct activation/volume passes do not prove physical-button acceptance.
-Wheel/SCO and natural speech latency remain unverified.
+speech WEB_SEARCH PASS0.010s, status0. Owner physical retrial PASS: DeX appeared
+in chooser, assistant listened and opened YouTube. First physical trial FAILED
+remains prior evidence; observed speech WEB_SEARCH registration fixed that route.
+Main latest epoch6 metadata: button_requested→stt_requested8ms, button_requested
+→provider-ready538ms. These are one activation timing sample, not end-to-end
+spoken-command latency or a benchmark distribution. Wheel/car SCO microphone
+compatibility and broader natural speech latency remain unverified.
 
 T-006 YouTube search regression: main device comparison found legacy default
 SEARCH FAIL15.282s (YouTube window not visible, inconclusive query failure),
