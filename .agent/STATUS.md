@@ -49,6 +49,12 @@ Main latest epoch6 metadata: button_requested→stt_requested8ms, button_request
 →provider-ready538ms. These are one activation timing sample, not end-to-end
 spoken-command latency or a benchmark distribution. Wheel/car SCO microphone
 compatibility and broader natural speech latency remain unverified.
+Owner-requested Always preference verified: main selected DeX with “Luôn chọn”
+in the exact speech WEB_SEARCH chooser. Subsequent resolve-activity returns
+VoiceButtonActivity; package preferred entry for that action has mAlways=true
+selected from three candidates. No permission/assistant-role/generic media
+change. Persisted preference is verified; post-preference physical repeat not
+claimed. This device should now route that exact button intent directly to DeX.
 
 T-006 YouTube search regression: main device comparison found legacy default
 SEARCH FAIL15.282s (YouTube window not visible, inconclusive query failure),
