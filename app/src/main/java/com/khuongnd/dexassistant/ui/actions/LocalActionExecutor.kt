@@ -1,18 +1,15 @@
 package com.khuongnd.dexassistant.ui.actions
 
-import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
-import android.net.Uri
 import android.provider.Settings
 import android.view.KeyEvent
 import com.khuongnd.dexassistant.ui.device.DpcClient
 import com.khuongnd.dexassistant.ui.routing.LocalIntent
 import com.khuongnd.dexassistant.ui.routing.RoutedCommand
 import com.khuongnd.dexassistant.ui.routing.LocalCommandParser
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import kotlin.math.roundToInt
 
 enum class LocalOutcome { VERIFIED, DISPATCHED, FAILED, REJECTED }
@@ -41,11 +38,13 @@ class LocalActionExecutor(private val context: Context, private val dpc: DpcClie
     }
 
     private fun youtube(query: String): LocalResult {
-        val appIntent = Intent(Intent.ACTION_SEARCH).setPackage("com.google.android.youtube")
-            .putExtra(SearchManager.QUERY, query).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (appIntent.resolveActivity(context.packageManager) != null) return dispatch(appIntent)
-        val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
-        return dispatch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encoded")))
+        val available = try {
+            context.packageManager.getApplicationInfo(YoutubeSearchIntents.PACKAGE_NAME, 0)
+            true
+        } catch (_: PackageManager.NameNotFoundException) { false }
+        // SEARCH resolves on YouTube but can leave its existing task on the previous screen.
+        // Its results deep link carries the query; browser fallback is only for an absent app.
+        return dispatch(YoutubeSearchIntents.build(query, inApp = available))
     }
 
     private fun dispatch(intent: Intent): LocalResult = runCatching {

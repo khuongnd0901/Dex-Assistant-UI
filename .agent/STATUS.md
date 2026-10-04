@@ -1,5 +1,59 @@
 # Current Android status — 2026-10-04
 
+T-006 YouTube search regression: main device comparison found legacy default
+SEARCH FAIL15.282s (YouTube window not visible, inconclusive query failure),
+explicit-display SEARCH FAIL15.833s (YouTube visible, query absent), then results
+VIEW PASS0.585s (YouTube and exact whole query visible). Initial owner's manual
+VIEW trial left old screen; retain that prior contradictory evidence.
+Localized source fix now sends package-bound HTTPS results VIEW with percent-
+encoded full normalized query; browser only when YouTube package is absent.
+Installed-app dispatch failure remains FAILED; no auto-play, display override,
+parser/history/protocol/microphone/permission change. Two URL/encoding JVM tests
+and Android intent contract added. Opt-in UI regression
+`YoutubeSearchDeviceTest#warmYoutubeSearchDisplaysRequestedQueryOnDex` requires
+`runYoutubeSearchUi=true`; default `youtubeSearchVariant=executor_default` uses
+actual production executor and ordinary target context without display options.
+Legacy/default/explicit-display VIEW comparisons retained. Optional
+`youtubeDisplayId`, public `youtubeFixtureCommand`, `expectedYoutubeQuery`;
+`observeYoutubeOnly=true` reads existing UI only. Reports public numeric display
+and fixed-query equality booleans; no screen text export. Mutation mode rejects
+already-visible fixture query and asserts actual visible query, not DISPATCHED.
+No coordinator/history/config/key or voice lifecycle touched by test. Main owns
+signing/deploy/device verification; Android agent did not install/run device
+tests. Frozen JDK17 test/lint/app+testAPK PASS201tasks/51s;66debug+66release units
+zero failures/errors/skips;diff check PASS. Log
+`/tmp/t006-youtube-view-fix-final-gradle.log`. Fresh Gradle-debug-signed app
+SHA62335a23d69b173cc7d84bfb42971e773b8bd30842fbf68541873f87990a5bd7;
+testSHAf45e2fc8d5c8bd1e929842bc57606e6b7af9cc7f56cdc2d20d59f92fafb1fcc2.
+Main installed matching-original-cert app/test preserving protected config and
+credential state. Intent contract PASS0.011s. Actual normal-context production
+executor_default warm fixture PASS1.382s. Corrected-report test exact owner
+fixture PASS0.496s: Desktop2 before YouTube visible/query absent, after visible/
+exact query present. General getDisplays omitted Desktop2; reporting now unions
+general/category/requested IDs without relaxing predicates. Corrected test-only
+lint/build PASS108tasks/20s; unsigned test
+SHA833ffd9f357470a03444ca90d73d6e68634c7ddf497733e55fe175854a305c17,
+installed after main original-cert signing. Production unchanged between cases.
+This proves actual visible search query with warm YouTube and default executor
+routing, not natural spoken STT latency, result relevance or playback. T-006
+broader voice acceptance remains IN_PROGRESS; observer device run not claimed.
+
+T-006 natural voice regression diagnostic: owner reports absent readiness cue,
+slow YouTube launch, then no wake response. Added opt-in read-only
+`VoiceCaptureObserverDeviceTest#observeExistingCapture`; requires
+`--no-restart`, `observeExistingVoice=true`, optional `observeSeconds=1..20`,
+and DONT_SUPPRESS_ACCESSIBILITY_SERVICES. Observes existing service/session,
+numeric microphone RMS/update age/recorder state/silenced/routes, audio-device
+source/sink capabilities, and filtered worker stack methods. No lifecycle calls,
+callback injection, prefs/history/keys/permission/route/model changes or audio/
+transcript capture/logging. Observation success is not proof of wake accuracy;
+absent service/read error/main timeout are explicit. Nonvolatile mic age and
+worker stack sampling can be inconclusive. Main agent reviews and runs device
+probe; none installed/run by Android agent. Voice production source unchanged.
+JDK17 frozen debug units/lint/testAPK build PASS120tasks/30s;64debug units
+zero failures/errors/skips;diff check PASS. Build log
+`/tmp/t006-voice-observer-frozen-gradle.log`. T-006 remains IN_PROGRESS.
+
 Canonical tasks/decisions/plans remain authoritative:
 [/home/kunrg/DeX-Assistant/.agent/STATUS.md](/home/kunrg/DeX-Assistant/.agent/STATUS.md)
 and [handoff](/home/kunrg/DeX-Assistant/.agent/SESSION_HANDOFF.md).
