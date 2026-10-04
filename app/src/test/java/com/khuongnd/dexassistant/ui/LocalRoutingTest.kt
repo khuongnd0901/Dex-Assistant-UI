@@ -26,6 +26,16 @@ class LocalRoutingTest {
         cases.forEach { (text, intent) -> assertEquals(intent, parser.route(text).intent) }
     }
 
+    @Test fun knownAppCloseIsImmediatelyUnsupportedWithoutBackend() {
+        listOf("tắt YouTube", "đóng chrome", "Hãy đóng YouTube!").forEach {
+            assertEquals(Route.UNSUPPORTED, parser.route(it).route)
+            assertEquals(null, parser.route(it).intent)
+        }
+        listOf("đừng tắt youtube", "tắt youtube rồi mở chrome", "đóng ứng dụng lạ").forEach {
+            assertEquals(Route.BACKEND_REQUIRED, parser.route(it).route)
+        }
+    }
+
     @Test fun ambiguityNeverExecutesLocally() {
         listOf("đừng bật wifi", "bật wifi và mở youtube", "đặt âm lượng", "mở nhạc phù hợp tâm trạng")
             .forEach { assertEquals(Route.BACKEND_REQUIRED, parser.route(it).route) }

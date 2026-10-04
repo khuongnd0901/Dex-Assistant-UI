@@ -24,17 +24,21 @@ class VoiceHandoffDeviceTest {
     }
     private fun action(action: String) {
         instrumentation.runOnMainSync {
-            val intent = Intent(context, VoiceAssistantService::class.java).setAction(action)
-            if (action == VoiceAssistantService.ACTION_STOP) context.startService(intent)
-            else androidx.core.content.ContextCompat.startForegroundService(context, intent)
+            if (action == VoiceAssistantService.ACTION_STOP) {
+                context.getSharedPreferences("voice_policy", 0).edit().remove(VoiceAutoStart.KEY_SUPPRESSION).commit()
+            }
+            // Tests own a foreground Activity; avoid an FGS deadline for rapid control/STOP sequences.
+            context.startService(Intent(context, VoiceAssistantService::class.java).setAction(action))
         }
         if (action == VoiceAssistantService.ACTION_STOP) {
             instrumentation.waitForIdleSync()
             val deadline = android.os.SystemClock.elapsedRealtime() + 5000
             val preferences = context.getSharedPreferences("voice_health", 0)
-            while ((VoiceAssistantService.active != null || preferences.getString("state", "") != "STOPPED") && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(20)
+            while ((VoiceAssistantService.active != null || preferences.getString("state", "") != "STOPPED" ||
+                context.getSharedPreferences("voice_policy", 0).getString(VoiceAutoStart.KEY_SUPPRESSION, "") != "USER_STOPPED") && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(20)
             assertNull("STOP must release service", VoiceAssistantService.active)
             assertEquals("STOPPED", preferences.getString("state", ""))
+            assertEquals("USER_STOPPED", context.getSharedPreferences("voice_policy", 0).getString(VoiceAutoStart.KEY_SUPPRESSION, ""))
         }
     }
     private fun diagnostic(stopFirst: Boolean = true): Pair<VoiceAssistantService, RecognitionListener> {
@@ -52,6 +56,13 @@ class VoiceHandoffDeviceTest {
             Thread.sleep(20)
         }
         error("Diagnostic recognizer did not start")
+    }
+    private fun awaitActualProviderReady(service: VoiceAssistantService) {
+        val health = context.getSharedPreferences("voice_health", 0)
+        val deadline = android.os.SystemClock.elapsedRealtime() + 8000
+        while (!health.getString("detail", "").orEmpty().startsWith("Ready for Vietnamese command") && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(25)
+        assertSame(service, VoiceAssistantService.active)
+        assertTrue("Provider must acquire capture/focus before synthetic terminal injection", health.getString("detail", "").orEmpty().startsWith("Ready for Vietnamese command"))
     }
     @Test fun realProviderHandoffStaysReadyWithoutCompetingAppFocus() {
         ActivityScenario.launch(MainActivity::class.java).use {
@@ -113,16 +124,71 @@ class VoiceHandoffDeviceTest {
             } finally { action(VoiceAssistantService.ACTION_STOP) }
         }
     }
+    @Test fun missingTtsCompletionIsBoundedAndReturnsToNativeCapture() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            action(VoiceAssistantService.ACTION_START)
+            val health = context.getSharedPreferences("voice_health", 0)
+            val warmDeadline = android.os.SystemClock.elapsedRealtime() + 10_000
+            while (!health.getString("detail", "").orEmpty().startsWith("Listening for Hey Hey offline") && android.os.SystemClock.elapsedRealtime() < warmDeadline) Thread.sleep(25)
+            assertTrue("Warm actual native model before timing feedback", health.getString("detail", "").orEmpty().startsWith("Listening for Hey Hey offline"))
+            val (service, _) = diagnostic(stopFirst = false)
+            try {
+                awaitActualProviderReady(service)
+                var staleCompletion: (() -> Unit)? = null
+                val started = android.os.SystemClock.elapsedRealtime()
+                instrumentation.runOnMainSync {
+                    val id = service.javaClass.getDeclaredField("recognizerEpoch").apply { isAccessible = true }.get(service) as Long
+                    service.javaClass.getDeclaredField("diagnosticOnly").apply { isAccessible = true }.setBoolean(service, false)
+                    val feedback = service.javaClass.getDeclaredField("feedback").apply { isAccessible = true }.get(service) as VoiceFeedback
+                    feedback.javaClass.getDeclaredField("initialized").apply { isAccessible = true }.setBoolean(feedback, true)
+                    feedback.javaClass.getDeclaredField("ready").apply { isAccessible = true }.setBoolean(feedback, true)
+                    service.javaClass.getDeclaredMethod("finishWithFeedback", Long::class.javaPrimitiveType, String::class.java, String::class.java)
+                        .apply { isAccessible = true }.invoke(service, id, "Khó quá, không làm được.", "AI_TIMEOUT")
+                    // Suppress only completion delivery, leaving real TTS and watchdog lifecycle active.
+                    val callback = feedback.javaClass.getDeclaredField("completion").apply { isAccessible = true }
+                    @Suppress("UNCHECKED_CAST")
+                    staleCompletion = callback.get(feedback) as? (() -> Unit)
+                    assertNotNull(staleCompletion)
+                    callback.set(feedback, null)
+                }
+                val deadline = started + 6_000
+                while (!health.getString("detail", "").orEmpty().startsWith("Listening for Hey Hey offline") && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(25)
+                assertTrue("Missing TTS terminal must rearm within 4s plus bounded warm capture", health.getString("detail", "").orEmpty().startsWith("Listening for Hey Hey offline"))
+                while (!VoiceLiveState.state.value.microphone.startsWith("Micro") && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(25)
+                assertTrue("Resumed wake must read samples, not merely open AudioRecord", VoiceLiveState.state.value.microphone.startsWith("Micro"))
+                assertTrue(android.os.SystemClock.elapsedRealtime() - started >= 3_900)
+                assertEquals("TTS_PLAYBACK_TIMEOUT", health.getString(VoiceAssistantService.KEY_TTS_STATUS, ""))
+                instrumentation.runOnMainSync {
+                    val epoch = service.javaClass.getDeclaredField("activeWakeEpoch").apply { isAccessible = true }
+                    val resumed = epoch.get(service)
+                    staleCompletion!!.invoke()
+                    assertEquals("Late completion cannot replace resumed capture", resumed, epoch.get(service))
+                    val recorder = service.javaClass.getDeclaredField("recorder").apply { isAccessible = true }.get(service) as android.media.AudioRecord
+                    assertEquals(android.media.AudioRecord.RECORDSTATE_RECORDING, recorder.recordingState)
+                    assertNotEquals(true, recorder.activeRecordingConfiguration?.isClientSilenced)
+                }
+            } finally {
+                action(VoiceAssistantService.ACTION_STOP)
+                val field = service.javaClass.getDeclaredField("wakeEngine").apply { isAccessible = true }
+                val deadline = android.os.SystemClock.elapsedRealtime() + 5000
+                while (field.get(service) != null && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(25)
+                assertNull("Destroyed service must release cached native model on its worker", field.get(service))
+            }
+        }
+    }
     @Test fun successiveLocalFinalsReturnToRealWakeCaptureWithoutBackendOrTap() {
         val records = context.getSharedPreferences("command_history_v1", 0)
+        CommandHistoryStore(context).flush() // Snapshot only after prior writes have drained.
         val original = records.getString("records", null)
         ActivityScenario.launch(MainActivity::class.java).use {
             try {
                 var firstService: VoiceAssistantService? = null
+                var firstModel: Any? = null
                 repeat(3) { cycle ->
                     // Controlled final injection exercises normal routing/feedback/wake, not wake accuracy.
                     val (service, listener) = diagnostic(stopFirst = cycle == 0)
                     if (firstService == null) firstService = service else assertSame("Cycles must reuse the running voice service", firstService, service)
+                    awaitActualProviderReady(service)
                     instrumentation.runOnMainSync {
                         service.javaClass.getDeclaredField("diagnosticOnly").apply { isAccessible = true }.setBoolean(service, false)
                         VoiceLiveState.begin(false)
@@ -138,6 +204,9 @@ class VoiceHandoffDeviceTest {
                         capturing = recorder?.recordingState == android.media.AudioRecord.RECORDSTATE_RECORDING && recorder.activeRecordingConfiguration?.isClientSilenced != true
                     }
                     assertTrue("Real wake capture must resume unsilenced", capturing)
+                    val model = service.javaClass.getDeclaredField("wakeEngine").apply { isAccessible = true }.get(service)
+                    assertNotNull("Native wake model must remain available", model)
+                    if (firstModel == null) firstModel = model else assertSame("Warm turns must reuse one model with a new stream", firstModel, model)
                     val measuredDeadline = android.os.SystemClock.elapsedRealtime() + 2500
                     while (!VoiceLiveState.state.value.microphone.startsWith("Micro") && android.os.SystemClock.elapsedRealtime() < measuredDeadline) Thread.sleep(25)
                     assertTrue("Wake must have read samples and published bounded microphone metadata", VoiceLiveState.state.value.microphone.startsWith("Micro"))
@@ -149,6 +218,7 @@ class VoiceHandoffDeviceTest {
                 }
             } finally {
                 action(VoiceAssistantService.ACTION_STOP)
+                CommandHistoryStore(context).flush() // Drain queued writes before restoring owner ciphertext/key.
                 val editor = records.edit()
                 if (original == null) editor.remove("records") else editor.putString("records", original)
                 assertTrue(editor.commit())

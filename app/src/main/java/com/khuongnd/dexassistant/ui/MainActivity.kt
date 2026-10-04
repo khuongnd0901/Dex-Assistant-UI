@@ -152,7 +152,7 @@ fun AssistantScreen(
                             quota.providers.forEach { provider -> Text("${provider.providerAlias}/${provider.modelAlias}: ${provider.state}"); provider.budgets.forEach { Text("${it.unit}: ${it.used}/${it.limit}, remaining ${it.remaining}") } }
                         }
                     }
-                    "history" -> { state.history.forEach { Text("${it.route}: ${it.originalText} — ${it.outcome}") }; Button(onClick = onClearHistory, enabled = state.history.isNotEmpty()) { Text("Clear command history") } }
+                    "history" -> { if (state.historyClearing) Text("Đang xóa lịch sử lệnh…"); state.historyError?.let { Text(it) }; state.history.forEach { Text("${it.route}: ${it.originalText} — ${it.outcome}") }; Button(onClick = onClearHistory, enabled = !state.historyClearing && (state.history.isNotEmpty() || state.historyError != null)) { Text("Clear command history") } }
                     "command" -> { OutlinedTextField(command, { command = it }, label = { Text("Vietnamese command") }); Button(onClick = { onSend(command); command = ""; dialog = "" }, enabled = command.isNotBlank()) { Text("Run command") } }
                     else -> Text(detail)
                 }

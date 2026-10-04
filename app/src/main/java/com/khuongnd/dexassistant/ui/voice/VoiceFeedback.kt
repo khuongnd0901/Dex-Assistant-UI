@@ -55,7 +55,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
             pending?.also { pending = null; it() }
         } }
         engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
+            override fun onStart(utteranceId: String?) { main.post { if (utterance == utteranceId) timing("tts_started") } }
             override fun onDone(utteranceId: String?) { finish(utteranceId, false) }
             @Deprecated("Android callback") override fun onError(utteranceId: String?) { finish(utteranceId, true) }
             override fun onError(utteranceId: String?, errorCode: Int) { finish(utteranceId, true) }
@@ -113,6 +113,10 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         runCatching { old?.release() }
     }
 
+    private fun timing(stage: String) {
+        val epoch = utterance?.removePrefix("voice-")?.toLongOrNull() ?: -1L
+        android.util.Log.i("DexVoiceTiming", "epoch=$epoch stage=$stage atMs=${android.os.SystemClock.elapsedRealtime()}")
+    }
     fun speak(text: String, id: String, done: () -> Unit) {
         if (closed) { done(); return }
         if (!initialized) { pending = { speak(text, id, done) }; return }
@@ -123,6 +127,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         }
         utterance = id
         completion = done
+        timing("tts_queued")
         if (engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) {
             finish(id, true)
         }
@@ -130,6 +135,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
 
     private fun finish(id: String?, failed: Boolean) = main.post {
         if (id != null && utterance == id) {
+            timing(if (failed) "tts_error" else "tts_done")
             utterance = null
             describe(if (failed) "TTS_PLAYBACK_FAILED" else if (selectedNetwork) "TTS_VI_NETWORK_SYNTHESIZED" else "TTS_VI_OFFLINE_SYNTHESIZED")
             if (failed) tone.startTone(ToneGenerator.TONE_PROP_NACK, 120)
@@ -137,7 +143,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         }
     }
 
-    fun timeout() { describe("TTS_PLAYBACK_TIMEOUT"); cancel() }
+    fun timeout() { timing("tts_timeout"); describe("TTS_PLAYBACK_TIMEOUT"); cancel() }
 
     fun cancel() {
         cancelReadyTone()

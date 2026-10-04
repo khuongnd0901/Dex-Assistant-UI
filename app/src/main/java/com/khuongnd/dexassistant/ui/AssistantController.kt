@@ -56,7 +56,7 @@ class AssistantController(private val contextForVoice: Context, private val stat
     }
 }
 
-class AssistantCoordinator internal constructor(private val context: Context) : AssistantWebSocket.Listener {
+class AssistantCoordinator internal constructor(private val context: Context, private val history: CommandHistoryStore = CommandHistoryStore(context)) : AssistantWebSocket.Listener {
     private val observers = linkedSetOf<(UiState) -> Unit>()
     private var started = false
     private val commandGate = CommandSessionGate()
@@ -114,7 +114,7 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
     private val parser = LocalCommandParser()
     private val router = CommandRouter(parser, CapabilityRegistry(context))
     private val localExecutor = LocalActionExecutor(context, dpc)
-    private val history = CommandHistoryStore(context)
+    private val historyPublication = com.khuongnd.dexassistant.ui.history.HistoryPublicationGate()
     private var state = UiState(endpoint = preferences.getString("endpoint", "") ?: "")
 
     fun start() {
@@ -179,8 +179,8 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
             val screenRequestId = pendingId
             val complete: (String) -> Unit = { status -> onMain {
                 if (pendingId == screenRequestId) {
-                    history.record(text, Route.LOCAL.name, screenCommand.verb.name, status)
-                    state = state.copy(status = status, message = status); refreshHistory()
+                    recordHistory(text, Route.LOCAL.name, screenCommand.verb.name, status)
+                    state = state.copy(status = status, message = status); publish()
                     finish(status, status)
                 }
             } }
@@ -189,9 +189,8 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
         }
         DexAccessibilityService.active?.clear()
         if (CommandPrivacy.requiresLocalHandling(text)) {
-            history.record(text, Route.UNSUPPORTED.name, null, "LOCAL_ONLY_UNSUPPORTED")
+            recordHistory(text, Route.UNSUPPORTED.name, null, "LOCAL_ONLY_UNSUPPORTED")
             update("UNSUPPORTED", "Lệnh chứa thông tin đăng nhập hoặc kết nối Wi-Fi chỉ được xử lý trên máy; tính năng này chưa được hỗ trợ")
-            refreshHistory()
             return
         }
         val activeRequestId = pendingId
@@ -200,29 +199,29 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
         when (routed.route) {
             Route.LOCAL -> if (decision.capability?.available == false) {
                 val error = decision.capability.unavailableReason ?: "POLICY_DENIED"
-                history.record(text, routed.route.name, routed.intent?.name, error); update("FAILED", error); refreshHistory()
+                recordHistory(text, routed.route.name, routed.intent?.name, error); update("FAILED", error)
             } else {
                 pendingId?.let { pendingProgress?.invoke(it, "EXECUTING") }
                 if (pendingId != activeRequestId) return
                 localExecutor.execute(routed) { result -> onMain {
                 if (pendingId != activeRequestId) return@onMain
-                history.record(text, routed.route.name, routed.intent?.name, result.errorCode ?: result.outcome.name)
-                state = state.copy(status = result.outcome.name, message = result.errorCode ?: result.outcome.name); refreshHistory()
+                recordHistory(text, routed.route.name, routed.intent?.name, result.errorCode ?: result.outcome.name)
+                state = state.copy(status = result.outcome.name, message = result.errorCode ?: result.outcome.name); publish()
                 finish(result.errorCode ?: result.outcome.name, when (result.outcome.name) {
                     "VERIFIED" -> "Đã thực hiện"
                     "DISPATCHED" -> "Đã gửi yêu cầu thực hiện"
                     else -> "Không thực hiện được lệnh"
                 })
             } } }
-            Route.UNSUPPORTED -> { history.record(text, routed.route.name, null, "UNSUPPORTED_COMMAND"); update("UNSUPPORTED", "Lệnh chưa được hỗ trợ"); refreshHistory() }
+            Route.UNSUPPORTED -> { recordHistory(text, routed.route.name, null, "UNSUPPORTED_COMMAND"); update("UNSUPPORTED", "Lệnh chưa được hỗ trợ") }
             Route.BACKEND_REQUIRED -> runCatching {
                 backendDispatch = true
                 pendingId?.let { pendingProgress?.invoke(it, "SENDING") }
                 check(pendingId == activeRequestId) { "Command cancelled" }
                 webSocket.sendCommand(text, UUID.fromString(pendingId))
             }
-                .onSuccess { history.record(text, routed.route.name, null, "SENT"); state = state.copy(lastRequestId = it.toString(), message = "Command sent"); refreshHistory() }
-                .onFailure { history.record(text, routed.route.name, null, "AI_UNAVAILABLE"); update("SEND_FAILED", "Khó quá, không làm được"); refreshHistory() }
+                .onSuccess { recordHistory(text, routed.route.name, null, "SENT"); state = state.copy(lastRequestId = it.toString(), message = "Command sent"); publish() }
+                .onFailure { recordHistory(text, routed.route.name, null, "AI_UNAVAILABLE"); update("SEND_FAILED", "Khó quá, không làm được") }
         }
     }
 
@@ -367,8 +366,32 @@ class AssistantCoordinator internal constructor(private val context: Context) : 
     override fun onQuotaUnsupported() = onMain { state = state.copy(quota = null, quotaStale = true); publish() }
     override fun onDisconnected() = onMain { state = state.copy(quotaStale = true); publish(); if (backendDispatch) finish("DISCONNECTED", "Mất kết nối máy chủ") }
 
-    fun clearHistory() { history.clear(); refreshHistory() }
-    private fun refreshHistory() { state = state.copy(history = history.read()); publish() }
+    fun clearHistory() {
+        val ticket = historyPublication.next()
+        state = state.copy(history = emptyList(), historyError = null, historyClearing = true); publish()
+        history.clearAsync { result -> publishHistory(ticket, result, clearing = true) }
+    }
+    private fun refreshHistory() {
+        val ticket = historyPublication.next()
+        history.readAsync { result -> publishHistory(ticket, result) }
+    }
+    private fun recordHistory(text: String, route: String, intent: String?, outcome: String?) {
+        val ticket = historyPublication.next()
+        history.recordAsync(text, route, intent, outcome) { result -> publishHistory(ticket, result) }
+    }
+    private fun publishHistory(ticket: Long, result: Result<List<com.khuongnd.dexassistant.ui.history.HistoryEntry>>, clearing: Boolean = false) = onMain {
+        if (result.isFailure) android.util.Log.w("DexHistory", "stage=${if (clearing) "history_clear" else "history_update"} status=FAILED")
+        historyPublication.publish(ticket) {
+            result.fold(
+                onSuccess = { state = state.copy(history = it, historyError = null, historyClearing = false) },
+                onFailure = {
+                    // Storage failure is independent of action success; never replace a newer command status.
+                    state = state.copy(historyError = if (clearing) "Không thể xóa lịch sử lệnh" else "Không thể cập nhật lịch sử lệnh", historyClearing = false)
+                },
+            )
+            publish()
+        }
+    }
 
     override fun onMetric(event: String, correlationId: String, elapsedNanos: Long) {
         // Deliberately excludes command text and credentials.
@@ -402,4 +425,6 @@ data class UiState(
     val quota: ProtocolParser.QuotaSnapshot? = null,
     val quotaStale: Boolean = true,
     val history: List<com.khuongnd.dexassistant.ui.history.HistoryEntry> = emptyList(),
+    val historyError: String? = null,
+    val historyClearing: Boolean = false,
 )

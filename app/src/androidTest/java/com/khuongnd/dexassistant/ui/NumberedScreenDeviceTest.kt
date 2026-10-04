@@ -126,9 +126,9 @@ class NumberedScreenDeviceTest {
             })
         }
     }
-    private fun assertLiveGridOverlay(service: DexAccessibilityService, displayId: Int) {
+    private fun assertLiveGridOverlay(service: DexAccessibilityService, displayId: Int, fixtureFocus: Boolean = true) {
         instrumentation.runOnMainSync {
-            assertTrue("Composition overlay must preserve fixture focus", ScreenControlFixtureActivity.active!!.window.decorView.hasWindowFocus())
+            if (fixtureFocus) assertTrue("Composition overlay must preserve fixture focus", ScreenControlFixtureActivity.active!!.window.decorView.hasWindowFocus())
             if (Build.VERSION.SDK_INT >= 34) {
                 val surface = service.javaClass.getDeclaredField("overlaySurface").apply { isAccessible = true }.get(service) as? Surface
                 val control = service.javaClass.getDeclaredField("overlayControl").apply { isAccessible = true }.get(service) as? SurfaceControl
@@ -146,14 +146,24 @@ class NumberedScreenDeviceTest {
                         hardware = Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
                         bitmap = hardware?.copy(Bitmap.Config.ARGB_8888, false)
                         if (bitmap != null) {
-                            var yellow = 0; var black = 0
-                            for (y in 2 until 28) for (x in 2 until 40) {
-                                val pixel = bitmap.getPixel(x, y)
-                                val red = pixel shr 16 and 255; val green = pixel shr 8 and 255; val blue = pixel and 255
-                                if (red > 180 && green > 180 && blue < 80) yellow++
-                                if (red < 20 && green < 20 && blue < 20) black++
+                            // RAM-only fixed badge crops, never screenshot content/export.
+                            // Keep the original first-badge assertion while diagnosing occlusion.
+                            val bounds = ScreenRect(0, 0, bitmap.width, bitmap.height)
+                            val counts = (1..24).map { index ->
+                                val cell = requireNotNull(bounds.cell(index))
+                                var yellow = 0; var black = 0
+                                for (y in cell.top + 2 until minOf(cell.top + 28, bitmap.height)) {
+                                    for (x in cell.left + 2 until minOf(cell.left + 40, bitmap.width)) {
+                                        val pixel = bitmap.getPixel(x, y)
+                                        val red = pixel shr 16 and 255; val green = pixel shr 8 and 255; val blue = pixel and 255
+                                        if (red > 180 && green > 180 && blue < 80) yellow++
+                                        if (red < 20 && green < 20 && blue < 20) black++
+                                    }
+                                }
+                                yellow to black
                             }
-                            visible = yellow >= 4 && black >= 40
+                            android.util.Log.i("DexScreenTest", "gridBadgeCandidates display=$displayId counts=" + counts.mapIndexed { index, count -> "${index + 1}:${count.first}/${count.second}" }.joinToString(","))
+                            visible = counts.first().first >= 4 && counts.first().second >= 40
                         }
                     } catch (failure: RuntimeException) { error = failure.javaClass.simpleName }
                     finally { bitmap?.recycle(); hardware?.recycle(); result.hardwareBuffer.close(); done.countDown() }
@@ -255,6 +265,7 @@ class NumberedScreenDeviceTest {
     @Test fun numericAndMalformedFamiliesNeverBecomeBackendCommands() {
         val core = AssistantController.shared(context)
         val historyPreferences = context.getSharedPreferences("command_history_v1", android.content.Context.MODE_PRIVATE)
+        CommandHistoryStore(context).flush() // Snapshot only after prior writes have drained.
         val originalRecords = historyPreferences.getString("records", null)
         instrumentation.runOnMainSync { core.disconnect(); DexAccessibilityService.active?.clear() }
         try {
@@ -266,6 +277,7 @@ class NumberedScreenDeviceTest {
             }
         } finally {
             // Preserve existing ciphertext AND its Keystore key; clearHistory would rotate/delete the key.
+            CommandHistoryStore(context).flush() // Drain queued writes before restoring owner ciphertext/key.
             val editor = historyPreferences.edit()
             if (originalRecords == null) editor.remove("records") else editor.putString("records", originalRecords)
             assertTrue(editor.commit())
@@ -335,6 +347,157 @@ class NumberedScreenDeviceTest {
             assertTrue(ScreenControlFixtureActivity.canvasClosed)
         } finally { instrumentation.runOnMainSync { service!!.clear(); ScreenControlFixtureActivity.active?.finish() } }
     }
+    @Test fun liveForegroundGridPersistsThenCancelsOrDispatchesOnce() {
+        val expectedPackage = InstrumentationRegistry.getArguments().getString("screenLivePackage")
+        assumeTrue("Explicit live foreground app opt-in required", !expectedPackage.isNullOrBlank())
+        val (service, display) = desktopPrerequisites()
+        fun assertExpectedForeground() {
+            instrumentation.runOnMainSync {
+                val focused = service.windowsOnAllDisplays[display.displayId].orEmpty()
+                    .filter { it.type != android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY && it.isFocused }
+                    .singleOrNull()
+                assertNotNull("Live app must have unique focused desktop window", focused)
+                val root = focused!!.root
+                try {
+                    val actualPackage = root?.packageName?.toString()
+                    assertTrue("Focused desktop app must match explicit opt-in: actualPackage=$actualPackage expectedPackage=$expectedPackage windowId=${focused.id} displayId=${display.displayId}", actualPackage == expectedPackage)
+                }
+                finally { @Suppress("DEPRECATION") root?.recycle() }
+            }
+        }
+        assertExpectedForeground()
+        try {
+            var status = ""
+            instrumentation.runOnMainSync {
+                service.clear()
+                service.execute(ScreenCommand(ScreenVerb.GRID)) { status = it }
+            }
+            assertEquals("SCREEN_CONTINUE", status)
+            assertLiveGridOverlay(service, display.displayId, fixtureFocus = false)
+            SystemClock.sleep(5_000)
+            assertExpectedForeground()
+            instrumentation.runOnMainSync {
+                val current = service.javaClass.getDeclaredField("session").apply { isAccessible = true }.get(service)
+                assertNotNull("Live grid must survive five seconds of real app content events", current)
+                assertNotNull(current!!.javaClass.getDeclaredField("grid").apply { isAccessible = true }.get(current))
+            }
+            assertLiveGridOverlay(service, display.displayId, fixtureFocus = false)
+            if (InstrumentationRegistry.getArguments().getString("screenLiveTap") == "true") {
+                assertExpectedForeground()
+                instrumentation.runOnMainSync { service.execute(ScreenCommand(ScreenVerb.SUBDIVIDE, 1)) { status = it } }
+                assertEquals("SCREEN_CONTINUE", status)
+                val done = CountDownLatch(1)
+                instrumentation.runOnMainSync {
+                    service.execute(ScreenCommand(ScreenVerb.CLICK_CELL, 1)) { status = it; done.countDown() }
+                }
+                assertTrue(done.await(5, TimeUnit.SECONDS)); assertEquals("DISPATCHED", status)
+                instrumentation.runOnMainSync {
+                    assertOverlayReleased(service)
+                    service.execute(ScreenCommand(ScreenVerb.CLICK_CELL, 1)) { status = it }
+                }
+                assertEquals("SCREEN_SESSION_EXPIRED", status)
+            } else {
+                instrumentation.runOnMainSync {
+                    service.execute(ScreenCommand(ScreenVerb.CANCEL)) { status = it }
+                    assertOverlayReleased(service)
+                }
+                assertEquals("CANCELLED", status)
+                assertExpectedForeground()
+            }
+        } finally { instrumentation.runOnMainSync { service.clear() } }
+    }
+    @Test fun freshGridSurvivesContentAndWindowChangesThenDispatchesOnce() {
+        val (service, display) = desktopPrerequisites()
+        launchFixture(display)
+        try {
+            var status = ""
+            ScreenControlFixtureActivity.lastTap = null
+            instrumentation.runOnMainSync {
+                service.clear()
+                service.execute(ScreenCommand(ScreenVerb.GRID)) { status = it }
+            }
+            assertEquals("SCREEN_CONTINUE", status)
+            instrumentation.runOnMainSync {
+                val button = ScreenControlFixtureActivity.active!!.window.decorView
+                    .findViewWithTag<android.widget.Button>("fixturePopupButton")
+                button.text = "Dynamic playback label"
+            }
+            Thread.sleep(500)
+            instrumentation.runOnMainSync {
+                val notification = android.view.accessibility.AccessibilityEvent.obtain(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                try { service.onAccessibilityEvent(notification) } finally { notification.recycle() }
+                service.execute(ScreenCommand(ScreenVerb.SUBDIVIDE, 11)) { status = it }
+            }
+            assertEquals("SCREEN_CONTINUE", status)
+            assertNull(ScreenControlFixtureActivity.lastTap)
+            var dialog: android.app.AlertDialog? = null
+            instrumentation.runOnMainSync {
+                dialog = android.app.AlertDialog.Builder(ScreenControlFixtureActivity.active!!)
+                    .setMessage("Grid window changed").setPositiveButton("Close", null).show()
+            }
+            Thread.sleep(500)
+            instrumentation.runOnMainSync {
+                assertNotNull(service.javaClass.getDeclaredField("session").apply { isAccessible = true }.get(service))
+                service.execute(ScreenCommand(ScreenVerb.SUBDIVIDE, 11)) { status = it }
+            }
+            assertEquals("SCREEN_CONTINUE", status)
+            instrumentation.runOnMainSync { dialog!!.dismiss() }
+            Thread.sleep(500)
+            val size = Point(); display.getRealSize(size)
+            val expected = ScreenRect(0, 0, size.x, size.y).cell(11)!!.cell(11)!!.cell(11)!!
+            assertFixtureContains(display.displayId, expected)
+            val done = CountDownLatch(1)
+            instrumentation.runOnMainSync {
+                service.execute(ScreenCommand(ScreenVerb.CLICK_CELL, 11)) { status = it; done.countDown() }
+            }
+            assertTrue(done.await(5, TimeUnit.SECONDS)); assertEquals("DISPATCHED", status)
+            val tap = requireNotNull(ScreenControlFixtureActivity.lastTap)
+            assertEquals(display.displayId, tap.displayId)
+            assertEquals(expected.x, tap.x, 2f); assertEquals(expected.y, tap.y, 2f)
+            assertOverlayReleased(service)
+            instrumentation.runOnMainSync { service.execute(ScreenCommand(ScreenVerb.CLICK_CELL, 11)) { status = it } }
+            assertEquals("SCREEN_SESSION_EXPIRED", status)
+        } finally { instrumentation.runOnMainSync { service.clear(); ScreenControlFixtureActivity.active?.finish() } }
+    }
+    @Test fun latePreparationCannotReviveCancelledVoiceOwnership() {
+        val (service, display) = desktopPrerequisites()
+        launchFixture(display)
+        try {
+            var valid = true
+            var status = ""
+            val done = CountDownLatch(1)
+            instrumentation.runOnMainSync {
+                service.prepare(isCurrent = { valid }) { status = it; done.countDown() }
+                valid = false // Final/cancel takes ownership before asynchronous screenshot callback.
+            }
+            assertTrue(done.await(5, TimeUnit.SECONDS))
+            assertEquals("SCREEN_SESSION_EXPIRED", status)
+            instrumentation.runOnMainSync {
+                assertNull(service.javaClass.getDeclaredField("session").apply { isAccessible = true }.get(service))
+                assertOverlayReleased(service)
+            }
+        } finally { instrumentation.runOnMainSync { service.clear(); ScreenControlFixtureActivity.active?.finish() } }
+    }
+    @Test fun latePreparationCannotClearNewExplicitGrid() {
+        val (service, display) = desktopPrerequisites()
+        launchFixture(display)
+        try {
+            val done = CountDownLatch(1)
+            var oldStatus = ""
+            var gridStatus = ""
+            var freshSession: Any? = null
+            val field = service.javaClass.getDeclaredField("session").apply { isAccessible = true }
+            instrumentation.runOnMainSync {
+                service.prepare { oldStatus = it; done.countDown() }
+                service.execute(ScreenCommand(ScreenVerb.GRID)) { gridStatus = it }
+                freshSession = field.get(service)
+            }
+            assertEquals("SCREEN_CONTINUE", gridStatus)
+            assertTrue(done.await(5, TimeUnit.SECONDS))
+            assertEquals("SCREEN_SESSION_EXPIRED", oldStatus)
+            instrumentation.runOnMainSync { assertSame("Old screenshot terminal cannot clear fresh grid", freshSession, field.get(service)) }
+        } finally { instrumentation.runOnMainSync { service.clear(); ScreenControlFixtureActivity.active?.finish() } }
+    }
     @Test fun changedAndReplacedSameBoundsNodeCannotDispatchBeforeEventDelivery() {
         val (service, display) = desktopPrerequisites()
         launchFixture(display)
@@ -356,7 +519,7 @@ class NumberedScreenDeviceTest {
                         parent.layout(parent.left, parent.top, parent.right, parent.bottom)
                     }
                     // Same main turn: invalidation must not depend on a delayed accessibility event.
-                    service.execute(ScreenCommand(ScreenVerb.CLICK_CELL, 11)) { status = it }
+                    service.execute(ScreenCommand(ScreenVerb.CLICK_TARGET, 1)) { status = it }
                 }
                 assertEquals("SCREEN_CHANGED", status)
                 assertNull(ScreenControlFixtureActivity.lastTap); assertOverlayReleased(service)

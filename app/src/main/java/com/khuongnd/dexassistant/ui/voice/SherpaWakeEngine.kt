@@ -20,7 +20,13 @@ class SherpaWakeEngine(assets: AssetManager) : AutoCloseable {
             tokens = "kws/tokens.txt", numThreads = 1, provider = "cpu", modelType = "zipformer2",
         ), keywordsFile = "kws/keywords.txt",
     ))
-    private val stream = spotter.createStream()
+    private var stream = spotter.createStream()
+    /** Worker-confined; no audio or decoder history survives between listening epochs. */
+    fun resetSession() {
+        val fresh = spotter.createStream()
+        stream.release()
+        stream = fresh
+    }
 
     fun accept(samples: ShortArray, count: Int): Boolean {
         val normalized = FloatArray(count) { samples[it] / 32768f }

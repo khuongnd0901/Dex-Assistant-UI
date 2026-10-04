@@ -25,13 +25,13 @@ object ScreenCommandParser {
             .replace("đ", "d").replace(Regex("\\p{M}+"), "").trim().trimEnd('.', ',', '!', '?').replace(Regex("\\s+"), " ")
         if (clean in listOf("huy", "huy bo", "bo qua", "huy lenh")) return ScreenCommand(ScreenVerb.CANCEL)
         if (clean in listOf("hien luoi", "mo luoi")) return ScreenCommand(ScreenVerb.GRID)
-        val match = Regex("^(bam(?: vao)? (?:so |o )?|chia o )(.+)$").matchEntire(clean)
+        val match = Regex("^(bam(?: vao)? (?:so |o (?:so )?)?|chia o )(.+)$").matchEntire(clean)
         if (match != null) {
             val prefix = match.groupValues[1]; val number = number(match.groupValues[2])
             val verb = when {
                 number == null -> ScreenVerb.INVALID
                 prefix.startsWith("chia") -> ScreenVerb.SUBDIVIDE
-                prefix.endsWith(" o ") -> ScreenVerb.CLICK_CELL
+                " o " in prefix -> ScreenVerb.CLICK_CELL
                 else -> ScreenVerb.CLICK_TARGET
             }
             return ScreenCommand(if (verb in listOf(ScreenVerb.CLICK_CELL, ScreenVerb.SUBDIVIDE) && (number == null || number !in 1..24)) ScreenVerb.INVALID else verb, number)
@@ -108,4 +108,20 @@ object ScreenDisplays {
 object ScreenContentStability {
     fun <T : Any> invalidates(frozen: T, fresh: T?, windowStateChanged: Boolean = false): Boolean =
         windowStateChanged || fresh != frozen
+}
+
+/** Grid cells are display coordinates; numbered targets also freeze windows and node identity. */
+data class ScreenWindow(val id: Int, val layer: Int, val type: Int, val bounds: ScreenRect,
+    val focused: Boolean, val active: Boolean)
+data class ScreenSnapshot(val displayId: Int, val bounds: ScreenRect, val targets: List<ScreenRect>,
+    val windows: List<ScreenWindow>, val identities: List<String>) {
+    fun mismatch(fresh: ScreenSnapshot?, grid: Boolean = false): String? = when {
+        fresh == null -> "unavailable"
+        displayId != fresh.displayId -> "display_id"
+        bounds != fresh.bounds -> "display_bounds"
+        !grid && windows != fresh.windows -> "window_topology"
+        !grid && targets != fresh.targets -> "target_rects"
+        !grid && identities != fresh.identities -> "target_identity"
+        else -> null
+    }
 }

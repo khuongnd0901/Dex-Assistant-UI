@@ -35,14 +35,13 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     private val gestureGate = ScreenSessionGate()
     private var session: Session? = null
     private var preparingDisplayId: Int? = null
-    private var preparingSnapshot: Snapshot? = null
+    private var preparingSnapshot: ScreenSnapshot? = null
     private var overlay: View? = null
     private var windowManager: WindowManager? = null
     private var overlaySurface: Surface? = null
     private var overlayControl: SurfaceControl? = null
     private val expiry = Runnable { clear() }
-    private data class Snapshot(val displayId: Int, val bounds: ScreenRect, val targets: List<ScreenRect>, val windows: List<String>)
-    private data class Session(val id: String, val snapshot: Snapshot, val grid: ScreenRect?, val depth: Int)
+    private data class Session(val id: String, val snapshot: ScreenSnapshot, val grid: ScreenRect?, val depth: Int)
 
     override fun onServiceConnected() {
         active = this
@@ -56,6 +55,9 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val current = session
+        // A grid is an explicit coordinate tool, not a frozen app/node map. A popup,
+        // scroll or app switch does not change its cell coordinates on this display.
+        if (current?.grid != null) { validateDesktopDisplay(); return }
         val displayId = current?.snapshot?.displayId ?: preparingDisplayId ?: return
         if (event?.eventType in setOf(AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED)) {
@@ -65,8 +67,10 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             // Video/clock content events do not imply target movement. Compare the frozen
             // node/window identity for both preparation and active sessions; image pixels
             // are separately revalidated from a fresh screenshot immediately before a tap.
-            val stateChange = event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && changedWindow != null
-            if (ScreenContentStability.invalidates(expected, snapshot(), stateChange)) {
+            val stateChange = event?.eventType in setOf(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_SCROLLED) && changedWindow != null
+            val grid = current?.grid != null
+            if (stateChange || !matches(expected, snapshot(grid), grid, "content")) {
                 android.util.Log.i("DexScreen", "session.invalidated stage=snapshot eventType=${event?.eventType}")
                 clear()
             }
@@ -89,7 +93,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     }
 
     /** Screenshot timeout and failures leave accessibility/grid available. */
-    fun prepare(complete: (String) -> Unit) {
+    fun prepare(isCurrent: () -> Boolean = { true }, complete: (String) -> Unit) {
         clear()
         val token = epoch
         val original = snapshot()
@@ -100,9 +104,10 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             if (completed) return
             completed = true
             if (epoch != token) { complete("SCREEN_SESSION_EXPIRED"); return }
+            if (!isCurrent()) { clear(); complete("SCREEN_SESSION_EXPIRED"); return }
             preparingDisplayId = null; preparingSnapshot = null
             val latest = snapshot()
-            if (latest != original) { complete("SCREEN_CHANGED"); return }
+            if (!matches(original, latest, false, "prepare")) { complete("SCREEN_CHANGED"); return }
             val targets = ScreenTargets.merge(original.targets, image)
             session = Session(UUID.randomUUID().toString(), original, if (targets.isEmpty()) original.bounds else null, 0)
             gestureGate.activate(session!!.id)
@@ -161,12 +166,10 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     fun execute(command: ScreenCommand, complete: (String) -> Unit) {
         if (command.verb == ScreenVerb.CANCEL) { clear(); complete("CANCELLED"); return }
         if (command.verb == ScreenVerb.INVALID) { clear(); complete("INVALID_SCREEN_COMMAND"); return }
+        if (command.verb == ScreenVerb.GRID) { freshGrid(complete); return }
         val current = session
         if (current == null) { complete("SCREEN_SESSION_EXPIRED"); return }
-        if (!gestureGate.isCurrent(current.id) || snapshot() != current.snapshot) { clear(); complete("SCREEN_CHANGED"); return }
-        if (command.verb == ScreenVerb.GRID) {
-            session = current.copy(grid = current.snapshot.bounds, depth = 0); refreshOverlay(complete); return
-        }
+        if (!gestureGate.isCurrent(current.id) || !matches(current.snapshot, snapshot(current.grid != null), current.grid != null, "execute")) { clear(); complete("SCREEN_CHANGED"); return }
         val number = command.number ?: 0
         if (command.verb == ScreenVerb.SUBDIVIDE) {
             val cell = current.grid?.cell(number)
@@ -201,7 +204,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             }
             runCatching { removeOverlayAfterCommit {
                 if (!finished) {
-                    if (token != epoch || snapshot() != current.snapshot) reject("session_changed")
+                    if (token != epoch || !matches(current.snapshot, snapshot(), false, "image_revalidation")) reject("session_changed")
                     else runCatching { takeScreenshot(current.snapshot.displayId, mainExecutor, object : TakeScreenshotCallback {
                         override fun onFailure(errorCode: Int) = reject("capture_error_$errorCode")
                         override fun onSuccess(screenshot: ScreenshotResult) {
@@ -210,7 +213,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
                             bitmap?.recycle()
                             if (finished) return
                             if (!same) { reject("patch_changed"); return }
-                            if (token != epoch || snapshot() != current.snapshot) { reject("session_changed"); return }
+                            if (token != epoch || !matches(current.snapshot, snapshot(), false, "image_revalidation")) { reject("session_changed"); return }
                             finished = true; handler.removeCallbacks(timeout)
                             sendGesture(current.snapshot.displayId, target, complete)
                         }
@@ -218,6 +221,29 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
                 }
             } }.onFailure { reject("detach_exception_${it.javaClass.simpleName}") }
         } else sendGesture(current.snapshot.displayId, target, complete)
+    }
+    /** Explicit presentation never executes a tap or reuses stale numbered target identities. */
+    private fun freshGrid(complete: (String) -> Unit) {
+        val previous = session?.snapshot
+        clear()
+        val fresh = snapshot(true)
+        if (fresh == null) { complete("DEX_DISPLAY_UNAVAILABLE"); return }
+        if ((previous != null && !matches(previous, fresh, true, "grid_rebase")) ||
+            !matches(fresh, snapshot(true), true, "grid_prepare")) {
+            complete("SCREEN_CHANGED"); return
+        }
+        session = Session(UUID.randomUUID().toString(), fresh, fresh.bounds, 0)
+        gestureGate.activate(session!!.id)
+        refreshOverlay(complete)
+    }
+    private fun matches(expected: ScreenSnapshot, fresh: ScreenSnapshot?, grid: Boolean, stage: String): Boolean {
+        val mismatch = expected.mismatch(fresh, grid) ?: return true
+        // Categories and counts only: no text, identity/content hashes, pixels or transcripts.
+        android.util.Log.i("DexScreen", "snapshot.mismatch stage=$stage field=$mismatch grid=$grid " +
+            "windows=${expected.windows.size}/${fresh?.windows?.size ?: -1} " +
+            "targets=${expected.targets.size}/${fresh?.targets?.size ?: -1} " +
+            "identities=${expected.identities.size}/${fresh?.identities?.size ?: -1}")
+        return false
     }
     private fun copyScreenshot(screenshot: ScreenshotResult): Bitmap? {
         val buffer = screenshot.hardwareBuffer
@@ -258,23 +284,28 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         }
             .onFailure { reportOverlayFailure(it); clear(); complete("SCREEN_OVERLAY_FAILED") }
     }
-    private fun snapshot(): Snapshot? = runCatching { collectSnapshot() }.onFailure {
+    private fun snapshot(): ScreenSnapshot? = snapshot(false)
+    private fun snapshot(grid: Boolean): ScreenSnapshot? = runCatching { collectSnapshot(grid) }.onFailure {
         android.util.Log.i("DexScreen", "snapshot.failed stage=collect class=${it.javaClass.simpleName}")
     }.getOrNull()
-    private fun collectSnapshot(): Snapshot? {
+    private fun collectSnapshot(grid: Boolean): ScreenSnapshot? {
         val candidates = displays.getDisplays(SAMSUNG_DESKTOP_CATEGORY).filter { it.displayId != Display.DEFAULT_DISPLAY && it.isValid }
         val display = candidates.singleOrNull() ?: return null
         val size = android.graphics.Point(); display.getRealSize(size)
         val screen = ScreenRect(0, 0, size.x, size.y)
+        if (screen.width <= 0 || screen.height <= 0) return null
+        if (grid) return ScreenSnapshot(display.displayId, screen, emptyList(), emptyList(), emptyList())
         val windows = windowsOnAllDisplays[display.displayId].orEmpty()
             .filter { it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }.sortedByDescending { it.layer }
+        if (screen.width <= 0 || screen.height <= 0 || windows.isEmpty() || windows.size > 64) return null
+        val topology = mutableListOf<ScreenWindow>()
         val foreground = mutableListOf<ScreenRect>(); val targets = mutableListOf<ScreenRect>(); val signatures = mutableListOf<String>()
         var visited = 0; var skippedRefresh = 0
         windows.take(64).forEach { window ->
             val bounds = Rect(); window.getBoundsInScreen(bounds)
             val windowRect = ScreenRect(bounds.left, bounds.top, bounds.right, bounds.bottom)
-            signatures.add("${window.id}:${window.layer}:${window.type}:$windowRect")
-            val root = window.root
+            topology.add(ScreenWindow(window.id, window.layer, window.type, windowRect, window.isFocused, window.isActive))
+            val root = if (grid) null else window.root
             fun walk(node: android.view.accessibility.AccessibilityNodeInfo, depth: Int, path: String) {
                 if (depth > 40 || targets.size >= 256 || visited >= 4096) return
                 visited++
@@ -294,7 +325,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             foreground.add(windowRect)
         }
         if (skippedRefresh > 0) android.util.Log.i("DexScreen", "snapshot.nodes visited=$visited skippedRefresh=$skippedRefresh targets=${targets.size}")
-        return Snapshot(display.displayId, screen, ScreenTargets.merge(targets, emptyList()), signatures)
+        return ScreenSnapshot(display.displayId, screen, ScreenTargets.merge(targets, emptyList()), topology, signatures)
     }
     private fun reportOverlayFailure(error: Throwable) {
         // Exception messages/stack may contain window text or platform data; log class only.

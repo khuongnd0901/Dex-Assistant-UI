@@ -39,6 +39,8 @@ class VoiceAssistantService : Service() {
     private val preferences by lazy { getSharedPreferences(HEALTH_PREFERENCES, MODE_PRIVATE) }
     private val main = Handler(Looper.getMainLooper())
     private val wakeWorker = Executors.newSingleThreadExecutor()
+    // Native model is confined to wakeWorker; only the stream is renewed per epoch.
+    @Volatile private var wakeEngine: SherpaWakeEngine? = null
     private val microphoneLock = Any()
     private var recorder: AudioRecord? = null
     private var recognizer: SpeechRecognizer? = null
@@ -138,7 +140,8 @@ class VoiceAssistantService : Service() {
     override fun onDestroy() {
         active = null
         cancelSession()
-        wakeWorker.shutdownNow()
+        wakeWorker.execute { try { wakeEngine?.close() } finally { wakeEngine = null } }
+        wakeWorker.shutdown()
         feedback.close()
         transitionSafely(VoiceEvent.STOP)
         publishHealth(VoiceState.STOPPED, "Voice service destroyed")
@@ -160,14 +163,24 @@ class VoiceAssistantService : Service() {
             report("WAKE_PERMISSION_DENIED")
             return
         }
+        val wakeStarted = SystemClock.elapsedRealtime()
+        fun stage(name: String) {
+            val now = SystemClock.elapsedRealtime()
+            if (sessions.isCurrent(id)) android.util.Log.i("DexVoiceTiming", "epoch=$id stage=$name atMs=$now elapsedMs=${now - wakeStarted}")
+        }
+        stage("wake_requested")
         report("Loading offline Hey Hey wake model")
         wakeWorker.execute {
+            stage("wake_worker_started")
             if (!sessions.isCurrent(id)) return@execute
             var detected = false
             var audio: AudioRecord? = null
             val result = runCatching {
-                SherpaWakeEngine(assets).use { engine ->
-                    if (!sessions.isCurrent(id)) return@use
+                val engine = wakeEngine?.also { it.resetSession(); stage("model_reused") }
+                    ?: SherpaWakeEngine(assets).also { wakeEngine = it }
+                engine.run {
+                    stage("model_ready")
+                    if (!sessions.isCurrent(id)) return@run
                     val minimum = AudioRecord.getMinBufferSize(16_000, AudioFormat.CHANNEL_IN_MONO,
                         AudioFormat.ENCODING_PCM_16BIT)
                     check(minimum > 0) { "Unsupported microphone format" }
@@ -176,17 +189,20 @@ class VoiceAssistantService : Service() {
                     audio = input
                     check(input.state == AudioRecord.STATE_INITIALIZED) { "Microphone initialization failed" }
                     synchronized(microphoneLock) {
-                        if (!sessions.isCurrent(id)) return@use
+                        if (!sessions.isCurrent(id)) return@run
                         recorder = input
                         input.startRecording()
                     }
                     check(input.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone start failed" }
+                    stage("audio_recording")
                     main.post { if (sessions.isCurrent(id)) report("Listening for Hey Hey offline") }
                     val samples = ShortArray(320)
+                    var firstCapture = true
                     while (sessions.isCurrent(id)) {
                         val count = input.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
                         if (!sessions.isCurrent(id)) break
                         check(count > 0) { "Microphone read failed" }
+                        if (firstCapture) { firstCapture = false; stage("capture_active") }
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastMicUpdate >= 1000) {
                             lastMicUpdate = now
@@ -202,10 +218,11 @@ class VoiceAssistantService : Service() {
                             val blocked = when (input.activeRecordingConfiguration?.isClientSilenced) { true -> "âm thanh bị hệ thống chặn"; false -> "đang nhận âm thanh"; null -> "chưa xác minh âm thanh" }
                             VoiceLiveState.microphone("$route · $blocked · RMS %.3f".format(java.util.Locale.ROOT, rms))
                         }
-                        if (engine.accept(samples, count)) { detected = true; break }
+                        if (engine.accept(samples, count)) { stage("wake_detected"); detected = true; break }
                     }
                 }
             }
+            if (result.isFailure) { runCatching { wakeEngine?.close() }; wakeEngine = null }
             // No STT callback is posted until microphone stop AND release have completed.
             synchronized(microphoneLock) {
                 runCatching { audio?.stop() }
@@ -219,12 +236,12 @@ class VoiceAssistantService : Service() {
                     detected -> {
                         transitionSafely(VoiceEvent.WAKE)
                         report("Wake detected; opening Vietnamese STT")
-                        val screen = DexAccessibilityService.active
-                        if (screen == null) startRecognition(id) else screen.prepare { status ->
-                            if (sessions.isCurrent(id)) {
-                                report("Numbered screen: $status; opening Vietnamese STT")
-                                startRecognition(id)
-                            }
+                        // STT readiness does not wait for screenshot/analysis (up to 1.5s).
+                        startRecognition(id)
+                        if (isRecognizing(id)) DexAccessibilityService.active?.prepare(
+                            isCurrent = { isRecognizing(id) },
+                        ) { status ->
+                            if (isRecognizing(id)) timing(id, "screen_prepared", status)
                         }
                     }
                     result.isFailure -> {
@@ -237,8 +254,12 @@ class VoiceAssistantService : Service() {
         }
     }
 
+    private fun timing(id: Long, stage: String, status: String = "") {
+        if (sessions.isCurrent(id)) android.util.Log.i("DexVoiceTiming", "epoch=$id stage=$stage atMs=${SystemClock.elapsedRealtime()} status=$status")
+    }
     private fun startRecognition(id: Long) {
         if (!sessions.isCurrent(id)) return
+        timing(id, "stt_requested")
         val component = CommandRecognizer.component(this)
         if (component == null) {
             // Maintain a complete lifecycle even when the device has no command STT service.
@@ -276,12 +297,13 @@ class VoiceAssistantService : Service() {
         override fun onReadyForSpeech(params: Bundle?) {
             if (isRecognizing(id) && !announcedReady) {
                 announcedReady = true
+                timing(id, "stt_ready")
                 VoiceLiveState.ready(true)
                 feedback.readyTone()
                 report("Ready for Vietnamese command; ${feedback.readyCueDescription}")
             }
         }
-        override fun onBeginningOfSpeech() = Unit
+        override fun onBeginningOfSpeech() { if (isRecognizing(id)) timing(id, "speech_begin") }
         override fun onRmsChanged(rmsdB: Float) {
             if (isRecognizing(id) && SystemClock.elapsedRealtime() - lastMicUpdate >= 500) {
                 lastMicUpdate = SystemClock.elapsedRealtime()
@@ -289,13 +311,14 @@ class VoiceAssistantService : Service() {
             }
         }
         override fun onBufferReceived(buffer: ByteArray?) = Unit // Raw audio is never stored.
-        override fun onEndOfSpeech() = Unit
+        override fun onEndOfSpeech() { if (isRecognizing(id)) timing(id, "speech_end") }
         override fun onPartialResults(partialResults: Bundle?) {
             if (isRecognizing(id)) VoiceLiveState.text(partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty(), false)
         }
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
         override fun onError(error: Int) {
             if (!isRecognizing(id)) return
+            timing(id, "stt_error", CommandRecognizer.errorCode(error))
             destroyRecognizer()
             val code = CommandRecognizer.errorCode(error)
             val message = if (code == "STT_NETWORK") "Không có kết nối nhận giọng nói. Hãy gọi lại sau."
@@ -304,6 +327,7 @@ class VoiceAssistantService : Service() {
         }
         override fun onResults(results: Bundle?) {
             if (!isRecognizing(id) || !sessions.consumeFinal(id)) return
+            timing(id, "stt_final")
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
             VoiceLiveState.text(text, true)
             destroyRecognizer()
@@ -317,6 +341,7 @@ class VoiceAssistantService : Service() {
             report("Routing final Vietnamese command")
             var returnedId: String? = null
             var completedSynchronously = false
+            timing(id, "command_dispatch")
             val requestId = coordinator.dispatchVoice(text, progress = { request, stage ->
                 if (sessions.isCurrent(id) && (commandId == request || returnedId == null)) {
                     if (stage == "SENDING" && stateMachine.state == VoiceState.ROUTING) transitionSafely(VoiceEvent.BACKEND_SENT)
@@ -327,6 +352,7 @@ class VoiceAssistantService : Service() {
                 }
             }) { result ->
                 if (!sessions.isCurrent(id)) return@dispatchVoice
+                timing(id, "command_terminal", result.status)
                 completedSynchronously = true
                 if (commandId == result.requestId || returnedId == null) commandId = null
                 if (result.status == "SCREEN_CONTINUE") {
@@ -367,12 +393,16 @@ class VoiceAssistantService : Service() {
         DexAccessibilityService.active?.clear()
         destroyRecognizer()
         if (diagnosticOnly) { finishDiagnostic(id, code); return }
+        val feedbackStarted = SystemClock.elapsedRealtime()
+        android.util.Log.i("DexVoiceTiming", "epoch=$id stage=feedback_requested atMs=$feedbackStarted")
         transitionSafely(VoiceEvent.SPEAK)
         report("$code; ${feedback.voiceDescription}")
         val completed = {
             if (sessions.isCurrent(id) && stateMachine.state == VoiceState.SPEAKING) {
                 feedbackWatchdog?.let(main::removeCallbacks)
                 feedbackWatchdog = null
+                val now = SystemClock.elapsedRealtime()
+                android.util.Log.i("DexVoiceTiming", "epoch=$id stage=feedback_terminal atMs=$now elapsedMs=${now - feedbackStarted}")
                 abandonFocus()
                 transitionSafely(VoiceEvent.FEEDBACK_FINISHED)
                 startWake()
@@ -381,7 +411,7 @@ class VoiceAssistantService : Service() {
         feedbackWatchdog = Runnable {
             feedback.timeout()
             completed()
-        }.also { main.postDelayed(it, 25_000) }
+        }.also { main.postDelayed(it, 4_000) }
         val request = newFocusRequest(++focusGeneration)
         focusRequest = request
         focusHeld = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED

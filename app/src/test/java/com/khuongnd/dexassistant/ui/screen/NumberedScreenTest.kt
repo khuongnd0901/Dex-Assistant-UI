@@ -4,6 +4,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NumberedScreenTest {
+    @Test fun gridCoordinatesSurviveContentAndWindowsWhileTargetsRejectChanges() {
+        val bounds = ScreenRect(0, 0, 1920, 1080)
+        val window = ScreenWindow(1, 2, 1, bounds, true, true)
+        val frozen = ScreenSnapshot(2, bounds, listOf(ScreenRect(5,5,50,50)), listOf(window), listOf("label A/node1"))
+        val changed = frozen.copy(targets = listOf(ScreenRect(8,5,50,50)), identities = listOf("label B/node2"))
+        assertNull(frozen.mismatch(changed, grid = true))
+        assertEquals("target_rects", frozen.mismatch(changed))
+        assertEquals("target_identity", frozen.mismatch(frozen.copy(identities = listOf("replacement"))))
+        assertEquals("display_id", frozen.mismatch(frozen.copy(displayId = 3), true))
+        assertEquals("display_bounds", frozen.mismatch(frozen.copy(bounds = bounds.copy(right = 1080)), true))
+        listOf(window.copy(id = 2), window.copy(layer = 3), window.copy(type = 3),
+            window.copy(bounds = bounds.copy(left = 20)), window.copy(focused = false), window.copy(active = false)).forEach {
+            assertNull(frozen.mismatch(frozen.copy(windows = listOf(it)), true))
+            assertEquals("window_topology", frozen.mismatch(frozen.copy(windows = listOf(it))))
+        }
+        assertNull(frozen.mismatch(frozen.copy(windows = listOf(window, window.copy(id = 3))), true))
+        assertNull(frozen.mismatch(frozen.copy(windows = emptyList()), true))
+        assertEquals("unavailable", frozen.mismatch(null, true))
+    }
+
     @Test fun recurringContentPreservesFrozenTargetsButFreshIdentityAndTopologyChangesInvalidate() {
         data class Frozen(val bounds: ScreenRect, val nodeIdentity: String, val windows: List<Int>)
         val frozen = Frozen(ScreenRect(20, 30, 80, 90), "window1/node3/action16/labelHash4", listOf(1, 2))
@@ -17,6 +37,12 @@ class NumberedScreenTest {
     @Test fun vietnameseWholeInputAndLocalReservation() {
         assertEquals(ScreenCommand(ScreenVerb.CLICK_TARGET, 1), ScreenCommandParser.parse("bấm vào số một"))
         assertEquals(ScreenCommand(ScreenVerb.CLICK_CELL, 11), ScreenCommandParser.parse("bấm ô mười một"))
+        listOf("bấm ô số 11", "bấm vào ô số mười một!", "bam o so 11.").forEach {
+            assertEquals(ScreenCommand(ScreenVerb.CLICK_CELL, 11), ScreenCommandParser.parse(it))
+        }
+        listOf("bấm ô số 25", "bấm ô số", "bấm ô số 11 rồi mở youtube").forEach {
+            assertEquals(ScreenVerb.INVALID, ScreenCommandParser.parse(it)?.verb)
+        }
         assertEquals(ScreenCommand(ScreenVerb.CLICK_CELL, 24), ScreenCommandParser.parse("bấm ô hai mươi tư."))
         assertEquals(ScreenCommand(ScreenVerb.SUBDIVIDE, 11), ScreenCommandParser.parse("chia ô 11"))
         listOf("bấm ô 11 rồi mở youtube", "hủy rồi mở youtube", "mở lưới rồi bấm", "không hiện lưới", "không bấm 11", "bấm số 0", "bấm ô một trăm").forEach {

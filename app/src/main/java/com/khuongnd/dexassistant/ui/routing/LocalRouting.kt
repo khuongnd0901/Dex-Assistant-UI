@@ -38,6 +38,9 @@ class LocalCommandParser(private val appAliases: Set<String> = DEFAULT_APP_ALIAS
         if (text.isBlank()) return backend(text)
         if (NEGATION.containsMatchIn(text) || MULTI_INTENT.containsMatchIn(text)) return backend(text)
 
+        Regex("^(?:tắt|đóng) (.+)$").matchEntire(text)?.let { match ->
+            if (match.groupValues[1] in DEFAULT_APP_ALIASES) return RoutedCommand(Route.UNSUPPORTED, text)
+        }
         Regex("^(?:mở|khởi động) (.+)$").matchEntire(text)?.let { match ->
             val alias = match.groupValues[1]
             if (alias in appAliases) return local(text, LocalIntent.APP_LAUNCH, "alias" to alias)
