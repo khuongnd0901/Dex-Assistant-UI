@@ -43,11 +43,16 @@ configuration,credential preferences and history/credential key presence.
 JDK17 unit/lint/testAPK PASS168tasks/22s,64debug+64release tests,zero failures/
 errors;diff check PASS (/tmp/t009-real-backend-isolated-frozen-gradle.log).
 Latest isolated signed testSHA00811a7dd883627163bc98e1c79a839e5ee95a46286a9f7ef09918d97eb69572.
-Production source/APK unchanged. Correct-token Fold3→ADB-reversed loopback→local
-java-jar backend runs FAILED: terminal AI_UNAVAILABLE,2.466s and2.655s;
-all owner-preservation cleanup assertions passed. Main confirmed GoogleHTTP401
-UNAUTHENTICATED through backend and direct API. Cloud/action success is unverified;
-rerun the unchanged isolated test after valid provider credentials are supplied.
+Production source/APK unchanged. After owner replaced the provider key,main
+restarted the latest local Java JAR;Google Models.get and backend readinessHTTP200.
+Same signed isolated Fold3→ADB-reversed loopback→Java JAR test PASS1test/4.186s
+(/tmp/t009-java-backend-fold3-newkey.log): compound “mở YouTube rồi mở Chrome”
+reached actual DISPATCHED after observer detachment;owner configuration/credential
+preferences and key-preservation cleanup assertions passed. This proves the
+controlled real WebSocket/backend/action/headless flow,not natural speech or
+production credential provisioning. T-009 broader acceptance remains IN_PROGRESS.
+Earlier2.466s/2.655s runs failed AI_UNAVAILABLE due confirmed GoogleHTTP401
+UNAUTHENTICATED;retain those as prior-key evidence,not current readiness.
 No Docker,owner provisioning,policy/microphone/route or permission change.
 
 Source publication is represented by reviewed Git commits;verify HEAD/origin/main
