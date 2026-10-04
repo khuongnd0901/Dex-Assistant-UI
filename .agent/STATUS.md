@@ -53,8 +53,9 @@ Owner-requested Always preference verified: main selected DeX with “Luôn ch�
 in the exact speech WEB_SEARCH chooser. Subsequent resolve-activity returns
 VoiceButtonActivity; package preferred entry for that action has mAlways=true
 selected from three candidates. No permission/assistant-role/generic media
-change. Persisted preference is verified; post-preference physical repeat not
-claimed. This device should now route that exact button intent directly to DeX.
+change. Owner subsequently confirmed post-Always physical repeat PASS (“đã test
+thành công”). Persisted preference and repeat button use are verified on this
+device; wheel/car SCO and wider natural-speech benchmarks remain open.
 
 T-006 YouTube search regression: main device comparison found legacy default
 SEARCH FAIL15.282s (YouTube window not visible, inconclusive query failure),
