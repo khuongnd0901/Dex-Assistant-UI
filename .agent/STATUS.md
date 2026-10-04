@@ -61,3 +61,11 @@ resources/wake/false-activation/soak;investigate late window/initial badge failu
 if reproduced. Backend/provider/quota/release acceptance remains open.
 Validation evidence:
 [/home/kunrg/DeX-Assistant/.agent/evidence/T-006-history-latency-2026-10-04.md](/home/kunrg/DeX-Assistant/.agent/evidence/T-006-history-latency-2026-10-04.md).
+
+Latest main-agent handoff continuation: Fold3 endpoint192.168.1.18:42563,
+reverse8081→8080 restored;Accessibility unchanged. Java live RPM exhaustion/
+server reconnect snapshot/natural refill PASS;6 focused backend tests PASS.
+No Android tests/actions/install in this slice. Before physical offline/local/
+monitoring tests, isolate owner history/credential and avoid Wi-Fi disconnect:
+legacy LocalFirstDeviceTest clears owner history;monitoring needs review.
+Canonical evidence: /home/kunrg/DeX-Assistant/.agent/evidence/T-009-handoff-quota-2026-10-04.md.
