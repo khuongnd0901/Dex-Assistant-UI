@@ -28,11 +28,27 @@ assertion metadata added; predicates unchanged,no retries. Final diagnostic test
 APK+lint PASS108tasks/15s;production APK unchanged.
 
 Original-cert signed appSHA6c397e1efc2e2c21f2e6fa7989ff2968709376ebce24e322b54f803bf9307114;
-latest testSHAdd78c509b32256d36813b9cd328a06902b69e5bbfecfe0bf4191b477e3272a01.
+D-025 testSHAdd78c509b32256d36813b9cd328a06902b69e5bbfecfe0bf4191b477e3272a01.
 Device hashes verified,matching installs PASS,DPC/data/key preserved. Final Fold3
 healthLISTENING,no explicit suppression,Accessibility enabled. SDK37 ADB endpoint
 192.168.1.18:40581 may expire;rediscover dynamically. No permission reset/grant,
 mic route/model/threshold change or speech/screenshots exported.
+
+T-009 real backend continuation: test-only independent coordinator uses unique
+history preferences/key and redirected configuration/credential preferences;
+RAM-only WebSocket token and guarded authentication callback never provision or
+delete the owner credential key. Observer detaches before compound Vietnamese
+command; genuine protocol/action/terminal callbacks remain. Cleanup checks owner
+configuration,credential preferences and history/credential key presence.
+JDK17 unit/lint/testAPK PASS168tasks/22s,64debug+64release tests,zero failures/
+errors;diff check PASS (/tmp/t009-real-backend-isolated-frozen-gradle.log).
+Latest isolated signed testSHA00811a7dd883627163bc98e1c79a839e5ee95a46286a9f7ef09918d97eb69572.
+Production source/APK unchanged. Correct-token Fold3→ADB-reversed loopback→local
+java-jar backend runs FAILED: terminal AI_UNAVAILABLE,2.466s and2.655s;
+all owner-preservation cleanup assertions passed. Main confirmed GoogleHTTP401
+UNAUTHENTICATED through backend and direct API. Cloud/action success is unverified;
+rerun the unchanged isolated test after valid provider credentials are supplied.
+No Docker,owner provisioning,policy/microphone/route or permission change.
 
 Source publication is represented by reviewed Git commits;verify HEAD/origin/main
 on resume. Next: natural repeated speech/cue audibility,100spoken sessions/
