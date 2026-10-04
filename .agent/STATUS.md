@@ -22,9 +22,9 @@ executor volume40%+100% readback and initial volume/mute restoration PASS0.071s
 busy rejection/cancel and actual refreshed wake capture PASS2.143s, policy/history
 unchanged. First physical owner mouse trial FAILED; actual action fix is recorded
 below. Wheel/SCO microphone compatibility and natural spoken latency remain unverified.
-No playback verification implied. T-006 remains IN_PROGRESS. Next: owner selects
-DeX in VOICE_COMMAND chooser and verifies actual button, then natural speech/
-latency and representative vehicle testing. Source publication is reviewed Git
+No playback verification implied. T-006 remains IN_PROGRESS. Next: broader
+natural speech/latency and representative vehicle testing; physical mouse
+acceptance is recorded below. Source publication is reviewed Git
 history; no build artifacts/logs/secrets committed.
 
 Physical follow-up FAILED on first deployed build: owner still saw only Bixby/
