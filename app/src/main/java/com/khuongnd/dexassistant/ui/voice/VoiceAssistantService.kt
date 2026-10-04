@@ -91,6 +91,14 @@ class VoiceAssistantService : Service() {
     fun currentVoiceState(): VoiceState = stateMachine.state
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_AUTO_START
+        if (action == ACTION_COMMAND_LISTEN) {
+            // An explicit assistant invocation must obey the same readiness and suppression policy.
+            startInForeground(notification(stateMachine.state, "Assistant button requested"))
+            if (!beginCommandListening() && stateMachine.state == VoiceState.STOPPED) {
+                stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+            }
+            return START_NOT_STICKY
+        }
         if (action == ACTION_AUTO_START && !VoiceAutoStart.allowed(this)) {
             if (stateMachine.state != VoiceState.STOPPED) return START_STICKY
             startInForeground(notification(VoiceState.STOPPED, "Tự nghe bị tạm dừng theo lựa chọn của người dùng"))
@@ -149,6 +157,21 @@ class VoiceAssistantService : Service() {
     }
 
     private var activeWakeEpoch: Long? = null
+
+    /** Explicit button activation shares the normal command path and worker-owned mic handoff. */
+    fun beginCommandListening(): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper() || !VoiceCommandActivation.allowed(this) ||
+            !VoiceActivationGate.idle(stateMachine.state)) return false
+        cancelSession()
+        if (stateMachine.state in setOf(VoiceState.STOPPED, VoiceState.ERROR)) transitionSafely(VoiceEvent.START)
+        transitionSafely(VoiceEvent.WAKE)
+        report("Assistant button requested; opening Vietnamese STT")
+        val id = sessions.begin()
+        timing(id, "button_requested")
+        // Prior wake worker releases AudioRecord before this queued task can request STT.
+        wakeWorker.execute { main.post { if (sessions.isCurrent(id)) startCommandRecognition(id) } }
+        return true
+    }
 
     @SuppressLint("MissingPermission", "WakelockTimeout") // Actual permission is checked before constructing AudioRecord.
     private fun startWake() {
@@ -237,12 +260,7 @@ class VoiceAssistantService : Service() {
                         transitionSafely(VoiceEvent.WAKE)
                         report("Wake detected; opening Vietnamese STT")
                         // STT readiness does not wait for screenshot/analysis (up to 1.5s).
-                        startRecognition(id)
-                        if (isRecognizing(id)) DexAccessibilityService.active?.prepare(
-                            isCurrent = { isRecognizing(id) },
-                        ) { status ->
-                            if (isRecognizing(id)) timing(id, "screen_prepared", status)
-                        }
+                        startCommandRecognition(id)
                     }
                     result.isFailure -> {
                         transitionSafely(VoiceEvent.FAILURE)
@@ -256,6 +274,12 @@ class VoiceAssistantService : Service() {
 
     private fun timing(id: Long, stage: String, status: String = "") {
         if (sessions.isCurrent(id)) android.util.Log.i("DexVoiceTiming", "epoch=$id stage=$stage atMs=${SystemClock.elapsedRealtime()} status=$status")
+    }
+    private fun startCommandRecognition(id: Long) {
+        startRecognition(id)
+        if (isRecognizing(id)) DexAccessibilityService.active?.prepare(
+            isCurrent = { isRecognizing(id) },
+        ) { status -> if (isRecognizing(id)) timing(id, "screen_prepared", status) }
     }
     private fun startRecognition(id: Long) {
         if (!sessions.isCurrent(id)) return
@@ -512,6 +536,7 @@ class VoiceAssistantService : Service() {
             private set
         const val ACTION_AUTO_START = "com.khuongnd.dexassistant.ui.action.AUTO_START_VOICE"
         const val ACTION_DIAGNOSTIC = "com.khuongnd.dexassistant.ui.action.DIAGNOSTIC_LISTEN"
+        const val ACTION_COMMAND_LISTEN = "com.khuongnd.dexassistant.ui.action.COMMAND_LISTEN"
         const val ACTION_START = "com.khuongnd.dexassistant.ui.action.START_VOICE_SERVICE"
         const val ACTION_STOP = "com.khuongnd.dexassistant.ui.action.STOP_VOICE_SERVICE"
         const val ACTION_PAUSE = "com.khuongnd.dexassistant.ui.action.PAUSE_VOICE_SERVICE"

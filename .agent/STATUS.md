@@ -1,5 +1,32 @@
 # Current Android status — 2026-10-04
 
+T-006 hardware voice + local command integration: shared direct activation from
+default-assistant session, lightweight VOICE_COMMAND/ASSIST activity and external
+ASSIST/VOICE_ASSIST keys now enters normal command STT without wake detection.
+Worker FIFO preserves old recorder stop AND release before STT. Busy/debounce,
+unlocked screen, assistant role/READY, permissions, call-mode and explicit
+Pause/Stop policy gates retained. Unknown intents/extras and unrelated media/
+headset/typing keys do not activate. No mic route/SCO/MediaSession change.
+Local parser now accepts natural absolute 0..100% targets, shortcuts and bounded
+app/media/search/brightness synonyms, retaining privacy/negation/compound guards.
+Docs: `docs/HARDWARE_VOICE.md`, `docs/LOCAL_COMMANDS.md`.
+
+Frozen JDK17 test/lint/app+testAPK PASS201tasks/36s;75debug+75release units
+zero failures/errors/skips;diff check PASS. Log
+`/tmp/t006-hardware-local-commands-frozen-gradle.log`. Main installed original-cert
+matching app SHA9ad2844ddf0ba123e48631f999ba4cd30b445773c7629e4fe7fd6e677d12c4ce,
+preserving owner configuration/credential state. VOICE_COMMAND resolver now
+includes DeX alongside Google/Bixby. Resolver device PASS0.018s; actual parser/
+executor volume40%+100% readback and initial volume/mute restoration PASS0.071s
+(no assumption skip); direct activation/provider readiness/old recorder release/
+busy rejection/cancel and actual refreshed wake capture PASS2.143s, policy/history
+unchanged. Physical owner mouse trial requested but not yet confirmed; actual
+wheel/SCO microphone compatibility and natural spoken latency remain unverified.
+No playback verification implied. T-006 remains IN_PROGRESS. Next: owner selects
+DeX in VOICE_COMMAND chooser and verifies actual button, then natural speech/
+latency and representative vehicle testing. Source publication is reviewed Git
+history; no build artifacts/logs/secrets committed.
+
 T-006 YouTube search regression: main device comparison found legacy default
 SEARCH FAIL15.282s (YouTube window not visible, inconclusive query failure),
 explicit-display SEARCH FAIL15.833s (YouTube visible, query absent), then results

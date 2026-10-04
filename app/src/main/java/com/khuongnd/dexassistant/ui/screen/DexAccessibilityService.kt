@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Display
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.Surface
 import android.view.SurfaceControl
@@ -25,10 +26,13 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
 import java.util.UUID
 import java.util.concurrent.Executors
+import com.khuongnd.dexassistant.ui.voice.VoiceCommandActivation
+import com.khuongnd.dexassistant.ui.voice.VoiceHardwareKeyGate
 
 /** Display identity and immutable session mapping are checked again immediately before a gesture. */
 class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayListener {
     private val handler = Handler(Looper.getMainLooper())
+    private val voiceKeys = VoiceHardwareKeyGate()
     private val analyzer = Executors.newSingleThreadExecutor()
     private val displays get() = getSystemService(DisplayManager::class.java)
     private var epoch = 0L
@@ -49,10 +53,15 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     }
     override fun onInterrupt() = clear()
     override fun onDestroy() {
+        voiceKeys.clear()
         if (active === this) active = null
         displays.unregisterDisplayListener(this)
         clear(); analyzer.shutdownNow(); super.onDestroy()
     }
+    override fun onKeyEvent(event: KeyEvent): Boolean = voiceKeys.onKey(
+        event.deviceId, event.device?.isExternal == true, event.keyCode, event.action,
+        event.repeatCount, event.isCanceled, event.downTime,
+    ) { VoiceCommandActivation.request(this) }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val current = session
         // A grid is an explicit coordinate tool, not a frozen app/node map. A popup,
