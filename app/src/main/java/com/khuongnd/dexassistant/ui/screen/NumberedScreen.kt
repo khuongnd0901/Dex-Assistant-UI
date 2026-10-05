@@ -21,8 +21,11 @@ enum class ScreenVerb { CLICK_TARGET, CLICK_CELL, SUBDIVIDE, GRID, CANCEL, INVAL
 data class ScreenCommand(val verb: ScreenVerb, val number: Int? = null)
 object ScreenCommandParser {
     fun parse(text: String): ScreenCommand? {
-        val clean = Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
+        val normalized = Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
             .replace("đ", "d").replace(Regex("\\p{M}+"), "").trim().trimEnd('.', ',', '!', '?').replace(Regex("\\s+"), " ")
+        // STT can attach a digit to the explicit numeric marker (ô2, số8).
+        // Insert only the missing numeric separator, preserving whole-input matching.
+        val clean = normalized.replace(Regex("\\b(o|so)(?=[0-9])"), "$1 ")
         if (clean in listOf("huy", "huy bo", "bo qua", "huy lenh")) return ScreenCommand(ScreenVerb.CANCEL)
         if (clean in listOf("hien luoi", "mo luoi")) return ScreenCommand(ScreenVerb.GRID)
         val match = Regex("^(bam(?: vao)? (?:so |o (?:so )?)?|chia o )(.+)$").matchEntire(clean)

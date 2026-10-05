@@ -15,7 +15,7 @@ script, workflow, quyền hoặc cờ bỏ qua xác nhận.
 | Split-pane intent | “Mở nhạc Sơn Tùng”, “Đưa tôi về nhà” | “Mở nhạc” chạy flow tìm/chọn/xác nhận YouTube; “đưa tôi về {destination}” gọi tuyến Maps bằng alias địa chỉ local, bất kể pane nào đang focus |
 | Media | “Phát nhạc”, “Tiếp tục phát”, “Tạm dừng”, “Dừng phát”, “Bài sau”, “Video vừa rồi” | Media session/key có thể chỉ chứng minh dispatch, không chứng minh playback |
 | Seek | “Tua tới 30 giây”, “Tua lùi hai phút” | YouTube/YouTube Music foreground; 1–3600 giây và media session cho phép seek |
-| Maps | “Tìm địa điểm quán cà phê”, “Tìm xung quanh bệnh viện”, “Chỉ đường đến 12 Nguyễn Trãi”, “Đưa tôi về nhà”, “Đưa tôi về công ty”, “Đi bộ đến Nhà hát Lớn” | Câu “đưa tôi về {destination}” đã có; nhà/công ty chỉ dùng địa chỉ đã cấu hình local |
+| Maps | “Tìm địa chỉ Phà Cát Lái”, “Tìm địa điểm quán cà phê”, “Tìm xung quanh bệnh viện”, “Chỉ đường đến 12 Nguyễn Trãi”, “Đưa tôi về nhà”, “Đưa tôi về công ty”, “Đi bộ đến Nhà hát Lớn” | Câu “đưa tôi về {destination}” đã có; nhà/công ty chỉ dùng địa chỉ đã cấu hình local |
 | Phone | “Gọi cho Nguyễn Văn A”, “Gọi số không chín một hai ba bốn” | Lookup và alias local; chọn người/số rồi xác nhận ở lượt nói tiếp theo; không đoán cách đọc mơ hồ |
 | Google | “Tìm Google Việt Nam”, “Tra cứu Kotlin”, “Tìm trên web Android 15” | HTTPS query encoded từ slot |
 | Feed/scroll | “Cuộn xuống”, “Lướt tiếp”, “Lướt lên”, “Xem nội dung trước”, “Video tiếp theo”, “Video sau”, “Video vừa rồi” | TikTok foreground dùng feed next/previous; app khác dùng media next/previous. Scroll cần target trên desktop được xác định |
@@ -23,6 +23,22 @@ script, workflow, quyền hoặc cờ bỏ qua xác nhận.
 | Volume | “Tăng âm lượng”, “Giảm âm lượng 2 bước”, “Chỉnh âm lượng về 40%”, “Âm lượng tối đa”, “Tắt tiếng” | 1–10 bước hoặc mức tuyệt đối 0–100%; mute không tự tăng mức 0% |
 | Brightness | “Tăng độ sáng”, “Đặt độ sáng 60 phần trăm”, “Bật độ sáng tự động” | Quyền ghi cài đặt; không suy ra độ sáng màn hình ngoài |
 | Wi-Fi/Bluetooth | “Bật Wi-Fi”, “Tắt Bluetooth” | Wi-Fi phụ thuộc DPC; Bluetooth chưa có path API35 được xác minh nên capability unavailable |
+
+“Tìm địa chỉ Phà Cát Lái” match local `SEARCH_PLACE`, giữ query `Phà Cát Lái`
+và mở Maps bằng Intent có package và `launchDisplayId` của màn hình DeX được
+chọn, kể cả khi YouTube đang focus trong cặp Maps/YouTube. Cũng có thể nói
+“tìm địa chỉ Phà Cát Lái trong Google Maps”. `DISPATCHED` chứng minh đã gửi
+Intent; kiểm tra kết quả tìm kiếm vẫn cần chạy trên phiên bản Maps thực tế.
+
+Lưới hỗ trợ “mở lưới” → “chia ô 2” → “bấm ô 8”; STT viết sát chữ số như
+“chia ô2”, “bấm ô8” cũng được nhận dạng. Ô 8 sau khi chia thuộc bên trong ô 2,
+không phải ô 8 của toàn desktop. Lưới và mức chia còn hiệu lực được giữ khi
+bắt đầu lượt nghe/activation mới trên cùng display và geometry; chuẩn bị lượt
+nghe không gia hạn expiry 35 giây. “Mở lưới” chủ động reset về toàn desktop.
+Pause/Stop, cancel, đổi display/geometry và expiry xóa session; một tap tiêu
+thụ session, không cho phép lặp gesture từ mapping cũ. Numbered target vẫn
+kiểm tra cửa sổ/node identity riêng. Câu ghép “chia ô2 rồi bấm ô8” bị từ chối
+nguyên câu, không thực thi vế đầu.
 
 Literal và alias hỗ trợ accent folding sau kiểm tra collision; slot text giữ NFC,
 case, dấu tiếng Việt và ký tự query có ý nghĩa. Alias app phải khớp nguyên slot;

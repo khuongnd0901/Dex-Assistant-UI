@@ -11,6 +11,17 @@ class CommandEngineTest {
     private val registry = CommandRegistry.fromJson(json)
     private val engine = LocalCommandEngine(registry)
 
+    @Test fun ownerAddressPhraseTargetsMapsWithOriginalSlotAcrossPairedContexts() {
+        for (context in listOf("maps", "youtube", "chrome", null)) {
+            val resolved = requireNotNull(engine.resolve("Tìm địa chỉ Phà Cát Lái", context))
+            assertEquals(ActionId.SEARCH_PLACE, resolved.typedAction.action)
+            assertEquals("Phà Cát Lái", resolved.typedAction.string("query"))
+        }
+        assertEquals("Phà Cát Lái", requireNotNull(engine.resolve("tìm địa chỉ Phà Cát Lái trong Google Maps")).typedAction.string("query"))
+        assertNull(engine.resolve("tìm địa chỉ Phà Cát Lái rồi mở youtube"))
+        assertEquals(ActionId.APP_PAIR_LAUNCH, requireNotNull(engine.resolve("Mở song song Google Maps và YouTube")).typedAction.action)
+    }
+
     @Test fun resolvesBundledCatalogWithTypedOriginalSlots() {
         val cases = listOf(
             Triple("mở YouTube",ActionId.APP_LAUNCH,mapOf("app" to "youtube")),

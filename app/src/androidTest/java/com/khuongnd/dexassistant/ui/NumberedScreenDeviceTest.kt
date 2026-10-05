@@ -43,13 +43,103 @@ class NumberedScreenDeviceTest {
         val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).contains(expected)
         assumeTrue("Owner has not enabled the DeX accessibility service", enabled)
-        val deadline = SystemClock.uptimeMillis() + 10_000
+        val timeoutArgument = InstrumentationRegistry.getArguments().getString("ownerAccessibilityBindTimeoutMs")
+        val bindTimeoutMs = if (timeoutArgument == null) 10_000L else {
+            val parsed = timeoutArgument.toLongOrNull()
+            assertTrue("ownerAccessibilityBindTimeoutMs must be an integer within 10000..180000", parsed != null && parsed in 10_000L..180_000L)
+            requireNotNull(parsed)
+        }
+        instrumentation.sendStatus(0, android.os.Bundle().apply {
+            putString("accessibilityReadiness", "waiting_for_owner_accessibility_bind")
+            putLong("ownerAccessibilityBindTimeoutMs", bindTimeoutMs)
+        })
+        val deadline = SystemClock.uptimeMillis() + bindTimeoutMs
         while (DexAccessibilityService.active == null && SystemClock.uptimeMillis() < deadline) Thread.sleep(50)
         val service = DexAccessibilityService.active
-        assertNotNull("Enabled DeX accessibility service did not bind within 10 seconds; this is a failure, not a skip", service)
+        assertNotNull("Enabled DeX accessibility service did not bind within $bindTimeoutMs ms; this is a failure, not a skip", service)
         assertNotNull("Bound service instance lost its framework Accessibility connection", service!!.serviceInfo)
         return service to requireNotNull(display)
     }
+    /** Uses the production voice preparation/coordinator boundaries; history is a disposable store. */
+    @Test fun voiceCoordinatorGridSubdivisionSurvivesFreshPreparationAndCompactFinals() {
+        assumeTrue("Explicit isolated voice grid fixture opt-in required",
+            InstrumentationRegistry.getArguments().getString("runVoiceGridFixture") == "true")
+        val (service, display) = desktopPrerequisites()
+        launchFixture(display)
+        instrumentation.runOnMainSync {
+            // Blank/TextView areas must accept ACTION_DOWN so the fixture receives ACTION_UP.
+            // This changes only the disposable fixture, not any owner app or service behavior.
+            val content = requireNotNull(ScreenControlFixtureActivity.active)
+                .findViewById<android.view.ViewGroup>(android.R.id.content)
+            content.getChildAt(0).isClickable = true
+        }
+        val unique = java.util.UUID.randomUUID().toString()
+        val history = CommandHistoryStore(context, "voice_grid_fixture_$unique", "voice_grid_fixture_$unique")
+        var coordinator: AssistantCoordinator? = null
+        instrumentation.runOnMainSync { coordinator = AssistantCoordinator(context, history) }
+        fun finalText(text: String): String {
+            val done = CountDownLatch(1); var status = ""
+            instrumentation.runOnMainSync {
+                coordinator!!.dispatchVoice(text) { status = it.status; done.countDown() }
+            }
+            assertTrue("Voice coordinator must complete fixture final", done.await(5, TimeUnit.SECONDS))
+            return status
+        }
+        fun voicePrepare() {
+            val done = CountDownLatch(1); var status = ""
+            instrumentation.runOnMainSync { service.prepareForVoiceCommand { status = it; done.countDown() } }
+            assertTrue(done.await(5, TimeUnit.SECONDS)); assertEquals("READY", status)
+        }
+        fun awaitDeliveredTap(): ScreenControlFixtureActivity.Tap {
+            val deadline = SystemClock.uptimeMillis() + 2_000
+            while (SystemClock.uptimeMillis() < deadline) {
+                ScreenControlFixtureActivity.lastTap?.let { return it }
+                Thread.sleep(20)
+            }
+            fail("Gesture completed but the disposable fixture did not receive ACTION_UP within 2 seconds")
+            error("unreachable")
+        }
+        try {
+            val size = Point(); display.getRealSize(size)
+            val desktop = ScreenRect(0, 0, size.x, size.y)
+            val target = requireNotNull(requireNotNull(desktop.cell(2)).cell(8))
+            assertFixtureContains(display.displayId, target)
+            for ((index, commands) in listOf("chia ô2" to "bấm ô8", "chia ô 2" to "bấm ô 8", "chia ô 2" to "bấm ô 8").withIndex()) {
+                val (split, tap) = commands
+                if (index > 0) {
+                    // Independent cases are not a platform double-tap sequence at one coordinate.
+                    Thread.sleep((android.view.ViewConfiguration.getDoubleTapTimeout() + 100).toLong())
+                }
+                // Fresh wake/button path prepares; SCREEN_CONTINUE instead starts recognition directly.
+                assertEquals("SCREEN_CONTINUE", finalText("mở lưới"))
+                voicePrepare()
+                assertEquals("SCREEN_CONTINUE", finalText(split))
+                if (index < 2) voicePrepare() // Fresh-wake regression; last case uses continuous STT without preparation.
+                assertFixtureContains(display.displayId, target)
+                ScreenControlFixtureActivity.lastTap = null
+                assertEquals("DISPATCHED", finalText(tap))
+                val observed = awaitDeliveredTap()
+                assertEquals(display.displayId, observed.displayId)
+                assertEquals(target.x, observed.x, 2f); assertEquals(target.y, observed.y, 2f)
+                assertNotEquals(desktop.cell(8)!!.x, observed.x)
+            }
+            assertEquals("SCREEN_SESSION_EXPIRED", finalText("bấm ô8"))
+            assertEquals("SCREEN_CONTINUE", finalText("mở lưới"))
+            assertEquals("SCREEN_CONTINUE", finalText("chia ô2"))
+            assertEquals("SCREEN_CONTINUE", finalText("mở lưới")) // Explicit presentation resets depth.
+            val wholeTarget = requireNotNull(desktop.cell(8))
+            assertFixtureContains(display.displayId, wholeTarget)
+            ScreenControlFixtureActivity.lastTap = null
+            assertEquals("DISPATCHED", finalText("bấm ô8"))
+            val wholeTap = awaitDeliveredTap()
+            assertEquals(wholeTarget.x, wholeTap.x, 2f); assertEquals(wholeTarget.y, wholeTap.y, 2f)
+        } finally {
+            instrumentation.runOnMainSync { service.clear(); ScreenControlFixtureActivity.active?.finish() }
+            history.flush(); history.clear()
+            context.deleteSharedPreferences("voice_grid_fixture_$unique")
+        }
+    }
+
     private fun launchFixture(display: Display) {
         val size = Point(); display.getRealSize(size)
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(display.displayId)

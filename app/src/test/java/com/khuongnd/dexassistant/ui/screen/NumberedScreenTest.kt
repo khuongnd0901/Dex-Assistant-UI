@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NumberedScreenTest {
+    @Test fun compactCellNumbersKeepWholeInputAndSubdivisionGeometry() {
+        for (phrase in listOf("chia ô2", "chia ô 2"))
+            assertEquals(ScreenCommand(ScreenVerb.SUBDIVIDE, 2), ScreenCommandParser.parse(phrase))
+        for (phrase in listOf("bấm ô8", "bấm ô 8"))
+            assertEquals(ScreenCommand(ScreenVerb.CLICK_CELL, 8), ScreenCommandParser.parse(phrase))
+        assertEquals(ScreenVerb.INVALID, ScreenCommandParser.parse("chia ô2 rồi bấm ô8")?.verb)
+        assertEquals(ScreenVerb.INVALID, ScreenCommandParser.parse("bấm ô8 và gọi mẹ")?.verb)
+        assertEquals(ScreenVerb.INVALID, ScreenCommandParser.parse("bấm ô25")?.verb)
+        val display = ScreenRect(0, 0, 1920, 1080)
+        val nested = requireNotNull(requireNotNull(display.cell(2)).cell(8))
+        assertTrue(nested.inside(requireNotNull(display.cell(2))))
+        assertNotEquals(display.cell(8), nested)
+    }
+
     @Test fun gridCoordinatesSurviveContentAndWindowsWhileTargetsRejectChanges() {
         val bounds = ScreenRect(0, 0, 1920, 1080)
         val window = ScreenWindow(1, 2, 1, bounds, true, true)

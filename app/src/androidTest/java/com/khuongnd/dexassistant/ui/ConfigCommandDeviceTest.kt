@@ -2,11 +2,13 @@ package com.khuongnd.dexassistant.ui
 
 import android.app.ActivityOptions
 import android.app.UiAutomation
+import android.content.ComponentName
 import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.khuongnd.dexassistant.ui.actions.CommandIntents
@@ -30,13 +32,44 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Default tests compile assets and exercise rejected/cancelled actions: no dispatch, prefs, history or grants. */
 @RunWith(AndroidJUnit4::class)
 class ConfigCommandDeviceTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    @Before fun preserveOwnerEnabledAccessibilityServices() {
+        assertNotNull(instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES))
+    }
+
+    private fun boundOwnerService(): DexAccessibilityService {
+        val context = instrumentation.targetContext
+        val expected = ComponentName(context, DexAccessibilityService::class.java)
+        val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).contains(expected)
+        assertTrue("Owner-enabled accessibility service required; test does not enable it", enabled)
+        val timeoutArgument = InstrumentationRegistry.getArguments().getString("ownerAccessibilityBindTimeoutMs")
+        val bindTimeoutMs = if (timeoutArgument == null) 10_000L else {
+            val parsed = timeoutArgument.toLongOrNull()
+            assertTrue("ownerAccessibilityBindTimeoutMs must be an integer within 10000..180000", parsed != null && parsed in 10_000L..180_000L)
+            requireNotNull(parsed)
+        }
+        instrumentation.sendStatus(0, Bundle().apply {
+            putString("accessibilityReadiness", "waiting_for_owner_accessibility_bind")
+            putLong("ownerAccessibilityBindTimeoutMs", bindTimeoutMs)
+        })
+        await("Enabled DeX accessibility service did not bind within $bindTimeoutMs ms", bindTimeoutMs) {
+            DexAccessibilityService.active != null
+        }
+        val service = requireNotNull(DexAccessibilityService.active)
+        assertNotNull("Bound service instance lost its framework Accessibility connection", service.serviceInfo)
+        return service
+    }
+
     private fun bundledJson(): String = instrumentation.targetContext.assets.open("commands.json").bufferedReader().use { it.readText() }
     private fun registry() = CommandRegistry.fromJson(bundledJson(), BuildConfig.VERSION_CODE)
 
@@ -199,9 +232,8 @@ class ConfigCommandDeviceTest {
     @Test fun changedSemanticTargetOnSelectedDesktopRejectsBeforeDispatch() {
         assumeTrue("Explicit isolated fixture opt-in required",
             InstrumentationRegistry.getArguments().getString("runConfigCommandFixture") == "true")
-        instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         val context = instrumentation.targetContext
-        val service = requireNotNull(DexAccessibilityService.active) { "Owner-enabled accessibility service required; test does not enable it" }
+        val service = boundOwnerService()
         val display = context.getSystemService(DisplayManager::class.java)
             .getDisplays(DexAccessibilityService.SAMSUNG_DESKTOP_CATEGORY).filter { it.isValid && it.displayId != 0 }.singleOrNull()
         assertNotNull("One selected DeX display is required", display)
@@ -233,8 +265,97 @@ class ConfigCommandDeviceTest {
             instrumentation.runOnMainSync { CommandRevalidationFixtureActivity.active?.finish() }
         }
     }
-    private fun await(message: String, ready: () -> Boolean) {
-        val deadline = SystemClock.elapsedRealtime() + 10_000
+    /** Opt-in launches Maps and YouTube on DeX; reports only result and scoped window geometry. */
+    @Test fun physicalMapsYoutubeAppPairReportsVerifiedLayout() {
+        assumeTrue("Explicit physical app-pair opt-in required",
+            InstrumentationRegistry.getArguments().getString("runPhysicalAppPair") == "true")
+        assertTrue("Physical Fold3 required", Build.MODEL.startsWith("SM-F926"))
+        val context = instrumentation.targetContext
+        val service = boundOwnerService()
+        val display = context.getSystemService(DisplayManager::class.java)
+            .getDisplays(DexAccessibilityService.SAMSUNG_DESKTOP_CATEGORY)
+            .filter { it.isValid && it.displayId != 0 }.singleOrNull()
+        assertNotNull("One selected DeX display is required", display)
+        val displayId = requireNotNull(display).displayId
+        val registry = registry()
+        val firstPackage = requireNotNull(registry.appPackage("maps"))
+        val secondPackage = requireNotNull(registry.appPackage("youtube"))
+        val complete = CountDownLatch(1)
+        var terminal: LocalResult? = null
+        instrumentation.runOnMainSync {
+            val router = ActionRouter(context, registry, LocalActionExecutor(context, DpcClient(context), registry::appPackage))
+            router.execute("physical-app-pair", ActionCatalog.validate("APP_PAIR_LAUNCH",
+                mapOf("firstApp" to "maps", "secondApp" to "youtube")), null) {
+                terminal = it
+                complete.countDown()
+            }
+        }
+        assertTrue("App-pair router must deliver a terminal result within 15 seconds", complete.await(15, TimeUnit.SECONDS))
+        val result = requireNotNull(terminal)
+        var geometry = JSONArray()
+        instrumentation.runOnMainSync {
+            geometry = JSONArray(DesktopUiAccess(service).applicationWindows(displayId)
+                .filter { it.packageName == firstPackage || it.packageName == secondPackage }
+                .map { window -> JSONObject().put("package", window.packageName)
+                    .put("left", window.bounds.left).put("top", window.bounds.top)
+                    .put("right", window.bounds.right).put("bottom", window.bounds.bottom) })
+        }
+        instrumentation.sendStatus(0, Bundle().apply {
+            putString("appPairOutcome", result.outcome.name)
+            putString("appPairErrorCode", result.errorCode)
+            putInt("appPairDisplayId", displayId)
+            putString("appPairScopedWindows", geometry.toString())
+        })
+        assertEquals("Physical router result: $result; scoped geometry: $geometry", LocalOutcome.VERIFIED, result.outcome)
+        assertEquals("APP_PAIR_VERIFIED", result.errorCode)
+    }
+
+    /** Public query fixture through the same coordinator as natural voice; owner history is untouched. */
+    @Test fun physicalMapsAddressVoiceRouteDispatchesOnSelectedDesktop() {
+        assumeTrue("Explicit physical Maps query opt-in required",
+            InstrumentationRegistry.getArguments().getString("runPhysicalMapsAddress") == "true")
+        assertTrue("Physical Fold3 required", Build.MODEL.startsWith("SM-F926"))
+        val context = instrumentation.targetContext
+        val service = boundOwnerService()
+        val access = DesktopUiAccess(service)
+        val desktop = requireNotNull(access.desktop()) { "One selected DeX display is required" }
+        val unique = java.util.UUID.randomUUID().toString()
+        val history = com.khuongnd.dexassistant.ui.history.CommandHistoryStore(context,
+            "maps_voice_fixture_$unique", "maps_voice_fixture_$unique")
+        val done = CountDownLatch(1)
+        var result: VoiceCommandResult? = null
+        try {
+            instrumentation.runOnMainSync {
+                val coordinator = AssistantCoordinator(context, history)
+                coordinator.dispatchVoice("Tìm địa chỉ Phà Cát Lái") { result = it; done.countDown() }
+            }
+            assertTrue(done.await(10, TimeUnit.SECONDS))
+            assertEquals("DISPATCHED", result?.status)
+            var publicQueryVisible = false
+            await("Public Maps query must be visible on the selected DeX display") {
+                instrumentation.runOnMainSync {
+                    val tree = access.tree()
+                    publicQueryVisible = tree?.displayId == desktop.displayId &&
+                        tree.packageName == CommandIntents.MAPS_PACKAGE && tree.nodes.any {
+                            com.khuongnd.dexassistant.ui.routing.folded(it.text).contains("pha cat lai") ||
+                                com.khuongnd.dexassistant.ui.routing.folded(it.description).contains("pha cat lai")
+                        }
+                }
+                publicQueryVisible
+            }
+            instrumentation.sendStatus(0, Bundle().apply {
+                putString("mapsVoiceStatus", result?.status)
+                putInt("mapsVoiceDisplayId", desktop.displayId)
+                putBoolean("mapsPublicQueryVisible", publicQueryVisible)
+            })
+        } finally {
+            history.flush(); history.clear()
+            context.deleteSharedPreferences("maps_voice_fixture_$unique")
+        }
+    }
+
+    private fun await(message: String, timeoutMs: Long = 10_000L, ready: () -> Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (SystemClock.elapsedRealtime() < deadline) { if (ready()) return; Thread.sleep(50) }
         fail(message)
     }

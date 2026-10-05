@@ -27,6 +27,16 @@ class DesktopUiAccess(private val service: DexAccessibilityService) {
     }
     data class AppWindow(val packageName: String, val bounds: ScreenRect)
 
+    data class Desktop(val displayId: Int, val bounds: ScreenRect)
+    /** Display identity remains available while app focus/root changes during a cold launch. */
+    fun desktop(): Desktop? = runCatching {
+        val display = service.getSystemService(DisplayManager::class.java)
+            .getDisplays(DexAccessibilityService.SAMSUNG_DESKTOP_CATEGORY)
+            .filter { it.isValid && it.displayId != Display.DEFAULT_DISPLAY }.singleOrNull() ?: return null
+        val size = android.graphics.Point(); display.getRealSize(size)
+        Desktop(display.displayId, ScreenRect(0, 0, size.x, size.y))
+    }.getOrNull()
+
     /** Read application task windows on the selected Samsung desktop, not the phone display. */
     fun applicationWindows(expectedDisplayId: Int? = null): List<AppWindow> = runCatching {
         val display = service.getSystemService(DisplayManager::class.java)

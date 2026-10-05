@@ -1,11 +1,92 @@
 # Current Android status — 2026-10-05
 
+## T-006 DeX STT subtitles — implementation and focused acceptance
+
+Command subtitles now use guarded RAM-only redacted turn state, preparing/ready/
+recognizing status, revised partials and independent three-second final expiry.
+A separate selected-DeX renderer is above numbers; grid cleanup does not own
+subtitles. Screenshot preparation and image revalidation suspend presentation
+through a reference-counted compositor detachment barrier. Interruption/unbind/
+destroy clear the store; display identity loss suppresses the current turn.
+
+JDK17 `./gradlew test lint assembleDebug assembleDebugAndroidTest --max-workers=1`
+PASS57s,124 app tests per variant, including aggregate app/DPC lint. CRLF-aware
+`git diff --check` PASS. Original-cert app/test installed-r without reset; app
+SHA25629ae7463c67dcde4ce2a4c51d4be9718d9c11954d81f0680c3eb57980dcb7997.
+Final four subtitle fixtures PASS4/4 16.688s, including renderer closure release
+on final expiry/cancellation. Latest test-only build/app lint PASS11s.
+Physical Fold3 API35 DeX focused run4PASS1SKIP16.780s: four subtitle fixtures
+pass, compact grid lacked explicit opt-in. Exact compact grid rerun with
+`runVoiceGridFixture=true` PASS1/1 5.135s. Subtitle fixtures prove visible pixels,
+focus, grid independence, suspended screenshot exclusion, production image
+preparation/revalidation+gesture, overlap/latest/cancel/expiry/interrupt and
+background no-overlay barrier completion. No broad owner-state-mutating suite.
+
+Initial owner trial found subtitles vanished after first turn; read-only metadata
+proved captures=0/detachInFlight=true. A no-overlay Choreographer wait stalled in
+the background. Fixed no-op barriers to post completion directly; actual overlays
+retain compositor barriers. All surface teardown now hides before detaching to
+prevent delayed platform attachment resurrecting old numbers. First failed trial
+remains evidence. Owner confirms subtitles on all three repeated natural turns,
+three-second final retention and stale numbers gone. Metadata on prior fixed APK
+9526b078…84c2d proves five natural/continuous turns with partial rendering before
+final by5856–16200ms. The final APK differs only by releasing its obsolete drawing
+closure during teardown; four device fixtures rerun on final hash pass. Natural
+speech was not rerun on that last privacy-only APK. Legacy API30-33/34 renderer and resize/disconnect not
+physically verified; pre-existing queued number detachment during preparation is
+not an exhaustive compositor-race guarantee. T-006 overall remains IN_PROGRESS.
+
+Evidence/logs: `/tmp/dex-fold3-20261005/subtitle-fixed-device.log`,
+`subtitle-fixed-grid.log`, `subtitle-natural-metadata.log`,
+`subtitle-fixed-natural-metadata.log`; build `/tmp/subtitle-ram-cleanup-build.log`; final device
+`/tmp/dex-fold3-20261005/subtitle-final-device.log`.
+Canonical main agent owns task/plan/SRS/evidence updates. No commit/push; preserve
+prior dirty work and owner keys/history/grants.
+
+
 Canonical tasks/decisions/protocol: `/mnt/d/DeX-Assistant/.agent/STATUS.md`.
 Current priority T-011; T-006/T-009/T-010 physical acceptance remains open.
 Owner-authorized implementation commit `15a64d3` pushed to origin/main on2026-10-05;
 backend companion `60414f0` also published. Existing EOL-only changes remain local. No
 release or physical APK install in this implementation. Preserve dirty
 changes, original signing certificate, owner history, credentials and grants.
+
+## Physical Fold3 verification2026-10-05
+Current source built on this Linux host/JDK17:117tests per variant + app lint/
+APKs PASS; original certificate used for install-r without reset. Test-only
+readiness/app-pair additions build/lint PASS. Coordinated physical17case run
+15PASS/1SKIP/1FAIL: matcher p95=0.349ms, semantic change/cancel/duplicate guards,
+eight selected-DeX grid fixtures and Maps+YouTube APP_PAIR_VERIFIED on display2
+with two960×1080 panes. Earlier first pair CANCELLED remains a cold-launch
+limitation. Real Gemini compound FAIL APP_PAIR_WINDOW_MISSING; no E2E pass.
+Samsung instrumentation restarts lose Accessibility binding; owner Settings
+toggle during explicit180s readiness restores it (default10s unchanged).
+Four voice runtime cases PASS, offline TTS synthesized. Natural wake/STT logs
+show DISPATCHED/SCREEN_CONTINUE and permission/invalid-command errors; owner
+confirms commands/cue but STT slow: ready→final6.55–10.34s versus speech-end
+→final3–18ms and final→terminal25–71ms. Partial/acoustic end unmeasured;
+next metadata/controlled endpoint diagnosis. No natural reliability/soak claim.
+ADB remains192.168.1.18:40725; actual Android path `/home/kunrg/Dex-Assistant-UI`.
+Evidence `/home/kunrg/DeX-Assistant/.agent/evidence/T-011-fold3-dex-2026-10-05.md`.
+Older device-unavailable statements below are historical. No commit/push.
+
+## Owner natural-flow corrections — physical checks and owner trial pass
+T-011/T-010: APP_PAIR_VERIFIED now speaks success; app-pair guard checks
+selected desktop identity/geometry independently of transient focused roots.
+“Tìm địa chỉ Phà Cát Lái” matches local SEARCH_PLACE with original query;
+Maps intent explicitly targets selected DeX. Compact ô2/ô8 supported; fresh
+voice preparation/button activation retains valid live subdivision without
+extending expiry. Explicit GRID resets; Pause/Stop/cancel still clear.
+Host120tests per variant/app lint/APKs PASS69s; final test-only repair build/
+lint PASS18s. Main signed/installed current app and verified device hash
+3b5fcb8d…a967. Maps public query visible on selecteddisplay2 and pair VERIFIED
+PASS; coordinator compact/spaced/fresh-prepare/continuous grid2→child8 tap
+PASS5.170s, four safety/actual expiry cases PASS54.102s. Initial touch capture
+fixture failure repaired test-only, no gesture retries/production tap changes.
+Original continuous wrong-cell cause unproven; safe depth/geometry logs added.
+Owner confirms all three corrected outcomes; live pair/descendant tap logs
+corroborate. STT delay remains open. --no-restart
+verified on Samsung preserves Accessibility. Evidence linked above. No commit.
 
 ## Latest stability review
 Android117 unit tests in each debug/release variant, app lint and APK assembly

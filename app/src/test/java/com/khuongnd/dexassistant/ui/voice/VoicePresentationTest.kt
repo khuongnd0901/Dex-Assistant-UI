@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VoicePresentationTest {
+    @Test fun verifiedPairSpeaksSuccessWhileUnobservedPairStillSpeaksFailure() {
+        assertEquals("Đã thực hiện.", VoiceResultSpeech.message("APP_PAIR_VERIFIED"))
+        assertNotEquals("Đã thực hiện.", VoiceResultSpeech.message("APP_PAIR_WINDOW_MISSING"))
+        assertNotEquals("Đã thực hiện.", VoiceResultSpeech.message("APP_PAIR_LAYOUT_UNVERIFIED"))
+        assertEquals("Đã hủy.", VoiceResultSpeech.message("CANCELLED"))
+    }
     @Test fun focusHandoffIgnoresStaleLossButRetainsOwnedFeedbackInterruption() {
         assertFalse(VoiceFocusPolicy.pauseForLoss(false, VoiceState.TRANSCRIBING))
         assertFalse(VoiceFocusPolicy.pauseForLoss(false, VoiceState.SPEAKING))

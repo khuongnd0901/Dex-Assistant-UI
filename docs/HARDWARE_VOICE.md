@@ -57,7 +57,31 @@ trễ mạng/endpoint của dịch vụ đó chưa được thay đổi bởi ch
   qua parser/executor thật, đọc lại mức âm lượng, luôn phục hồi mức và mute ban
   đầu. Không phát âm thanh trong test.
 
-Chạy instrumentation với `--no-restart`; probe giữ các dịch vụ Trợ năng đã bật.
+Chạy instrumentation với `am instrument --no-restart -r -w`; probe giữ các dịch
+vụ Trợ năng đã bật qua `FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`. Fold3 đã
+quan sát `am instrument` restart tiến trình làm mất binding; cờ `--no-restart`
+được xác minh trên thiết bị dù `am instrument --help` không liệt kê. Sau cài APK,
+kiểm tra binding thực trước khi chạy. Test không tự bật/tắt Trợ năng. Khi cần
+chủ máy bật lại qua Settings trong lúc chạy, dùng
+`-e ownerAccessibilityBindTimeoutMs 180000`; mặc định 10000 ms, giới hạn
+10000–180000 ms, vẫn fail nếu dịch vụ không bind.
+
+Các fixture opt-in mới:
+
+- `NumberedScreenDeviceTest#voiceCoordinatorGridSubdivisionSurvivesFreshPreparationAndCompactFinals`
+  với `-e runVoiceGridFixture true`: chỉ tap Activity fixture của APK; kiểm tra
+  dispatchVoice liên tục và chuẩn bị activation mới, cả ô2/ô8 và ô 2/ô 8.
+- `ConfigCommandDeviceTest#physicalMapsAddressVoiceRouteDispatchesOnSelectedDesktop`
+  với `-e runPhysicalMapsAddress true`: mở query công khai Phà Cát Lái qua
+  coordinator, kiểm tra kết quả/query trên Maps của display DeX; metadata chỉ
+  status/display/boolean. Có thay đổi màn hình Maps, không xuất nội dung khác.
+- `ConfigCommandDeviceTest#physicalMapsYoutubeAppPairReportsVerifiedLayout`
+  với `-e runPhysicalAppPair true`: mở hai app, chỉ PASS với `APP_PAIR_VERIFIED`;
+  metadata chỉ outcome/code và package/bounds thuộc hai app trên desktop.
+
+Fixture coordinator dùng history store/key riêng có tên ngẫu nhiên rồi xóa
+chính artifact đó; không đọc, reset hoặc thay đổi history/key của chủ máy.
+Không chạy rộng các legacy suites trên thiết bị chủ máy.
 Compilation hoặc direct probe không thay thế thao tác bấm chuột/vô lăng thật.
 Speech `WEB_SEARCH` là action `android.speech.action.WEB_SEARCH`; generic
 `android.intent.action.WEB_SEARCH`, `ACTION_SEARCH`, ASR intents và hands-free
@@ -65,3 +89,35 @@ actions chưa quan sát không nằm trong allowlist. Nội dung query/extras b�
 không được dùng làm câu lệnh.
 
 Tham khảo: [Android RecognizerIntent.ACTION_WEB_SEARCH](https://developer.android.com/reference/android/speech/RecognizerIntent#ACTION_WEB_SEARCH).
+
+### DeX STT subtitles (T-006)
+
+Command listening now presents transient Vietnamese subtitles only on the unique
+selected Samsung DeX display. Preparation, listening and recognition have distinct
+status labels; revised nonempty partials replace the preceding hypothesis, and
+final text remains for three seconds. Selection/confirmation and continuous grid
+reply turns use the same presentation. Diagnostic listening remains dashboard-only.
+
+Text is redacted in RAM before rendering, never stored or logged by this feature.
+Pause, Stop, cancellation and STT failure/timeout clear the presentation. Grid
+cleanup and normal return to wake standby preserve the final deadline. Display
+loss/ambiguity, Accessibility interruption/unbind and renderer failure suppress the
+current turn until a fresh listening turn. Overlays neither take focus nor accept
+input. Preparation and image-target revalidation suspend subtitles through a
+compositor detachment barrier; pending captures cannot restore stale text.
+
+The recognizer may produce no partial callbacks. Host or injected lifecycle tests
+do not prove natural partial-before-final streaming; record that physical gate
+separately from overlay rendering. This change does not reduce STT endpoint delay.
+
+Fold3 API35 DeX acceptance on 2026-10-05: owner confirmed subtitles across three
+repeated natural commands, partial-before-final and roughly three-second final
+retention. Metadata also showed continuous grid reply turns presenting subtitles.
+Focused physical tests verify screenshot exclusion, production image revalidation,
+input/focus preservation, independent grid cleanup, stale/cancel/expiry guards and
+background no-overlay barrier completion. Initial disappearing subtitles were
+repaired; failed evidence is retained in the canonical T-006 subtitle report.
+Final APK adds only teardown closure release after the owner-tested APK; four
+focused subtitle fixtures passed again on it. API30-33/34 and physical display
+resize/disconnect are still unverified. This does not close the remaining T-006
+wake accuracy, latency, microphone-route, resource and soak gates.

@@ -75,6 +75,12 @@ class LocalActionExecutor(
         if (packageName == null) LocalResult(LocalOutcome.REJECTED, "APP_NOT_CONFIGURED")
         else dispatch(CommandIntents.web(query, packageName))
 
+    fun executePlaceOnDesktop(query: String, displayId: Int): LocalResult = runCatching {
+        val intent = CommandIntents.place(query, packageAvailable(CommandIntents.MAPS_PACKAGE))
+        context.startActivity(intent, ActivityOptions.makeBasic().setLaunchDisplayId(displayId).toBundle())
+        LocalResult(LocalOutcome.DISPATCHED)
+    }.getOrElse { LocalResult(LocalOutcome.FAILED, "LAUNCH_FAILED") }
+
     /** Launch two configured app tasks on the chosen desktop; the router verifies their final windows. */
     fun launchAppPair(firstApp: String, secondApp: String, displayId: Int,
                       bounds: com.khuongnd.dexassistant.ui.screen.ScreenRect, isCurrent: () -> Boolean,

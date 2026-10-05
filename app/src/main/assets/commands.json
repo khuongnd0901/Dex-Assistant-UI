@@ -623,6 +623,8 @@
       "id": "search_place",
       "action": "SEARCH_PLACE",
       "patterns": [
+        "tìm địa chỉ {query}",
+        "tìm địa chỉ {query} trong Google Maps",
         "tìm địa điểm {query}",
         "tìm trên bản đồ {query}",
         "tìm xung quanh {query}"

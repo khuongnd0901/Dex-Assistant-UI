@@ -109,12 +109,12 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
             }
             ActionId.APP_PAIR_LAUNCH -> {
                 val access = ui()
-                val desktop = access?.tree()
+                val desktop = access?.desktop()
                 if (access == null || desktop == null) finish(LocalResult(LocalOutcome.REJECTED,"DEX_DISPLAY_UNAVAILABLE"))
                 else if (registry.appPackage(validated.string("firstApp")) == null || registry.appPackage(validated.string("secondApp")) == null)
                     finish(LocalResult(LocalOutcome.REJECTED,"APP_NOT_CONFIGURED"))
                 else executor.launchAppPair(validated.string("firstApp"),validated.string("secondApp"),desktop.displayId,desktop.bounds,{
-                    current(token) && ui()?.tree()?.let { it.displayId == desktop.displayId && it.bounds == desktop.bounds } == true
+                    current(token) && ui()?.desktop() == desktop
                 }) { result ->
                     if (!current(token)) return@launchAppPair
                     if (result.outcome != LocalOutcome.DISPATCHED) finish(result)
@@ -134,6 +134,11 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
                 if (access?.tree() == null) finish(LocalResult(LocalOutcome.REJECTED,"DEX_DISPLAY_UNAVAILABLE"))
                 else if (validated.string("operation") == "SETTINGS") access.openSettings { if (current(token)) finish(screenResult(it)) }
                 else finish(LocalResult(LocalOutcome.REJECTED,"CAPABILITY_UNAVAILABLE"))
+            }
+            ActionId.SEARCH_PLACE -> {
+                val desktop = ui()?.desktop()
+                if (desktop == null) finish(LocalResult(LocalOutcome.REJECTED,"DEX_DISPLAY_UNAVAILABLE"))
+                else finish(executor.executePlaceOnDesktop(validated.string("query"), desktop.displayId))
             }
             ActionId.APP_LAUNCH -> if (registry.appPackage(validated.string("app")) == null) finish(LocalResult(LocalOutcome.REJECTED,"APP_NOT_CONFIGURED"))
                 else executor.execute(validated) { if (current(token)) finish(it) }
@@ -167,6 +172,11 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
         val secondPackage = registry.appPackage(secondApp)
         val windows = ui()?.applicationWindows(displayId).orEmpty()
         val arranged = AppPairLayout.verified(windows,firstPackage,secondPackage,display)
+        if (arranged || SystemClock.elapsedRealtime() >= deadline) {
+            val scoped = windows.filter { it.packageName == registry.appPackage(firstApp) || it.packageName == registry.appPackage(secondApp) }
+            android.util.Log.i("DexAppPair", "observation displayId=$displayId verified=$arranged scopedWindows=" +
+                scoped.joinToString(";") { "${it.packageName}:${it.bounds.left},${it.bounds.top},${it.bounds.right},${it.bounds.bottom}" })
+        }
         if (arranged) { finish(LocalResult(LocalOutcome.VERIFIED,"APP_PAIR_VERIFIED")); return }
         val first = windows.filter { it.packageName == firstPackage }
         val second = windows.filter { it.packageName == secondPackage }

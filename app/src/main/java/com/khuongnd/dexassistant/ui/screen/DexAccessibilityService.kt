@@ -28,10 +28,19 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import com.khuongnd.dexassistant.ui.voice.VoiceCommandActivation
 import com.khuongnd.dexassistant.ui.voice.VoiceHardwareKeyGate
+import com.khuongnd.dexassistant.ui.voice.VoiceSubtitles
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 
 /** Display identity and immutable session mapping are checked again immediately before a gesture. */
 class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayListener {
     private val handler = Handler(Looper.getMainLooper())
+    private val subtitleRenderer = DexSubtitleRenderer(this)
+    private val subtitleScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val subtitleExpiry = object : Runnable { override fun run() {
+        VoiceSubtitles.store.expire(android.os.SystemClock.elapsedRealtime())
+        subtitleRenderer.render(VoiceSubtitles.store.state.value)
+    } }
     private val voiceKeys = VoiceHardwareKeyGate()
     private val analyzer = Executors.newSingleThreadExecutor()
     private val displays get() = getSystemService(DisplayManager::class.java)
@@ -50,9 +59,18 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     override fun onServiceConnected() {
         active = this
         displays.registerDisplayListener(this, handler)
+        subtitleScope.launch { VoiceSubtitles.store.state.collect { state ->
+            subtitleRenderer.render(state)
+            handler.removeCallbacks(subtitleExpiry)
+            state?.expiresAt?.let { deadline ->
+                handler.postDelayed(subtitleExpiry, (deadline - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0))
+            }
+        } }
     }
-    override fun onInterrupt() = clear()
+    override fun onUnbind(intent: android.content.Intent?): Boolean { VoiceSubtitles.store.clear(); subtitleRenderer.suppress(); clear(); return super.onUnbind(intent) }
+    override fun onInterrupt() { VoiceSubtitles.store.clear(); subtitleRenderer.suppress(); clear() }
     override fun onDestroy() {
+        VoiceSubtitles.store.clear(); subtitleRenderer.close(); subtitleScope.cancel(); handler.removeCallbacks(subtitleExpiry)
         voiceKeys.clear()
         if (active === this) active = null
         displays.unregisterDisplayListener(this)
@@ -90,6 +108,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     override fun onDisplayRemoved(displayId: Int) = validateDesktopDisplay()
     override fun onDisplayChanged(displayId: Int) = validateDesktopDisplay()
     private fun validateDesktopDisplay() {
+        subtitleRenderer.render(VoiceSubtitles.store.state.value)
         val expected = session?.snapshot ?: preparingSnapshot ?: return
         val desktops = displays.getDisplays(SAMSUNG_DESKTOP_CATEGORY).filter { it.isValid }.map { display ->
             val size = android.graphics.Point(); display.getRealSize(size)
@@ -101,6 +120,22 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         }
     }
 
+    /** A fresh voice turn must not replace a still-live explicit coordinate subdivision. */
+    fun prepareForVoiceCommand(isCurrent: () -> Boolean = { true }, complete: (String) -> Unit) {
+        val current = session
+        if (current?.grid != null) {
+            if (!isCurrent()) { complete("SCREEN_SESSION_EXPIRED"); return }
+            if (!gestureGate.isCurrent(current.id) ||
+                !matches(current.snapshot, snapshot(true), true, "voice_grid_resume")) {
+                clear(); complete("SCREEN_CHANGED"); return
+            }
+            // Do not extend the expiry: readiness is not an explicit user grid operation.
+            android.util.Log.i("DexScreen", "voice.grid_preserved depth=${current.depth} displayId=${current.snapshot.displayId}")
+            complete("READY"); return
+        }
+        prepare(isCurrent, complete)
+    }
+
     /** Screenshot timeout and failures leave accessibility/grid available. */
     fun prepare(isCurrent: () -> Boolean = { true }, complete: (String) -> Unit) {
         clear()
@@ -109,9 +144,11 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         if (original == null) { complete("DEX_DISPLAY_UNAVAILABLE"); return }
         preparingDisplayId = original.displayId; preparingSnapshot = original
         var completed = false
+        var releaseSubtitle: () -> Unit = {}
         fun finish(image: List<ScreenRect> = emptyList(), fingerprints: Map<ScreenRect, Long> = emptyMap()) {
             if (completed) return
             completed = true
+            releaseSubtitle()
             if (epoch != token) { complete("SCREEN_SESSION_EXPIRED"); return }
             if (!isCurrent()) { clear(); complete("SCREEN_SESSION_EXPIRED"); return }
             preparingDisplayId = null; preparingSnapshot = null
@@ -129,7 +166,8 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         val fallback = Runnable { android.util.Log.i("DexScreen", "prepare.fallback reason=deadline"); finish() }
         handler.postDelayed(fallback, 1500)
         runCatching {
-            takeScreenshot(original.displayId, mainExecutor, object : TakeScreenshotCallback {
+            releaseSubtitle = subtitleRenderer.suspendCapture {
+            if (!completed) runCatching { takeScreenshot(original.displayId, mainExecutor, object : TakeScreenshotCallback {
                 override fun onFailure(errorCode: Int) { android.util.Log.i("DexScreen", "prepare.fallback captureError=$errorCode"); handler.removeCallbacks(fallback); finish() }
                 override fun onSuccess(screenshot: ScreenshotResult) {
                     if (epoch != token || completed) { screenshot.hardwareBuffer.close(); return }
@@ -160,7 +198,8 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
                         bitmap.recycle(); handler.removeCallbacks(fallback); finish()
                     }
                 }
-            })
+            }) }.onFailure { handler.removeCallbacks(fallback); finish() }
+            }
         }.onFailure { handler.removeCallbacks(fallback); finish() }
     }
     private var imageTargets: List<ScreenRect> = emptyList()
@@ -191,10 +230,13 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         if (current == null) { complete("SCREEN_SESSION_EXPIRED"); return }
         if (!gestureGate.isCurrent(current.id) || !matches(current.snapshot, snapshot(current.grid != null), current.grid != null, "execute")) { clear(); complete("SCREEN_CHANGED"); return }
         val number = command.number ?: 0
+        android.util.Log.i("DexScreen", "execute verb=${command.verb} number=$number depth=${current.depth} " +
+            "displayId=${current.snapshot.displayId} grid=${current.grid}")
         if (command.verb == ScreenVerb.SUBDIVIDE) {
             val cell = current.grid?.cell(number)
             if (cell == null || current.depth >= 3) { clear(); complete("INVALID_SCREEN_CELL"); return }
             session = current.copy(grid = cell, depth = current.depth + 1)
+            android.util.Log.i("DexScreen", "subdivision depth=${current.depth + 1} grid=$cell")
             handler.removeCallbacks(expiry); handler.postDelayed(expiry, 35_000)
             refreshOverlay(complete); return
         }
@@ -210,19 +252,21 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             val token = epoch
             // Remove number badge before screenshot so it cannot pollute the retained patch signature.
             var finished = false
+            var releaseSubtitle: () -> Unit = {}
             val timeout = Runnable { if (!finished) {
                 finished = true
+                releaseSubtitle()
                 if (epoch == token) { clear(); complete("SCREEN_REVALIDATION_TIMEOUT") }
                 else complete("SCREEN_SESSION_EXPIRED")
             } }
             handler.postDelayed(timeout, 1500)
             fun reject(reason: String) {
                 if (finished) return
-                finished = true; handler.removeCallbacks(timeout)
+                finished = true; releaseSubtitle(); handler.removeCallbacks(timeout)
                 android.util.Log.i("DexScreen", "revalidation.rejected reason=$reason")
                 if (epoch == token) { clear(); complete("SCREEN_CHANGED") } else complete("SCREEN_SESSION_EXPIRED")
             }
-            runCatching { removeOverlayAfterCommit {
+            runCatching { releaseSubtitle = subtitleRenderer.suspendCapture { runCatching { removeOverlayAfterCommit {
                 if (!finished) {
                     if (token != epoch || !matches(current.snapshot, snapshot(), false, "image_revalidation")) reject("session_changed")
                     else runCatching { takeScreenshot(current.snapshot.displayId, mainExecutor, object : TakeScreenshotCallback {
@@ -234,12 +278,12 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
                             if (finished) return
                             if (!same) { reject("patch_changed"); return }
                             if (token != epoch || !matches(current.snapshot, snapshot(), false, "image_revalidation")) { reject("session_changed"); return }
-                            finished = true; handler.removeCallbacks(timeout)
+                            finished = true; releaseSubtitle(); handler.removeCallbacks(timeout)
                             sendGesture(current.snapshot.displayId, target, complete)
                         }
                     }) }.onFailure { reject("capture_exception_${it.javaClass.simpleName}") }
                 }
-            } }.onFailure { reject("detach_exception_${it.javaClass.simpleName}") }
+            } }.onFailure { reject("detach_exception_${it.javaClass.simpleName}") } } }.onFailure { reject("detach_exception_${it.javaClass.simpleName}") }
         } else sendGesture(current.snapshot.displayId, target, complete)
     }
     /** Explicit presentation never executes a tap or reuses stale numbered target identities. */
@@ -282,6 +326,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         return hash
     }
     private fun sendGesture(displayId: Int, target: ScreenRect, complete: (String) -> Unit) {
+        android.util.Log.i("DexScreen", "gesture displayId=$displayId target=$target")
         val path = Path().apply { moveTo(target.x, target.y) }
         val gesture = GestureDescription.Builder().setDisplayId(displayId)
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80)).build()
@@ -360,7 +405,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         overlayControl = null; overlaySurface = null
         try {
             SurfaceControl.Transaction().use { transaction ->
-                transaction.reparent(control, null)
+                transaction.setVisibility(control, false).reparent(control, null)
                 if (Build.VERSION.SDK_INT >= 35) transaction.addTransactionCompletedListener(mainExecutor) { detached() }
                 else transaction.addTransactionCommittedListener(mainExecutor, SurfaceControl.TransactionCommittedListener {
                     android.view.Choreographer.getInstance().postFrameCallback { detached() }
@@ -371,7 +416,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     }
     private fun removeOverlay() {
         overlayControl?.let { control -> runCatching {
-            SurfaceControl.Transaction().use { it.reparent(control, null).apply() }
+            SurfaceControl.Transaction().use { it.setVisibility(control, false).reparent(control, null).apply() }
         } }
         runCatching { overlaySurface?.release() }
         runCatching { overlayControl?.release() }
@@ -418,7 +463,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             } finally { surface.unlockCanvasAndPost(canvas) }
             attachAccessibilityOverlayToDisplay(display.displayId, control)
             SurfaceControl.Transaction().use { transaction ->
-                transaction.setPosition(control, 0f, 0f).setLayer(control, Int.MAX_VALUE)
+                transaction.setPosition(control, 0f, 0f).setLayer(control, Int.MAX_VALUE - 1)
                     .setVisibility(control, true).apply()
             }
             android.util.Log.i("DexScreen", "overlay.renderer RAW_SURFACE display=${display.displayId} api=${Build.VERSION.SDK_INT}")
@@ -441,6 +486,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.LEFT; x = 0; y = 0 }
         windowManager!!.addView(overlay, params)
+        subtitleRenderer.aboveNumbers()
     }
     companion object {
         const val SAMSUNG_DESKTOP_CATEGORY = "com.samsung.android.hardware.display.category.DESKTOP"
