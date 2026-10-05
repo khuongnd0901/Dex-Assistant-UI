@@ -3,7 +3,6 @@ package com.khuongnd.dexassistant.ui
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -18,6 +17,9 @@ import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
 import com.khuongnd.dexassistant.ui.routing.CommandPrivacy
 import com.khuongnd.dexassistant.ui.routing.LocalCommandParser
 import com.khuongnd.dexassistant.ui.routing.CapabilityRegistry
+import com.khuongnd.dexassistant.ui.execution.ActionRouter
+import com.khuongnd.dexassistant.ui.routing.CommandRegistry
+import com.khuongnd.dexassistant.ui.protocol.DeviceCommandProtocol
 import com.khuongnd.dexassistant.ui.routing.CommandRouter
 import com.khuongnd.dexassistant.ui.routing.Route
 import com.khuongnd.dexassistant.ui.security.CredentialStore
@@ -62,17 +64,22 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private val commandGate = CommandSessionGate()
     private val pendingId: String? get() = commandGate.currentId
     private var pendingProgress: ((String, String) -> Unit)? = null
+    private var pendingInteractionPrompt: ((ActionRouter.Prompt) -> Unit)? = null
+    private var activeText = ""
     private var pendingCompletion: ((VoiceCommandResult) -> Unit)? = null
     private var pendingDispatched = false
     private var backendDispatch = false
     private var remoteDispatch = false
+    private var remoteResultCode: String? = null
+    private var pendingRemoteAction: DeviceAction? = null
     private val executedActions = mutableSetOf<String>()
     private val receivedPlans = mutableSetOf<String>()
     private var connectionActive = false
     private val watchdog = Runnable { finish("ACTION_TIMEOUT", "Hết thời gian xử lý lệnh") }
+    private val commandDeadline = Runnable { finish("COMMAND_TIMEOUT", "Hết thời gian xử lý lệnh") }
     fun addObserver(observer: (UiState) -> Unit) { observers.add(observer); observer(state) }
     fun removeObserver(observer: (UiState) -> Unit) { observers.remove(observer) }
-    fun dispatchVoice(text: String, progress: ((String, String) -> Unit)? = null, completion: (VoiceCommandResult) -> Unit): String {
+    fun dispatchVoice(text: String, progress: ((String, String) -> Unit)? = null, interaction: ((ActionRouter.Prompt) -> Unit)? = null, completion: (VoiceCommandResult) -> Unit): String {
         val id = UUID.randomUUID().toString()
         commandGate.enqueue(id)
         // Always enqueue so callers can retain the returned correlation ID before completion.
@@ -81,11 +88,12 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             if (admitted == null) completion(VoiceCommandResult(id, "CANCELLED", "Đã dừng"))
             else if (!admitted) completion(VoiceCommandResult(id, "COMMAND_IN_PROGRESS", "Đang xử lý lệnh trước"))
             else {
-                pendingCompletion = completion; pendingProgress = progress; pendingDispatched = false
+                pendingCompletion = completion; pendingProgress = progress; pendingInteractionPrompt = interaction; pendingDispatched = false; activeText = text
+                backendDispatch = false; remoteDispatch = false; remoteResultCode = null; executedActions.clear(); receivedPlans.clear()
                 progress?.invoke(id, "ROUTING")
                 if (pendingId != id) return@post
-                backendDispatch = false; remoteDispatch = false; executedActions.clear(); receivedPlans.clear()
                 main.postDelayed(watchdog, 30_000)
+                main.postDelayed(commandDeadline, 120_000)
                 if (text.isBlank()) finish("NO_SPEECH", "Chưa nghe rõ lệnh") else send(text)
             }
         }
@@ -98,10 +106,27 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             finish("CANCELLED", "Đã dừng")
         } }
     }
+    fun isAwaitingInteraction(requestId: String) = pendingId == requestId && actionRouter.awaitingInteraction
+    fun interactionPromptFinished(prompt: ActionRouter.Prompt, success: Boolean): Boolean =
+        pendingId == prompt.parentId && actionRouter.promptFinished(prompt, success)
+    fun continueInteraction(requestId: String, text: String): Boolean {
+        if (pendingId != requestId || !actionRouter.awaitingInteraction) return false
+        if (actionRouter.continueInteraction(text)) return true
+        // A new final command replaces the interaction; the old completion must not speak over it.
+        recordHistory(activeText, if (backendDispatch) Route.BACKEND_REQUIRED.name else Route.LOCAL.name, null, "CANCELLED")
+        pendingCompletion = null
+        finish("CANCELLED", "Đã hủy lệnh trước")
+        return false
+    }
     private fun finish(status: String, message: String) {
         val id = pendingId ?: return
         val callback = pendingCompletion
-        commandGate.finish(id); pendingCompletion = null; pendingProgress = null; main.removeCallbacks(watchdog)
+        pendingRemoteAction?.also { action ->
+            pendingRemoteAction = null
+            webSocket.sendActionResult(action.planId, action.actionId, "REJECTED", status)
+        }
+        commandGate.finish(id); pendingCompletion = null; pendingProgress = null; pendingInteractionPrompt = null; main.removeCallbacks(watchdog); main.removeCallbacks(commandDeadline); actionRouter.cancel()
+        if (backendDispatch) recordHistory(activeText, Route.BACKEND_REQUIRED.name, null, status)
         callback?.invoke(VoiceCommandResult(id, status, message))
     }
     private val main = Handler(Looper.getMainLooper())
@@ -111,9 +136,11 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private val voiceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> refreshVoiceHealth() }
     private val dpc = DpcClient(context)
     private val webSocket = AssistantWebSocket(this)
-    private val parser = LocalCommandParser()
+    private val commandRegistry = CommandRegistry.load(context)
+    private val parser = LocalCommandParser(commandRegistry)
     private val router = CommandRouter(parser, CapabilityRegistry(context))
-    private val localExecutor = LocalActionExecutor(context, dpc)
+    private val localExecutor = LocalActionExecutor(context, dpc, commandRegistry::appPackage)
+    private val actionRouter = ActionRouter(context, commandRegistry, localExecutor)
     private val historyPublication = com.khuongnd.dexassistant.ui.history.HistoryPublicationGate()
     private var state = UiState(endpoint = preferences.getString("endpoint", "") ?: "")
 
@@ -194,7 +221,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             return
         }
         val activeRequestId = pendingId
-        val decision = router.route(text)
+        val decision = router.route(text, actionRouter.foregroundAppId())
         val routed = decision.command
         when (routed.route) {
             Route.LOCAL -> if (decision.capability?.available == false) {
@@ -203,7 +230,11 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             } else {
                 pendingId?.let { pendingProgress?.invoke(it, "EXECUTING") }
                 if (pendingId != activeRequestId) return
-                localExecutor.execute(routed) { result -> onMain {
+                val typed = routed.resolved?.typedAction
+                if (typed == null) { finish("INVALID_ARGUMENTS", "Lệnh chưa hợp lệ"); return }
+                main.removeCallbacks(watchdog)
+                actionRouter.execute(activeRequestId!!, typed, pendingInteractionPrompt, routed.resolved.commandId,
+                    localCommandId = routed.resolved.commandId) { result -> onMain {
                 if (pendingId != activeRequestId) return@onMain
                 recordHistory(text, routed.route.name, routed.intent?.name, result.errorCode ?: result.outcome.name)
                 state = state.copy(status = result.outcome.name, message = result.errorCode ?: result.outcome.name); publish()
@@ -213,12 +244,17 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                     else -> "Không thực hiện được lệnh"
                 })
             } } }
-            Route.UNSUPPORTED -> { recordHistory(text, routed.route.name, null, "UNSUPPORTED_COMMAND"); update("UNSUPPORTED", "Lệnh chưa được hỗ trợ") }
+            Route.UNSUPPORTED -> {
+                val reason = routed.arguments["reason"] ?: "UNSUPPORTED_COMMAND"
+                recordHistory(text, routed.route.name, null, reason)
+                state = state.copy(status = reason, message = "Lệnh chưa được hỗ trợ"); publish()
+                finish(reason, "Lệnh chưa được hỗ trợ")
+            }
             Route.BACKEND_REQUIRED -> runCatching {
                 backendDispatch = true
                 pendingId?.let { pendingProgress?.invoke(it, "SENDING") }
                 check(pendingId == activeRequestId) { "Command cancelled" }
-                webSocket.sendCommand(text, UUID.fromString(pendingId))
+                webSocket.sendCommand(text, UUID.fromString(pendingId), DeviceCommandProtocol.capabilities(commandRegistry, actionRouter.supportedActions()))
             }
                 .onSuccess { recordHistory(text, routed.route.name, null, "SENT"); state = state.copy(lastRequestId = it.toString(), message = "Command sent"); publish() }
                 .onFailure { recordHistory(text, routed.route.name, null, "AI_UNAVAILABLE"); update("SEND_FAILED", "Khó quá, không làm được") }
@@ -291,59 +327,43 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         if (pendingId != requestId || !backendDispatch) return@onMain
         val planId = actions.firstOrNull()?.planId ?: return@onMain
         if (receivedPlans.isNotEmpty() || !receivedPlans.add(planId)) return@onMain
+        if (actions.size > 8 || actions.map { it.actionId }.distinct().size != actions.size || actions.any { it.planId != planId }) {
+            finish("INVALID_MESSAGE", "Kế hoạch chưa hợp lệ"); return@onMain
+        }
         pendingProgress?.invoke(requestId, "EXECUTING")
         executeActions(requestId, actions, 0)
     }
     private fun executeActions(requestId: String, actions: List<DeviceAction>, index: Int) {
-        if (pendingId != requestId || index >= actions.size) return
+        if (pendingId != requestId) return
+        if (index >= actions.size) { main.postDelayed(watchdog, 30_000); return }
         val action = actions[index]
-        if (action.executionMode != "REMOTE" || !executedActions.add(action.actionId)) {
-            executeActions(requestId, actions, index + 1); return
-        }
-        when (action.tool) {
-            "LAUNCH_APP" -> { remoteDispatch = true; launchApp(action) { success -> if (success) executeActions(requestId, actions, index + 1) } }
-            "TOGGLE_WIFI" -> toggleWifi(action) { success -> if (success) executeActions(requestId, actions, index + 1) }
-            else -> webSocket.sendActionResult(action.planId, action.actionId, "REJECTED", "POLICY_DENIED")
-        }
-    }
-
-    private fun launchApp(action: DeviceAction, complete: (Boolean) -> Unit) {
-        onMetric("action.start", action.actionId, SystemClock.elapsedRealtimeNanos())
-        val packageName = action.arguments.optString("packageName")
-        val deepLink = action.arguments.optString("deepLink").takeIf { it.isNotBlank() && it != "null" }
-        val intent = if (deepLink != null) {
-            Intent(Intent.ACTION_VIEW, Uri.parse(deepLink)).setPackage(packageName)
-        } else {
-            context.packageManager.getLaunchIntentForPackage(packageName)
-        }
-        if (intent == null) {
-            webSocket.sendActionResult(action.planId, action.actionId, "FAILED", "APP_NOT_FOUND")
-            complete(false)
+        if (!executedActions.add(action.actionId)) { finish("INVALID_MESSAGE", "Kế hoạch có thao tác trùng"); return }
+        val typed = runCatching { DeviceCommandProtocol.decode(action, commandRegistry, actionRouter.supportedActions()) }.getOrNull()
+        if (typed == null) {
+            webSocket.sendActionResult(action.planId, action.actionId, "REJECTED", "POLICY_DENIED")
+            main.postDelayed(watchdog, 30_000)
             return
         }
-        val result = runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        webSocket.sendActionResult(action.planId, action.actionId,
-            if (result.isSuccess) "SUCCESS" else "FAILED",
-            if (result.isSuccess) null else "APP_NOT_FOUND")
-        onMetric("action.result", action.actionId, SystemClock.elapsedRealtimeNanos())
-        complete(result.isSuccess)
-    }
-
-    private fun toggleWifi(action: DeviceAction, complete: (Boolean) -> Unit) {
+        main.removeCallbacks(watchdog)
         onMetric("action.start", action.actionId, SystemClock.elapsedRealtimeNanos())
-        val requestId = pendingId
-        dpc.toggleWifi(action.arguments.getBoolean("enabled")) { result -> onMain {
-            if (pendingId != requestId) return@onMain
-            webSocket.sendActionResult(action.planId, action.actionId, result.status, result.errorCode)
+        pendingRemoteAction = action
+        actionRouter.execute(requestId, typed, pendingInteractionPrompt, action.actionId) { result -> onMain {
+            if (pendingId != requestId || pendingRemoteAction?.actionId != action.actionId) return@onMain
+            pendingRemoteAction = null
+            val success = result.outcome.name in setOf("DISPATCHED", "VERIFIED")
+            if (result.outcome.name == "DISPATCHED") remoteDispatch = true
+            remoteResultCode = result.errorCode
+            webSocket.sendActionResult(action.planId, action.actionId,
+                if (success) "SUCCESS" else if (result.outcome.name == "REJECTED") "REJECTED" else "FAILED", result.errorCode)
             onMetric("action.result", action.actionId, SystemClock.elapsedRealtimeNanos())
-            complete(result.status == "SUCCESS")
+            if (success) executeActions(requestId, actions, index + 1) else main.postDelayed(watchdog, 30_000)
         } }
     }
 
     override fun onError(message: String) = onMain { update("ERROR", message) }
     override fun onCommandCompleted(requestId: String, status: String) = onMain {
         if (pendingId == requestId && backendDispatch) finish(
-            if (status == "EXECUTED") if (remoteDispatch) "DISPATCHED" else "VERIFIED" else status,
+            if (status == "EXECUTED") remoteResultCode ?: if (remoteDispatch) "DISPATCHED" else "VERIFIED" else remoteResultCode ?: status,
             when (status) {
                 "EXECUTED" -> if (remoteDispatch) "Đã gửi yêu cầu thực hiện" else "Đã thực hiện"
                 "PLANNED" -> "Đã lập kế hoạch, chưa thực hiện trên máy"

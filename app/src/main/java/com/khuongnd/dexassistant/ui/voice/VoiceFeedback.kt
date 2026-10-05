@@ -19,7 +19,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
     private var initialized = false
     private var closed = false
     private var pending: (() -> Unit)? = null
-    private var completion: (() -> Unit)? = null
+    private var completion: ((Boolean) -> Unit)? = null
     private var utterance: String? = null
     var voiceDescription = "TTS_INITIALIZING"
         private set
@@ -117,12 +117,15 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         val epoch = utterance?.removePrefix("voice-")?.toLongOrNull() ?: -1L
         android.util.Log.i("DexVoiceTiming", "epoch=$epoch stage=$stage atMs=${android.os.SystemClock.elapsedRealtime()}")
     }
-    fun speak(text: String, id: String, done: () -> Unit) {
-        if (closed) { done(); return }
-        if (!initialized) { pending = { speak(text, id, done) }; return }
+    fun speak(text: String, id: String, done: () -> Unit) = speakWithResult(text, id) { done() }
+    /** Interactive prompts only continue after successful synthesis; a tone cannot authorize an action. */
+    fun speakInteraction(text: String, id: String, done: (Boolean) -> Unit) = speakWithResult(text, id, done)
+    private fun speakWithResult(text: String, id: String, done: (Boolean) -> Unit) {
+        if (closed) { done(false); return }
+        if (!initialized) { pending = { speakWithResult(text, id, done) }; return }
         if (!ready) {
             tone.startTone(ToneGenerator.TONE_PROP_NACK, 120)
-            done()
+            done(false)
             return
         }
         utterance = id
@@ -139,7 +142,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
             utterance = null
             describe(if (failed) "TTS_PLAYBACK_FAILED" else if (selectedNetwork) "TTS_VI_NETWORK_SYNTHESIZED" else "TTS_VI_OFFLINE_SYNTHESIZED")
             if (failed) tone.startTone(ToneGenerator.TONE_PROP_NACK, 120)
-            completion?.also { completion = null; it() }
+            completion?.also { completion = null; it(!failed) }
         }
     }
 

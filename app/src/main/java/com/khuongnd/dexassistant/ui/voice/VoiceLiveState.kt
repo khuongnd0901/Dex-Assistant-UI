@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.asStateFlow
 data class LiveVoiceState(val transcript: String = "", val final: Boolean = false, val diagnostic: Boolean = false, val microphone: String = "Chưa đo micro", val ready: Boolean = false)
 /** RAM only. Never written to preferences/history/logs or sent by a partial callback. */
 object VoiceLiveState {
+    private val combiningMarks = Regex("\\p{M}+")
+    private val credentialCue = Regex("\\b(?:mat|khau|ma|pass\\w*|bear\\w*|tok\\w*|secr\\w*|api)\\b")
     private val mutable = MutableStateFlow(LiveVoiceState())
     val state = mutable.asStateFlow()
     fun begin(diagnostic: Boolean) { mutable.value = LiveVoiceState(diagnostic = diagnostic) }
@@ -14,10 +16,9 @@ object VoiceLiveState {
     fun ready(value: Boolean) { mutable.value = mutable.value.copy(ready = value) }
     fun microphone(detail: String) { mutable.value = mutable.value.copy(microphone = detail.take(180)) }
     fun safeTranscript(text: String): String {
-        val folded = java.text.Normalizer.normalize(text.lowercase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").replace('đ', 'd')
+        val folded = java.text.Normalizer.normalize(text.lowercase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFD).replace(combiningMarks, "").replace('đ', 'd')
         // Mask credential cues even while a partial result contains only the prefix of a keyword.
-        val cue = Regex("\\b(?:mat|khau|ma|pass\\w*|bear\\w*|tok\\w*|secr\\w*|api)\\b")
-        return if (cue.containsMatchIn(folded)) "[REDACTED]" else CommandPrivacy.redact(text)
+        return if (credentialCue.containsMatchIn(folded)) "[REDACTED]" else CommandPrivacy.redact(text)
     }
     fun clear() { mutable.value = LiveVoiceState() }
 }

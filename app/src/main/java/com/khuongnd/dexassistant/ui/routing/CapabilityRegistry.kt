@@ -18,8 +18,8 @@ class CommandRouter(
     private val registry: CapabilityRegistry,
 ) {
     data class Decision(val command: RoutedCommand, val capability: Capability?)
-    fun route(text: String): Decision {
-        val command = parser.route(text)
+    fun route(text: String, foregroundAppId: String? = null): Decision {
+        val command = parser.route(text, foregroundAppId)
         return Decision(command, command.intent?.let(registry::capability))
     }
 }

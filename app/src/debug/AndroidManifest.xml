@@ -5,5 +5,5 @@
         <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
     </queries>
-    <application><activity android:name=".screen.ScreenControlFixtureActivity" android:exported="false" android:resizeableActivity="true" /></application>
+    <application><activity android:name=".screen.ScreenControlFixtureActivity" android:exported="false" android:resizeableActivity="true" /><activity android:name=".screen.CommandRevalidationFixtureActivity" android:exported="false" android:resizeableActivity="true" /></application>
 </manifest>

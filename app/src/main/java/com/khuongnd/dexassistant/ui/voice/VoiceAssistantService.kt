@@ -36,6 +36,7 @@ import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
 class VoiceAssistantService : Service() {
     private val stateMachine = VoiceStateMachine()
     private val sessions = VoiceSessionGuard()
+    private val feedbackSessions = FeedbackSessionGuard()
     private val preferences by lazy { getSharedPreferences(HEALTH_PREFERENCES, MODE_PRIVATE) }
     private val main = Handler(Looper.getMainLooper())
     private val wakeWorker = Executors.newSingleThreadExecutor()
@@ -48,6 +49,7 @@ class VoiceAssistantService : Service() {
     private var watchdog: Runnable? = null
     private var feedbackWatchdog: Runnable? = null
     private var commandId: String? = null
+    private var commandVoiceEpoch: Long? = null
     private var lastDetail = "Initializing voice pipeline"
     private lateinit var feedback: VoiceFeedback
     private val coordinator by lazy { AssistantController.shared(this) }
@@ -363,31 +365,77 @@ class VoiceAssistantService : Service() {
             android.util.Log.i("DexMetric", "stt.final sessionId=$id elapsedNanos=${SystemClock.elapsedRealtimeNanos()}")
             transitionSafely(VoiceEvent.FINAL_TEXT)
             report("Routing final Vietnamese command")
+            commandVoiceEpoch = id
+            val parentCommand = commandId
+            if (parentCommand != null && coordinator.isAwaitingInteraction(parentCommand)) {
+                if (coordinator.continueInteraction(parentCommand, text)) return
+                commandId = null
+            }
             var returnedId: String? = null
             var completedSynchronously = false
             timing(id, "command_dispatch")
             val requestId = coordinator.dispatchVoice(text, progress = { request, stage ->
-                if (sessions.isCurrent(id) && (commandId == request || returnedId == null)) {
+                if (commandVoiceEpoch?.let(sessions::isCurrent) == true && (commandId == request || returnedId == null)) {
                     if (stage == "SENDING" && stateMachine.state == VoiceState.ROUTING) transitionSafely(VoiceEvent.BACKEND_SENT)
                     if (stage == "EXECUTING" && stateMachine.state in setOf(VoiceState.ROUTING, VoiceState.SENDING)) {
                         transitionSafely(VoiceEvent.PLAN_RECEIVED)
                     }
                     report("$stage requestId=$request")
                 }
+            }, interaction = { prompt ->
+                if (commandId == prompt.parentId && commandVoiceEpoch?.let(sessions::isCurrent) == true) speakInteractionPrompt(prompt)
             }) { result ->
-                if (!sessions.isCurrent(id)) return@dispatchVoice
-                timing(id, "command_terminal", result.status)
+                val activeEpoch = commandVoiceEpoch ?: return@dispatchVoice
+                if (!sessions.isCurrent(activeEpoch) || (commandId != result.requestId && returnedId != null)) return@dispatchVoice
+                timing(activeEpoch, "command_terminal", result.status)
                 completedSynchronously = true
                 if (commandId == result.requestId || returnedId == null) commandId = null
                 if (result.status == "SCREEN_CONTINUE") {
                     transitionSafely(VoiceEvent.COMMAND_FINISHED)
                     transitionSafely(VoiceEvent.WAKE)
                     startRecognition(sessions.begin())
-                } else finishWithFeedback(id, spokenResult(result.status), result.status)
+                } else finishWithFeedback(activeEpoch, spokenResult(result.status), result.status)
             }
             returnedId = requestId
             if (!completedSynchronously && sessions.isCurrent(id)) commandId = requestId
         }
+    }
+
+    private fun speakInteractionPrompt(prompt: com.khuongnd.dexassistant.ui.execution.ActionRouter.Prompt) {
+        val epoch = commandVoiceEpoch ?: return
+        if (!sessions.isCurrent(epoch)) return
+        destroyRecognizer()
+        val playback = beginFeedback()
+        transitionSafely(VoiceEvent.SPEAK)
+        report("VOICE_INTERACTION")
+        feedbackWatchdog?.let(main::removeCallbacks)
+        feedbackWatchdog = Runnable {
+            if (feedbackSessions.isCurrent(playback) && commandId == prompt.parentId && sessions.isCurrent(epoch)) {
+                feedback.timeout()
+                if (feedbackSessions.consume(playback)) {
+                    feedbackWatchdog = null
+                    abandonFocus()
+                    coordinator.interactionPromptFinished(prompt, false)
+                }
+            }
+        }.also { main.postDelayed(it, 30_000) }
+        val request = newFocusRequest(++focusGeneration)
+        focusRequest = request
+        focusHeld = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        val completed: (Boolean) -> Unit = { success ->
+            if (commandId == prompt.parentId && sessions.isCurrent(epoch) && feedbackSessions.consume(playback)) {
+                feedbackWatchdog?.let(main::removeCallbacks); feedbackWatchdog = null
+                abandonFocus()
+                if (coordinator.interactionPromptFinished(prompt, success)) {
+                    transitionSafely(VoiceEvent.INTERACTION_LISTEN)
+                    val replyEpoch = sessions.begin()
+                    commandVoiceEpoch = replyEpoch
+                    startRecognition(replyEpoch)
+                }
+            }
+        }
+        if (focusHeld) feedback.speakInteraction(prompt.text, "interaction-${prompt.token}-${prompt.version}", completed)
+        else completed(false)
     }
 
     private fun finishDiagnostic(id: Long, outcome: String) {
@@ -406,6 +454,20 @@ class VoiceAssistantService : Service() {
         "ACCESSIBILITY_PERMISSION_REQUIRED" -> "Hãy bật dịch vụ Trợ năng DeX trong cài đặt."
         "SCREEN_SESSION_EXPIRED", "SCREEN_CHANGED" -> "Màn hình đã thay đổi. Hãy gọi lại."
         "INVALID_SCREEN_NUMBER", "INVALID_SCREEN_CELL", "INVALID_SCREEN_COMMAND" -> "Số hoặc lệnh chưa hợp lệ. Hãy gọi lại."
+        "DIALER_OPENED" -> "Đã mở màn hình quay số, chưa gọi."
+        "DIRECTIONS_OPENED" -> "Đã mở chỉ đường, chưa bắt đầu dẫn đường."
+        "PLACE_ALIAS_NOT_CONFIGURED" -> "Chưa có địa chỉ nhà hoặc công ty. Hãy cấu hình địa chỉ trong cài đặt DeX."
+        "CONTACTS_PERMISSION_REQUIRED" -> "Hãy cấp quyền danh bạ trong cài đặt DeX."
+        "INTERACTION_TIMEOUT", "TTS_FAILED", "TTS_TIMEOUT", "COMMAND_TIMEOUT" -> "Đã hủy vì hết thời gian hoặc không đọc được lời xác nhận."
+        "AMBIGUOUS_PHONE_NUMBER" -> "Số điện thoại chưa rõ. Hãy đọc lại từng chữ số."
+        "NO_PENDING_INTERACTION" -> "Không có yêu cầu đang chờ xác nhận hoặc lựa chọn."
+        "NOTIFICATION_ACCESS_REQUIRED" -> "Hãy bật quyền truy cập thông báo trong cài đặt DeX để tua nhạc."
+        "POLICY_CHANGED" -> "Quyền gọi đã thay đổi. Đã hủy yêu cầu."
+        "RECIPIENT_CHANGED" -> "Người nhận đã thay đổi. Đã hủy gọi."
+        "TARGET_TOO_MANY" -> "Có quá nhiều lựa chọn. Hãy nói tên đầy đủ hoặc số điện thoại cụ thể hơn."
+        "YOUTUBE_RESULTS_UNAVAILABLE" -> "Chưa đọc được kết quả tìm YouTube trên màn hình DeX. Hãy thử lại."
+        "APP_CONTEXT_REQUIRED" -> "Hãy mở đúng ứng dụng trên màn hình DeX."
+        "CAPABILITY_UNAVAILABLE" -> "Chức năng này chưa sẵn sàng."
         "PLANNED" -> "Đã lập kế hoạch, chưa thực hiện trên máy."
         "UNSUPPORTED", "LOCAL_ONLY_UNSUPPORTED" -> "Lệnh này chưa được hỗ trợ."
         "AI_UNAVAILABLE", "AI_TIMEOUT", "AI_QUOTA_EXHAUSTED", "SEND_FAILED" -> "Khó quá, không làm được."
@@ -417,12 +479,16 @@ class VoiceAssistantService : Service() {
         DexAccessibilityService.active?.clear()
         destroyRecognizer()
         if (diagnosticOnly) { finishDiagnostic(id, code); return }
+        val abandoned = commandId
+        commandId = null
+        abandoned?.let(coordinator::cancelVoice)
+        val playback = beginFeedback()
         val feedbackStarted = SystemClock.elapsedRealtime()
         android.util.Log.i("DexVoiceTiming", "epoch=$id stage=feedback_requested atMs=$feedbackStarted")
         transitionSafely(VoiceEvent.SPEAK)
         report("$code; ${feedback.voiceDescription}")
         val completed = {
-            if (sessions.isCurrent(id) && stateMachine.state == VoiceState.SPEAKING) {
+            if (sessions.isCurrent(id) && stateMachine.state == VoiceState.SPEAKING && feedbackSessions.consume(playback)) {
                 feedbackWatchdog?.let(main::removeCallbacks)
                 feedbackWatchdog = null
                 val now = SystemClock.elapsedRealtime()
@@ -433,8 +499,10 @@ class VoiceAssistantService : Service() {
             }
         }
         feedbackWatchdog = Runnable {
-            feedback.timeout()
-            completed()
+            if (feedbackSessions.isCurrent(playback) && sessions.isCurrent(id)) {
+                feedback.timeout()
+                completed()
+            }
         }.also { main.postDelayed(it, 4_000) }
         val request = newFocusRequest(++focusGeneration)
         focusRequest = request
@@ -455,6 +523,7 @@ class VoiceAssistantService : Service() {
 
     private fun cancelSession() {
         diagnosticOnly = false
+        feedbackSessions.cancel()
         DexAccessibilityService.active?.clear()
         sessions.cancel()
         if (wakeLock.isHeld) wakeLock.release()
@@ -463,10 +532,20 @@ class VoiceAssistantService : Service() {
         destroyRecognizer()
         commandId?.let(coordinator::cancelVoice)
         commandId = null
+        commandVoiceEpoch = null
         feedbackWatchdog?.let(main::removeCallbacks)
         feedbackWatchdog = null
         if (::feedback.isInitialized) feedback.cancel()
         abandonFocus()
+    }
+
+    private fun beginFeedback(): Long {
+        val playback = feedbackSessions.begin()
+        feedbackWatchdog?.let(main::removeCallbacks)
+        feedbackWatchdog = null
+        feedback.cancel()
+        abandonFocus()
+        return playback
     }
 
     private fun abandonFocus() {

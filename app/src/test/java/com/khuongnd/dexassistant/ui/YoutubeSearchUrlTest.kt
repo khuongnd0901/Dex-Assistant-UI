@@ -10,9 +10,9 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class YoutubeSearchUrlTest {
-    @Test fun vietnameseQueryRetainsWholeNormalizedPhrase() {
+    @Test fun vietnameseQueryExtractsOriginalSlot() {
         val query = LocalCommandParser().route("Tìm nhạc Sơn Tùng").arguments.getValue("query")
-        assertEquals("tìm nhạc sơn tùng", query)
+        assertEquals("Sơn Tùng", query)
         assertResultsQuery(query)
     }
 

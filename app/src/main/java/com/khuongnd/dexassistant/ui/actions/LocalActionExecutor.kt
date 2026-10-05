@@ -3,38 +3,154 @@ package com.khuongnd.dexassistant.ui.actions
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.app.ActivityOptions
+import android.graphics.Rect
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.KeyEvent
 import com.khuongnd.dexassistant.ui.device.DpcClient
 import com.khuongnd.dexassistant.ui.routing.LocalIntent
 import com.khuongnd.dexassistant.ui.routing.RoutedCommand
-import com.khuongnd.dexassistant.ui.routing.LocalCommandParser
+import android.Manifest
+import android.net.Uri
+import com.khuongnd.dexassistant.ui.routing.ActionCatalog
+import com.khuongnd.dexassistant.ui.routing.ActionId
+import com.khuongnd.dexassistant.ui.routing.TypedAction
+import com.khuongnd.dexassistant.ui.routing.CommandRegistry
+import com.khuongnd.dexassistant.ui.localdata.ContactCandidate
+import com.khuongnd.dexassistant.ui.localdata.ContactIdentity
+import com.khuongnd.dexassistant.ui.localdata.ContactResolver
+import com.khuongnd.dexassistant.ui.localdata.LocalAliases
+import com.khuongnd.dexassistant.ui.media.MediaSeek
 import kotlin.math.roundToInt
 
 enum class LocalOutcome { VERIFIED, DISPATCHED, FAILED, REJECTED }
 data class LocalResult(val outcome: LocalOutcome, val errorCode: String? = null)
 
-class LocalActionExecutor(private val context: Context, private val dpc: DpcClient) {
-    fun execute(command: RoutedCommand, complete: (LocalResult) -> Unit) {
-        when (command.intent) {
-            LocalIntent.APP_LAUNCH -> complete(launchApp(command.arguments.getValue("alias")))
-            LocalIntent.WIFI_SET -> dpc.toggleWifi(command.arguments.getValue("enabled").toBoolean()) {
+class LocalActionExecutor(
+    private val context: Context, private val dpc: DpcClient,
+    private val appPackage: (String) -> String? = CommandRegistry.load(context)::appPackage,
+) {
+    private val aliases = LocalAliases(context)
+    val contacts = ContactResolver(context, aliases)
+
+    /** Both local and remote typed actions enter this boundary; sensitive calls require continuation. */
+    fun execute(action: TypedAction, complete: (LocalResult) -> Unit) {
+        val validated = runCatching { ActionCatalog.validate(action.action.name, action.params) }.getOrNull()
+        if (validated == null) { complete(LocalResult(LocalOutcome.REJECTED, "INVALID_ARGUMENTS")); return }
+        val args = validated.params.mapValues { it.value.toString() }
+        when (validated.action) {
+            ActionId.APP_LAUNCH -> complete(launchAppId(args.getValue("app")))
+            ActionId.APP_PAIR_LAUNCH -> complete(LocalResult(LocalOutcome.REJECTED,"DEX_DISPLAY_REQUIRED"))
+            ActionId.WIFI_SET -> dpc.toggleWifi(validated.params.getValue("enabled") as Boolean) {
                 complete(LocalResult(if (it.status == "SUCCESS") LocalOutcome.VERIFIED else if (it.status == "REJECTED") LocalOutcome.REJECTED else LocalOutcome.FAILED, it.errorCode))
             }
-            LocalIntent.BLUETOOTH_SET -> complete(LocalResult(LocalOutcome.FAILED, "CAPABILITY_UNAVAILABLE"))
-            LocalIntent.VOLUME_SET -> complete(volume(command.arguments))
-            LocalIntent.BRIGHTNESS_SET -> complete(brightness(command.arguments))
-            LocalIntent.MEDIA_TRANSPORT -> complete(media(command.arguments.getValue("operation")))
-            LocalIntent.YOUTUBE_SEARCH -> complete(youtube(command.arguments.getValue("query")))
-            null -> complete(LocalResult(LocalOutcome.REJECTED, "UNSUPPORTED_COMMAND"))
+            ActionId.BLUETOOTH_SET -> complete(LocalResult(LocalOutcome.REJECTED, "CAPABILITY_UNAVAILABLE"))
+            ActionId.VOLUME_SET -> complete(volume(args))
+            ActionId.BRIGHTNESS_SET -> complete(brightness(args))
+            ActionId.MEDIA_TRANSPORT -> complete(media(args.getValue("operation")))
+            ActionId.MEDIA_SEEK -> complete(MediaSeek(context).execute(args.getValue("operation"), args.getValue("seconds").toInt()))
+            ActionId.YOUTUBE_SEARCH -> complete(youtube(args.getValue("query")))
+            ActionId.SEARCH_PLACE -> complete(dispatch(CommandIntents.place(args.getValue("query"), packageAvailable(CommandIntents.MAPS_PACKAGE))))
+            ActionId.NAVIGATE -> {
+                val destination = aliases.place(args.getValue("destination"))
+                if (destination == null) complete(LocalResult(LocalOutcome.REJECTED, "PLACE_ALIAS_NOT_CONFIGURED"))
+                else {
+                    val inApp = packageAvailable(CommandIntents.MAPS_PACKAGE)
+                    val result = dispatch(CommandIntents.navigate(destination, args.getValue("travelMode"), inApp))
+                    complete(if (result.outcome == LocalOutcome.DISPATCHED && !inApp) result.copy(errorCode = "DIRECTIONS_OPENED") else result)
+                }
+            }
+            ActionId.WEB_SEARCH -> complete(dispatch(CommandIntents.web(args.getValue("query"))))
+            ActionId.SYSTEM_ACTION -> complete(if (args["operation"] == "SETTINGS") dispatch(Intent(Settings.ACTION_SETTINGS))
+                else LocalResult(LocalOutcome.REJECTED, "CAPABILITY_UNAVAILABLE"))
+            ActionId.CALL_CONTACT, ActionId.CALL_NUMBER, ActionId.CLICK_TEXT -> complete(LocalResult(LocalOutcome.REJECTED, "CONFIRMATION_REQUIRED"))
+            else -> complete(LocalResult(LocalOutcome.REJECTED, "CAPABILITY_UNAVAILABLE"))
         }
     }
 
-    private fun launchApp(alias: String): LocalResult {
-        val packageName = LocalCommandParser.DEFAULT_APP_ALIASES[alias] ?: return LocalResult(LocalOutcome.FAILED, "APP_NOT_FOUND")
-        val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return LocalResult(LocalOutcome.FAILED, "APP_NOT_FOUND")
+    fun executeWebSearchInApp(query: String, packageName: String?): LocalResult =
+        if (packageName == null) LocalResult(LocalOutcome.REJECTED, "APP_NOT_CONFIGURED")
+        else dispatch(CommandIntents.web(query, packageName))
+
+    /** Launch two configured app tasks on the chosen desktop; the router verifies their final windows. */
+    fun launchAppPair(firstApp: String, secondApp: String, displayId: Int,
+                      bounds: com.khuongnd.dexassistant.ui.screen.ScreenRect, isCurrent: () -> Boolean,
+                      complete: (LocalResult) -> Unit) {
+        if (firstApp == secondApp) { complete(LocalResult(LocalOutcome.REJECTED,"APP_PAIR_MUST_BE_DISTINCT")); return }
+        val first = launchIntent(firstApp) ?: run { complete(LocalResult(LocalOutcome.REJECTED,"APP_NOT_CONFIGURED")); return }
+        val second = launchIntent(secondApp) ?: run { complete(LocalResult(LocalOutcome.REJECTED,"APP_NOT_CONFIGURED")); return }
+        if (bounds.width < 800 || bounds.height < 480) { complete(LocalResult(LocalOutcome.REJECTED,"DISPLAY_TOO_SMALL")); return }
+        fun options(rect: Rect) = ActivityOptions.makeBasic().setLaunchDisplayId(displayId).setLaunchBounds(rect).toBundle()
+        val middle = bounds.left + bounds.width / 2
+        val leftBounds = Rect(bounds.left,bounds.top,middle,bounds.bottom)
+        val rightBounds = Rect(middle,bounds.top,bounds.right,bounds.bottom)
+        runCatching { context.startActivity(first.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),options(leftBounds)) }
+            .onFailure { complete(LocalResult(LocalOutcome.FAILED,"APP_PAIR_FIRST_LAUNCH_FAILED")); return }
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isCurrent()) { complete(LocalResult(LocalOutcome.REJECTED,"CANCELLED")); return@postDelayed }
+            runCatching {
+                second.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
+                context.startActivity(second,options(rightBounds))
+            }.onSuccess { complete(LocalResult(LocalOutcome.DISPATCHED)) }
+                .onFailure { complete(LocalResult(LocalOutcome.FAILED,"APP_PAIR_SECOND_LAUNCH_FAILED")) }
+        },350)
+    }
+
+    /** Called only after the router consumes a later spoken confirmation. Revalidate immediately. */
+    fun executeConfirmedCall(candidate: ContactCandidate, complete: (LocalResult) -> Unit) {
+        val unchanged = runCatching { contacts.revalidate(candidate) }.getOrDefault(false)
+        complete(if (unchanged) call(candidate.number) else LocalResult(LocalOutcome.REJECTED, "RECIPIENT_CHANGED"))
+    }
+
+    fun executeConfirmedNumber(number: String, complete: (LocalResult) -> Unit) {
+        complete(if (Regex("^\\+?[0-9]{3,15}$").matches(number)) call(number)
+            else LocalResult(LocalOutcome.REJECTED, "INVALID_PHONE_NUMBER"))
+    }
+
+    private fun call(number: String): LocalResult {
+        if (ContactIdentity.normalizedNumber(number) != number) return LocalResult(LocalOutcome.REJECTED, "INVALID_PHONE_NUMBER")
+        val canCall = context.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+        val result = dispatch(Intent(if (canCall) Intent.ACTION_CALL else Intent.ACTION_DIAL,
+            Uri.fromParts("tel", number, null)))
+        return if (!canCall && result.outcome == LocalOutcome.DISPATCHED) result.copy(errorCode = "DIALER_OPENED") else result
+    }
+
+    private fun packageAvailable(packageName: String): Boolean = try {
+        context.packageManager.getApplicationInfo(packageName, 0); true
+    } catch (_: PackageManager.NameNotFoundException) { false }
+
+    private fun launchAppId(id: String): LocalResult {
+        val intent = launchIntent(id) ?: return LocalResult(LocalOutcome.FAILED, "APP_NOT_FOUND")
         return dispatch(intent)
+    }
+
+    private fun launchIntent(id: String): Intent? = appPackage(id)?.let(context.packageManager::getLaunchIntentForPackage)
+
+    fun execute(command: RoutedCommand, complete: (LocalResult) -> Unit) {
+        command.resolved?.typedAction?.let { execute(it, complete); return }
+        if (command.intent == null) { complete(LocalResult(LocalOutcome.REJECTED, "UNSUPPORTED_COMMAND")); return }
+        // Compatibility for device-test/legacy callers. No phrase is reparsed by the executor.
+        val params = command.arguments.toMutableMap()
+        if (command.intent == LocalIntent.APP_LAUNCH && !params.containsKey("app")) {
+            val alias = params.remove("alias")
+            val id = alias?.let { CommandRegistry.default().appIdForAlias(it) }
+            if (id == null) { complete(LocalResult(LocalOutcome.FAILED, "APP_NOT_FOUND")); return }
+            params["app"] = id
+        }
+        val typed = runCatching {
+            ActionCatalog.validate(command.intent.name, params.mapValues { (key, value) ->
+                when (key) {
+                    "enabled" -> value.toBooleanStrict()
+                    "percent", "steps", "seconds", "index" -> value.toInt()
+                    else -> value
+                }
+            })
+        }.getOrNull()
+        if (typed == null) complete(LocalResult(LocalOutcome.REJECTED, "INVALID_ARGUMENTS"))
+        else execute(typed, complete)
     }
 
     private fun youtube(query: String): LocalResult {

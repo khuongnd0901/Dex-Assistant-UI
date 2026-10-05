@@ -43,8 +43,8 @@ class LocalRoutingTest {
         assertEquals(Route.UNSUPPORTED, parser.route("ket noi wifi nha").route)
     }
 
-    @Test fun youtubeRetainsNormalizedPhrase() {
-        assertEquals("nhạc lái xe", parser.route("Nhạc lái xe!").arguments["query"])
+    @Test fun youtubeExtractsOriginalQuery() {
+        assertEquals("lái xe!", parser.route("Nhạc lái xe!").arguments["query"])
     }
 
     @Test fun absoluteVolumeTargetsAcceptAdjacentPercentAndNaturalVerbs() {
@@ -107,7 +107,7 @@ class LocalRoutingTest {
         listOf("tìm kiếm nhạc sơn tùng", "tìm kiếm video mèo", "tìm sơn tùng trên youtube",
             "tìm kiếm hướng dẫn nấu ăn trên you tube").forEach { text ->
             assertEquals(LocalIntent.YOUTUBE_SEARCH, parser.route(text).intent)
-            assertEquals(text, parser.route(text).arguments["query"])
+            assertEquals(text.removePrefix("tìm kiếm nhạc ").removePrefix("tìm kiếm video ").removePrefix("tìm kiếm ").removePrefix("tìm ").removeSuffix(" trên youtube").removeSuffix(" trên you tube"), parser.route(text).arguments["query"])
         }
         listOf("tìm món ăn", "bật ứng dụng lạ", "đóng you tube", "phát video rồi mở chrome").forEach {
             assertTrue(parser.route(it).route != Route.LOCAL)

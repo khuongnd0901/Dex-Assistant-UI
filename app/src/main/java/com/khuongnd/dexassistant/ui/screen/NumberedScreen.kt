@@ -28,6 +28,11 @@ object ScreenCommandParser {
         val match = Regex("^(bam(?: vao)? (?:so |o (?:so )?)?|chia o )(.+)$").matchEntire(clean)
         if (match != null) {
             val prefix = match.groupValues[1]; val number = number(match.groupValues[2])
+            // Plain semantic clicks are handled by the typed command engine with confirmation.
+            // Explicit numeric/grid syntax remains reserved, even when malformed.
+            if (number == null && prefix in listOf("bam ", "bam vao ") &&
+                !Regex("^(?:so|o|[0-9]|mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi)(?: |$)").containsMatchIn(match.groupValues[2]) &&
+                !Regex("(?:^| )(?:va|roi|sau do)(?: |$)").containsMatchIn(clean)) return null
             val verb = when {
                 number == null -> ScreenVerb.INVALID
                 prefix.startsWith("chia") -> ScreenVerb.SUBDIVIDE

@@ -1,0 +1,301 @@
+{
+  "clientCapabilities": {
+    "actionSchemaVersion": 1,
+    "supportedActions": [
+      "APP_LAUNCH",
+      "WIFI_SET",
+      "BLUETOOTH_SET",
+      "VOLUME_SET",
+      "BRIGHTNESS_SET",
+      "MEDIA_TRANSPORT",
+      "YOUTUBE_SEARCH",
+      "YOUTUBE_PLAY_QUERY",
+      "YOUTUBE_SELECT",
+      "YOUTUBE_FULLSCREEN",
+      "MEDIA_SEEK",
+      "SEARCH_PLACE",
+      "NAVIGATE",
+      "CALL_CONTACT",
+      "CALL_NUMBER",
+      "WEB_SEARCH",
+      "CLICK_TEXT",
+      "SCROLL",
+      "FEED_NEXT",
+      "FEED_PREVIOUS",
+      "SYSTEM_ACTION",
+      "APP_PAIR_LAUNCH"
+    ],
+    "configuredAppIds": [
+      "youtube",
+      "chrome",
+      "maps"
+    ]
+  },
+  "valid": [
+    {
+      "actionSchemaVersion": 1,
+      "action": "APP_PAIR_LAUNCH",
+      "params": { "firstApp": "maps", "secondApp": "youtube" }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "APP_LAUNCH",
+      "params": {
+        "app": "youtube"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "WIFI_SET",
+      "params": {
+        "enabled": true
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "BLUETOOTH_SET",
+      "params": {
+        "enabled": false
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "VOLUME_SET",
+      "params": {
+        "operation": "SET",
+        "percent": 40
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "BRIGHTNESS_SET",
+      "params": {
+        "operation": "AUTO_ON"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "MEDIA_TRANSPORT",
+      "params": {
+        "operation": "PREVIOUS"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "YOUTUBE_SEARCH",
+      "params": {
+        "query": "Sơn Tùng & A+B?"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "YOUTUBE_PLAY_QUERY",
+      "params": {
+        "query": "Nơi này có anh"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "YOUTUBE_SELECT",
+      "params": {
+        "index": 2
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "YOUTUBE_FULLSCREEN",
+      "params": {
+        "enabled": true
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "MEDIA_SEEK",
+      "params": {
+        "operation": "BACKWARD",
+        "seconds": 120
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "SEARCH_PLACE",
+      "params": {
+        "query": "cà phê gần đây"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "NAVIGATE",
+      "params": {
+        "destination": "12 Nguyễn Trãi",
+        "travelMode": "WALKING"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "CALL_CONTACT",
+      "params": {
+        "contact": "Nguyễn Văn A"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "CALL_NUMBER",
+      "params": {
+        "number": "+84901234567"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "WEB_SEARCH",
+      "params": {
+        "query": "A & B?"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "CLICK_TEXT",
+      "params": {
+        "text": "Tiếp tục"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "SCROLL",
+      "params": {
+        "direction": "FORWARD"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "FEED_NEXT",
+      "params": {}
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "FEED_PREVIOUS",
+      "params": {}
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "SYSTEM_ACTION",
+      "params": {
+        "operation": "SETTINGS"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "actionSchemaVersion": 1,
+      "action": "APP_PAIR_LAUNCH",
+      "params": { "firstApp": "maps", "secondApp": "maps" }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "APP_LAUNCH",
+      "params": {
+        "app": "unknown"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "CALL_CONTACT",
+      "params": {
+        "contact": "A",
+        "confirmed": true
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "CALL_NUMBER",
+      "params": {
+        "number": "090;123"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "VOLUME_SET",
+      "params": {
+        "operation": "SET",
+        "percent": 101
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "VOLUME_SET",
+      "params": {
+        "operation": "SET",
+        "percent": 40.0
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "WIFI_SET",
+      "params": {
+        "enabled": "true"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "YOUTUBE_SELECT",
+      "params": {
+        "index": 2,
+        "title": "A"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "YOUTUBE_SELECT",
+      "params": {}
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "FEED_NEXT",
+      "params": {
+        "script": "swipe"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "WEB_SEARCH",
+      "params": {
+        "query": "A\u0000B"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "MEDIA_SEEK",
+      "params": {
+        "operation": "FORWARD",
+        "seconds": 3601
+      }
+    },
+    {
+      "actionSchemaVersion": "1",
+      "action": "WEB_SEARCH",
+      "params": {
+        "query": "A"
+      }
+    },
+    {
+      "actionSchemaVersion": 1.0,
+      "action": "WEB_SEARCH",
+      "params": {
+        "query": "A"
+      }
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "WEB_SEARCH",
+      "params": {
+        "query": "A"
+      },
+      "confirmed": true
+    },
+    {
+      "actionSchemaVersion": 1,
+      "action": "RUN_SCRIPT",
+      "params": {}
+    }
+  ]
+}

@@ -1,0 +1,834 @@
+{
+  "schemaVersion": 1,
+  "configVersion": 1,
+  "minimumAppVersion": 1,
+  "apps": [
+    {
+      "id": "youtube",
+      "packageName": "com.google.android.youtube",
+      "aliases": [
+        "youtube",
+        "you tube"
+      ]
+    },
+    {
+      "id": "youtube_music",
+      "packageName": "com.google.android.apps.youtube.music",
+      "aliases": [
+        "youtube music",
+        "you tube music"
+      ]
+    },
+    {
+      "id": "maps",
+      "packageName": "com.google.android.apps.maps",
+      "aliases": [
+        "maps",
+        "google map",
+        "google maps",
+        "bản đồ"
+      ]
+    },
+    {
+      "id": "chrome",
+      "packageName": "com.android.chrome",
+      "aliases": [
+        "chrome",
+        "google chrome",
+        "trình duyệt"
+      ]
+    },
+    {
+      "id": "spotify",
+      "packageName": "com.spotify.music",
+      "aliases": [
+        "spotify"
+      ]
+    },
+    {
+      "id": "facebook",
+      "packageName": "com.facebook.katana",
+      "aliases": [
+        "facebook",
+        "face book"
+      ]
+    },
+    {
+      "id": "tiktok",
+      "packageName": "com.zhiliaoapp.musically",
+      "aliases": [
+        "tiktok",
+        "tik tok"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "open_app",
+      "action": "APP_LAUNCH",
+      "patterns": [
+        "mở {app}",
+        "bật {app}",
+        "khởi động {app}",
+        "mở ứng dụng {app}",
+        "chuyển sang {app}",
+        "mở lại {app}"
+      ],
+      "slots": {
+        "app": {
+          "type": "APP_ALIAS",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "split_app_pair",
+      "action": "APP_PAIR_LAUNCH",
+      "patterns": [
+        "chia màn hình {firstApp} và {secondApp}",
+        "chia đôi màn hình {firstApp} với {secondApp}",
+        "mở song song {firstApp} và {secondApp}"
+      ],
+      "allowCompound": true,
+      "slots": {
+        "firstApp": { "type": "APP_ALIAS", "required": true },
+        "secondApp": { "type": "APP_ALIAS", "required": true }
+      }
+    },
+    {
+      "id": "wifi_on",
+      "action": "WIFI_SET",
+      "patterns": [
+        "bật wifi",
+        "bật wi-fi",
+        "mở wifi",
+        "mở wi-fi"
+      ],
+      "args": {
+        "enabled": true
+      }
+    },
+    {
+      "id": "wifi_off",
+      "action": "WIFI_SET",
+      "patterns": [
+        "tắt wifi",
+        "tắt wi-fi"
+      ],
+      "args": {
+        "enabled": false
+      }
+    },
+    {
+      "id": "bluetooth_on",
+      "action": "BLUETOOTH_SET",
+      "patterns": [
+        "bật bluetooth",
+        "mở bluetooth"
+      ],
+      "args": {
+        "enabled": true
+      }
+    },
+    {
+      "id": "bluetooth_off",
+      "action": "BLUETOOTH_SET",
+      "patterns": [
+        "tắt bluetooth"
+      ],
+      "args": {
+        "enabled": false
+      }
+    },
+    {
+      "id": "volume_percent",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "đặt âm lượng {percent}",
+        "đặt âm lượng lên {percent}",
+        "đặt âm lượng xuống {percent}",
+        "đặt âm lượng đến {percent}",
+        "đặt âm lượng về {percent}",
+        "chỉnh âm lượng {percent}",
+        "chỉnh âm lượng lên {percent}",
+        "chỉnh âm lượng xuống {percent}",
+        "chỉnh âm lượng đến {percent}",
+        "chỉnh âm lượng về {percent}",
+        "điều chỉnh âm lượng {percent}",
+        "điều chỉnh âm lượng lên {percent}",
+        "điều chỉnh âm lượng xuống {percent}",
+        "điều chỉnh âm lượng đến {percent}",
+        "điều chỉnh âm lượng về {percent}",
+        "tăng âm lượng {percent}",
+        "tăng âm lượng lên {percent}",
+        "tăng âm lượng xuống {percent}",
+        "tăng âm lượng đến {percent}",
+        "tăng âm lượng về {percent}",
+        "giảm âm lượng {percent}",
+        "giảm âm lượng lên {percent}",
+        "giảm âm lượng xuống {percent}",
+        "giảm âm lượng đến {percent}",
+        "giảm âm lượng về {percent}"
+      ],
+      "slots": {
+        "percent": {
+          "type": "PERCENT",
+          "required": true
+        }
+      },
+      "args": {
+        "operation": "SET"
+      }
+    },
+    {
+      "id": "volume_increase",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "tăng âm lượng"
+      ],
+      "args": {
+        "operation": "INCREASE",
+        "steps": 1
+      }
+    },
+    {
+      "id": "volume_increase_steps",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "tăng âm lượng {steps} bước"
+      ],
+      "slots": {
+        "steps": {
+          "type": "INTEGER",
+          "required": true
+        }
+      },
+      "args": {
+        "operation": "INCREASE"
+      }
+    },
+    {
+      "id": "volume_decrease",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "giảm âm lượng"
+      ],
+      "args": {
+        "operation": "DECREASE",
+        "steps": 1
+      }
+    },
+    {
+      "id": "volume_decrease_steps",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "giảm âm lượng {steps} bước"
+      ],
+      "slots": {
+        "steps": {
+          "type": "INTEGER",
+          "required": true
+        }
+      },
+      "args": {
+        "operation": "DECREASE"
+      }
+    },
+    {
+      "id": "brightness_percent",
+      "action": "BRIGHTNESS_SET",
+      "patterns": [
+        "đặt độ sáng {percent}",
+        "đặt độ sáng lên {percent}",
+        "đặt độ sáng xuống {percent}",
+        "đặt độ sáng đến {percent}",
+        "đặt độ sáng về {percent}",
+        "chỉnh độ sáng {percent}",
+        "chỉnh độ sáng lên {percent}",
+        "chỉnh độ sáng xuống {percent}",
+        "chỉnh độ sáng đến {percent}",
+        "chỉnh độ sáng về {percent}",
+        "điều chỉnh độ sáng {percent}",
+        "điều chỉnh độ sáng lên {percent}",
+        "điều chỉnh độ sáng xuống {percent}",
+        "điều chỉnh độ sáng đến {percent}",
+        "điều chỉnh độ sáng về {percent}",
+        "tăng độ sáng {percent}",
+        "tăng độ sáng lên {percent}",
+        "tăng độ sáng xuống {percent}",
+        "tăng độ sáng đến {percent}",
+        "tăng độ sáng về {percent}",
+        "giảm độ sáng {percent}",
+        "giảm độ sáng lên {percent}",
+        "giảm độ sáng xuống {percent}",
+        "giảm độ sáng đến {percent}",
+        "giảm độ sáng về {percent}"
+      ],
+      "slots": {
+        "percent": {
+          "type": "PERCENT",
+          "required": true
+        }
+      },
+      "args": {
+        "operation": "SET"
+      }
+    },
+    {
+      "id": "brightness_increase",
+      "action": "BRIGHTNESS_SET",
+      "patterns": [
+        "tăng độ sáng"
+      ],
+      "args": {
+        "operation": "INCREASE"
+      }
+    },
+    {
+      "id": "brightness_decrease",
+      "action": "BRIGHTNESS_SET",
+      "patterns": [
+        "giảm độ sáng"
+      ],
+      "args": {
+        "operation": "DECREASE"
+      }
+    },
+    {
+      "id": "mute",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "tắt tiếng",
+        "tắt âm thanh",
+        "tắt âm lượng"
+      ],
+      "args": {
+        "operation": "MUTE"
+      }
+    },
+    {
+      "id": "unmute",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "bật tiếng",
+        "bật âm thanh",
+        "bỏ tắt tiếng"
+      ],
+      "args": {
+        "operation": "UNMUTE"
+      }
+    },
+    {
+      "id": "volume_max",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "âm lượng tối đa",
+        "tăng âm lượng tối đa",
+        "đặt âm lượng tối đa"
+      ],
+      "args": {
+        "operation": "SET",
+        "percent": 100
+      }
+    },
+    {
+      "id": "volume_min",
+      "action": "VOLUME_SET",
+      "patterns": [
+        "âm lượng tối thiểu",
+        "giảm âm lượng tối thiểu",
+        "đặt âm lượng tối thiểu"
+      ],
+      "args": {
+        "operation": "SET",
+        "percent": 0
+      }
+    },
+    {
+      "id": "brightness_auto_true",
+      "action": "BRIGHTNESS_SET",
+      "patterns": [
+        "bật độ sáng tự động"
+      ],
+      "args": {
+        "operation": "AUTO_ON"
+      }
+    },
+    {
+      "id": "brightness_auto_false",
+      "action": "BRIGHTNESS_SET",
+      "patterns": [
+        "tắt độ sáng tự động"
+      ],
+      "args": {
+        "operation": "AUTO_OFF"
+      }
+    },
+    {
+      "id": "media_play",
+      "action": "MEDIA_TRANSPORT",
+      "patterns": [
+        "phát nhạc",
+        "phát video",
+        "tiếp tục nhạc",
+        "tiếp tục video",
+        "phát tiếp",
+        "tiếp tục phát"
+      ],
+      "args": {
+        "operation": "PLAY"
+      }
+    },
+    {
+      "id": "media_pause",
+      "action": "MEDIA_TRANSPORT",
+      "patterns": [
+        "tạm dừng nhạc",
+        "tạm dừng video",
+        "tạm dừng"
+      ],
+      "args": {
+        "operation": "PAUSE"
+      }
+    },
+    {
+      "id": "media_stop",
+      "action": "MEDIA_TRANSPORT",
+      "patterns": [
+        "dừng nhạc",
+        "dừng video",
+        "dừng phát",
+        "ngừng phát"
+      ],
+      "args": {
+        "operation": "STOP"
+      }
+    },
+    {
+      "id": "media_next",
+      "action": "MEDIA_TRANSPORT",
+      "patterns": [
+        "bài tiếp theo",
+        "video tiếp theo",
+        "chuyển bài tiếp theo",
+        "bài sau",
+        "video sau"
+      ],
+      "args": {
+        "operation": "NEXT"
+      }
+    },
+    {
+      "id": "media_previous",
+      "action": "MEDIA_TRANSPORT",
+      "patterns": [
+        "bài trước",
+        "video trước",
+        "quay lại bài trước",
+        "bài vừa rồi",
+        "video vừa rồi"
+      ],
+      "args": {
+        "operation": "PREVIOUS"
+      }
+    },
+    {
+      "id": "youtube_search",
+      "action": "YOUTUBE_SEARCH",
+      "patterns": [
+        "mở youtube tìm {query}",
+        "tìm youtube {query}",
+        "tìm youtube bài {query}",
+        "nhạc {query}",
+        "tìm nhạc {query}",
+        "tìm video {query}",
+        "tìm kiếm nhạc {query}",
+        "tìm kiếm video {query}",
+        "tìm {query} trên youtube",
+        "tìm kiếm {query} trên youtube",
+        "tìm {query} trên you tube",
+        "tìm kiếm {query} trên you tube"
+      ],
+      "slots": {
+        "query": {
+          "type": "TEXT",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "youtube_play_query",
+      "action": "YOUTUBE_PLAY_QUERY",
+      "patterns": [
+        "mở nhạc {query}",
+        "phát trên youtube {query}",
+        "mở youtube phát {query}"
+      ],
+      "slots": {
+        "query": {
+          "type": "TEXT",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "youtube_select_index",
+      "action": "YOUTUBE_SELECT",
+      "patterns": [
+        "chọn video số {index}",
+        "phát kết quả số {index}"
+      ],
+      "slots": {
+        "index": {
+          "type": "INTEGER",
+          "required": true
+        }
+      },
+      "scope": {
+        "apps": [
+          "youtube"
+        ]
+      }
+    },
+    {
+      "id": "youtube_select_title",
+      "action": "YOUTUBE_SELECT",
+      "patterns": [
+        "chọn video {title}"
+      ],
+      "slots": {
+        "title": {
+          "type": "TEXT",
+          "required": true
+        }
+      },
+      "scope": {
+        "apps": [
+          "youtube"
+        ]
+      }
+    },
+    {
+      "id": "youtube_fullscreen_true",
+      "action": "YOUTUBE_FULLSCREEN",
+      "patterns": [
+        "toàn màn hình"
+      ],
+      "args": {
+        "enabled": true
+      },
+      "scope": {
+        "apps": [
+          "youtube"
+        ]
+      }
+    },
+    {
+      "id": "youtube_fullscreen_false",
+      "action": "YOUTUBE_FULLSCREEN",
+      "patterns": [
+        "thoát toàn màn hình"
+      ],
+      "args": {
+        "enabled": false
+      },
+      "scope": {
+        "apps": [
+          "youtube"
+        ]
+      }
+    },
+    {
+      "id": "seek_forward",
+      "action": "MEDIA_SEEK",
+      "patterns": [
+        "tua tới {seconds}",
+        "tua tiến {seconds}"
+      ],
+      "slots": {
+        "seconds": {
+          "type": "DURATION",
+          "required": true
+        }
+      },
+      "args": {
+        "operation": "FORWARD"
+      },
+      "scope": {
+        "apps": [
+          "youtube",
+          "youtube_music"
+        ]
+      }
+    },
+    {
+      "id": "seek_backward",
+      "action": "MEDIA_SEEK",
+      "patterns": [
+        "tua lùi {seconds}"
+      ],
+      "slots": {
+        "seconds": {
+          "type": "DURATION",
+          "required": true
+        }
+      },
+      "args": {
+        "operation": "BACKWARD"
+      },
+      "scope": {
+        "apps": [
+          "youtube",
+          "youtube_music"
+        ]
+      }
+    },
+    {
+      "id": "navigate",
+      "action": "NAVIGATE",
+      "patterns": [
+        "chỉ đường đến {destination}",
+        "đưa tôi tới {destination}",
+        "tìm đường về {destination}",
+        "đưa tôi về {destination}"
+      ],
+      "slots": {
+        "destination": {
+          "type": "TEXT",
+          "required": true
+        }
+      },
+      "args": {
+        "travelMode": "DRIVING"
+      }
+    },
+    {
+      "id": "navigate_walking",
+      "action": "NAVIGATE",
+      "patterns": [
+        "đi bộ đến {destination}",
+        "chỉ đường đi bộ đến {destination}"
+      ],
+      "slots": {
+        "destination": {
+          "type": "TEXT",
+          "required": true
+        }
+      },
+      "args": {
+        "travelMode": "WALKING"
+      }
+    },
+    {
+      "id": "search_place",
+      "action": "SEARCH_PLACE",
+      "patterns": [
+        "tìm địa điểm {query}",
+        "tìm trên bản đồ {query}",
+        "tìm xung quanh {query}"
+      ],
+      "slots": {
+        "query": {
+          "type": "TEXT",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "call_contact",
+      "action": "CALL_CONTACT",
+      "patterns": [
+        "gọi cho {contact}",
+        "gọi {contact}"
+      ],
+      "slots": {
+        "contact": {
+          "type": "TEXT",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "call_number",
+      "action": "CALL_NUMBER",
+      "patterns": [
+        "gọi số {number}"
+      ],
+      "slots": {
+        "number": {
+          "type": "PHONE_NUMBER",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "web_search",
+      "action": "WEB_SEARCH",
+      "patterns": [
+        "tìm google {query}",
+        "tìm trên google {query}",
+        "tra cứu {query}",
+        "tìm trên web {query}"
+      ],
+      "slots": {
+        "query": {
+          "type": "TEXT",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "web_search_in_chrome",
+      "action": "WEB_SEARCH",
+      "scope": {
+        "apps": ["chrome"]
+      },
+      "patterns": [
+        "tìm địa điểm {query}"
+      ],
+      "slots": {
+        "query": {
+          "type": "TEXT",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "click_text",
+      "action": "CLICK_TEXT",
+      "patterns": [
+        "bấm {text}",
+        "nhấn {text}",
+        "chạm {text}"
+      ],
+      "slots": {
+        "text": {
+          "type": "TEXT",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "scroll_forward",
+      "action": "SCROLL",
+      "patterns": [
+        "cuộn xuống",
+        "lướt xuống",
+        "xem tiếp",
+        "cuộn tiếp",
+        "lướt tiếp"
+      ],
+      "args": {
+        "direction": "FORWARD"
+      }
+    },
+    {
+      "id": "scroll_backward",
+      "action": "SCROLL",
+      "patterns": [
+        "cuộn lên",
+        "lướt lên",
+        "xem trước",
+        "cuộn ngược",
+        "xem nội dung trước"
+      ],
+      "args": {
+        "direction": "BACKWARD"
+      }
+    },
+    {
+      "id": "feed_next",
+      "action": "FEED_NEXT",
+      "patterns": [
+        "video tiếp theo",
+        "video tiếp",
+        "lướt video tiếp",
+        "video sau"
+      ],
+      "scope": {
+        "apps": [
+          "tiktok"
+        ]
+      }
+    },
+    {
+      "id": "feed_previous",
+      "action": "FEED_PREVIOUS",
+      "patterns": [
+        "video trước",
+        "lướt video trước",
+        "video vừa rồi"
+      ],
+      "scope": {
+        "apps": [
+          "tiktok"
+        ]
+      }
+    },
+    {
+      "id": "system_back",
+      "action": "SYSTEM_ACTION",
+      "patterns": [
+        "quay lại",
+        "trở lại"
+      ],
+      "args": {
+        "operation": "BACK"
+      }
+    },
+    {
+      "id": "system_home",
+      "action": "SYSTEM_ACTION",
+      "patterns": [
+        "về màn hình chính",
+        "về trang chủ"
+      ],
+      "args": {
+        "operation": "HOME"
+      }
+    },
+    {
+      "id": "system_settings",
+      "action": "SYSTEM_ACTION",
+      "patterns": [
+        "mở cài đặt"
+      ],
+      "args": {
+        "operation": "SETTINGS"
+      }
+    },
+    {
+      "id": "system_notifications",
+      "action": "SYSTEM_ACTION",
+      "patterns": [
+        "mở thông báo"
+      ],
+      "args": {
+        "operation": "NOTIFICATIONS"
+      }
+    }
+  ],
+  "interactions": {
+    "confirm": [
+      "xác nhận",
+      "đồng ý"
+    ],
+    "cancel": [
+      "hủy",
+      "hủy bỏ",
+      "không xác nhận"
+    ],
+    "select": [
+      "chọn số {index}",
+      "chọn {index}"
+    ],
+    "next": [
+      "đọc lựa chọn tiếp theo",
+      "lựa chọn tiếp theo"
+    ],
+    "previous": [
+      "đọc lựa chọn trước",
+      "lựa chọn trước"
+    ]
+  }
+}

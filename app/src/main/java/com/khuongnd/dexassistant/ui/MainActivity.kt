@@ -81,6 +81,16 @@ fun AssistantScreen(
     // Credentials, typed commands and transcripts are never saved in the instance-state bundle.
     var token by androidx.compose.runtime.remember { mutableStateOf("") }
     var command by androidx.compose.runtime.remember { mutableStateOf("") }
+    val localAliases = androidx.compose.runtime.remember(context) { com.khuongnd.dexassistant.ui.localdata.LocalAliases(context) }
+    var homeAddress by androidx.compose.runtime.remember { mutableStateOf(localAliases.savedPlace("home")) }
+    var workAddress by androidx.compose.runtime.remember { mutableStateOf(localAliases.savedPlace("work")) }
+    var contactAlias by androidx.compose.runtime.remember { mutableStateOf("") }
+    var contactName by androidx.compose.runtime.remember { mutableStateOf("") }
+    var aliasFeedback by androidx.compose.runtime.remember { mutableStateOf("") }
+    val contactPermissions = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        aliasFeedback = if (result[android.Manifest.permission.READ_CONTACTS] == true && result[android.Manifest.permission.CALL_PHONE] == true) "Đã cấp quyền danh bạ và gọi điện." else "Chỉ dùng quyền đã cấp; thiếu quyền gọi sẽ mở bàn phím gọi."
+    }
     Scaffold(modifier = modifier.fillMaxSize().testTag("dashboard")) { inset ->
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().padding(inset).padding(8.dp)) {
             val wide = maxWidth >= 700.dp
@@ -142,6 +152,16 @@ fun AssistantScreen(
                         Button(onClick = onApplyPermissions) { Text("Apply permission profile") }
                         Button(onClick = { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Trợ năng DeX") }
                         Text("Bật công tắc dịch vụ DeX Assistant để điều khiển số. Phím tắt Trợ năng có thể bật/tắt dịch vụ; chỉ giữ phím tắt nếu bạn muốn dùng nó. Ứng dụng hiển thị trạng thái thật và không tự bật dịch vụ.")
+                        Button(onClick = { contactPermissions.launch(arrayOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.CALL_PHONE)) }) { Text("Quyền danh bạ và gọi điện") }
+                        Button(onClick = { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Quyền truy cập phiên phát nhạc để tua") }
+                        Text("Gọi điện luôn cần xác nhận bằng giọng nói. Nếu thiếu quyền gọi, ứng dụng chỉ mở bàn phím gọi. Quyền truy cập thông báo cho phép đọc trạng thái phiên phát nhạc để tua.")
+                        OutlinedTextField(homeAddress, { if (it.length <= 500) homeAddress = it }, label = { Text("Địa chỉ nhà") })
+                        OutlinedTextField(workAddress, { if (it.length <= 500) workAddress = it }, label = { Text("Địa chỉ công ty") })
+                        Button(onClick = { localAliases.savePlace("home", homeAddress); localAliases.savePlace("work", workAddress); aliasFeedback = "Đã lưu địa chỉ trên thiết bị." }) { Text("Lưu địa chỉ") }
+                        OutlinedTextField(contactAlias, { if (it.length <= 200) contactAlias = it }, label = { Text("Tên gọi, ví dụ mẹ") })
+                        OutlinedTextField(contactName, { if (it.length <= 200) contactName = it }, label = { Text("Tên đầy đủ trong danh bạ; để trống để xóa") })
+                        Button(onClick = { localAliases.saveContact(contactAlias, contactName); contactAlias = ""; contactName = ""; aliasFeedback = "Đã lưu tên gọi trên thiết bị." }, enabled = contactAlias.isNotBlank()) { Text("Lưu tên gọi") }
+                        if (aliasFeedback.isNotBlank()) Text(aliasFeedback)
                         Text("Device Owner: ${state.deviceOwner}\n${state.assistantReadiness}\n${state.voiceDetail}")
                         state.capabilities.forEach { (key, value) -> Text("$key: $value") }
                     }

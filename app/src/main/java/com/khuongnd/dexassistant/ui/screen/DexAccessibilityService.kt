@@ -165,6 +165,17 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     }
     private var imageTargets: List<ScreenRect> = emptyList()
     private var imageFingerprints: Map<ScreenRect, Long> = emptyMap()
+    fun numberedTargetCount(): Int = if (session?.grid == null) imageTargets.size else 0
+    fun showNamedTargets(targets: List<ScreenRect>): Boolean {
+        clear()
+        val original = snapshot() ?: return false
+        if (targets.isEmpty() || targets.any { !it.inside(original.bounds) }) return false
+        session = Session(UUID.randomUUID().toString(), original, null, 0)
+        gestureGate.activate(session!!.id)
+        imageTargets = targets.toList()
+        return runCatching { show(); handler.postDelayed(expiry, 35_000); true }.getOrElse { clear(); false }
+    }
+
     fun clear() {
         epoch++
         gestureGate.invalidate()
