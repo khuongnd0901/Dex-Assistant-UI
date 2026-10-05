@@ -2,7 +2,8 @@
 
 Canonical tasks/decisions/protocol: `/mnt/d/DeX-Assistant/.agent/STATUS.md`.
 Current priority T-011; T-006/T-009/T-010 physical acceptance remains open.
-Owner authorized commit/push on2026-10-05; publication checks underway. No
+Owner-authorized implementation commit `15a64d3` pushed to origin/main on2026-10-05;
+backend companion `60414f0` also published. Existing EOL-only changes remain local. No
 release or physical APK install in this implementation. Preserve dirty
 changes, original signing certificate, owner history, credentials and grants.
 
