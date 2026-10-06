@@ -57,6 +57,8 @@ class VoiceAssistantService : Service() {
     private var focusHeld = false
     private var diagnosticOnly = false
     private var diagnosticRestore = VoiceState.STOPPED
+    private var chatActive = false
+    private var chatGeneration = 0L
     private var lastMicUpdate = 0L
     private val wakeLock by lazy {
         getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DeX:Voice")
@@ -88,6 +90,7 @@ class VoiceAssistantService : Service() {
         }
         coordinator.start()
         coordinator.connect()
+        coordinator.observeChat { event -> onChatEvent(event) }
     }
 
     fun currentVoiceState(): VoiceState = stateMachine.state
@@ -100,6 +103,18 @@ class VoiceAssistantService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
             }
             return START_NOT_STICKY
+        }
+        if (action == ACTION_END_CHAT) {
+            if (chatActive) {
+                coordinator.endChat("USER")
+                chatActive = false
+                cancelSession()
+                transitionSafely(VoiceEvent.STOP)
+                transitionSafely(VoiceEvent.START)
+                report("Chat ended by user; waiting for wake word")
+                if (stateMachine.state == VoiceState.LISTENING) startWake()
+            }
+            return START_STICKY
         }
         if (action == ACTION_AUTO_START && !VoiceAutoStart.allowed(this)) {
             if (stateMachine.state != VoiceState.STOPPED) return START_STICKY
@@ -149,6 +164,7 @@ class VoiceAssistantService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
         active = null
+        coordinator.observeChat(null)
         cancelSession()
         wakeWorker.execute { try { wakeEngine?.close() } finally { wakeEngine = null } }
         wakeWorker.shutdown()
@@ -378,8 +394,24 @@ class VoiceAssistantService : Service() {
             if (text.isBlank()) { finishWithFeedback(id, "Chưa nghe rõ. Hãy gọi lại.", "STT_EMPTY"); return }
             android.util.Log.i("DexMetric", "stt.final sessionId=$id elapsedNanos=${SystemClock.elapsedRealtimeNanos()}")
             transitionSafely(VoiceEvent.FINAL_TEXT)
-            report("Routing final Vietnamese command")
             commandVoiceEpoch = id
+            if (chatActive) {
+                when (ChatVoiceRouting.route(text)) {
+                    ChatVoiceRouting.Route.END -> endChatAndReturnToWake(id)
+                    ChatVoiceRouting.Route.START, ChatVoiceRouting.Route.TURN -> coordinator.sendChat(text)
+                }
+                return
+            }
+            if (ChatVoiceRouting.route(text) == ChatVoiceRouting.Route.START) {
+                chatActive = true
+                val generation = ++chatGeneration
+                pendingChatGeneration = generation
+                report("Starting isolated Chat session")
+                coordinator.startChat()
+                // The ChatSession.Started event is generation gated and begins wake-free recognition.
+                return
+            }
+            report("Routing final Vietnamese command")
             val parentCommand = commandId
             if (parentCommand != null && coordinator.isAwaitingInteraction(parentCommand)) {
                 if (coordinator.continueInteraction(parentCommand, text)) return
@@ -465,6 +497,73 @@ class VoiceAssistantService : Service() {
     }
     private fun spokenResult(status: String) = VoiceResultSpeech.message(status)
 
+    private var pendingChatGeneration: Long? = null
+    private fun onChatEvent(event: com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) {
+        if (!chatActive) return
+        when (event) {
+            is com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Started -> {
+                if (pendingChatGeneration != chatGeneration) return
+                pendingChatGeneration = null
+                if (stateMachine.state == VoiceState.ROUTING) transitionSafely(VoiceEvent.COMMAND_FINISHED)
+                beginChatRecognition()
+            }
+            is com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Reply -> {
+                if (stateMachine.state != VoiceState.ROUTING) return
+                val generation = chatGeneration
+                val playback = beginFeedback()
+                transitionSafely(VoiceEvent.SPEAK)
+                val completed: (Boolean) -> Unit = { spokenSuccessfully ->
+                    if (chatActive && generation == chatGeneration && feedbackSessions.consume(playback)) {
+                        feedbackWatchdog?.let(main::removeCallbacks); feedbackWatchdog = null
+                        abandonFocus()
+                        if (!spokenSuccessfully) {
+                            coordinator.endChat("STOP")
+                            chatActive = false; chatGeneration++
+                        }
+                        transitionSafely(VoiceEvent.INTERACTION_LISTEN)
+                        if (chatActive) beginChatRecognition() else {
+                            transitionSafely(VoiceEvent.STOP); transitionSafely(VoiceEvent.START); startWake()
+                        }
+                    }
+                }
+                feedbackWatchdog = Runnable { if (generation == chatGeneration && chatActive) { feedback.timeout(); completed(false) } }
+                    .also { main.postDelayed(it, 60_000) }
+                val request = newFocusRequest(++focusGeneration)
+                focusRequest = request
+                focusHeld = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                if (focusHeld) feedback.speakInteraction(event.text, "chat-$generation-${event.turn}", completed) else completed(false)
+            }
+            is com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error -> {
+                if (!chatActive) return
+                coordinator.endChat("STOP")
+                chatActive = false; chatGeneration++; pendingChatGeneration = null
+                if (stateMachine.state == VoiceState.ROUTING) commandVoiceEpoch?.let { finishWithFeedback(it, "Chat chưa sẵn sàng. Hãy thử lại.", "CHAT_ERROR") }
+                else {
+                    cancelSession()
+                    transitionSafely(VoiceEvent.STOP); transitionSafely(VoiceEvent.START)
+                    if (stateMachine.state == VoiceState.LISTENING) startWake()
+                }
+            }
+            is com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Ended -> Unit
+        }
+    }
+
+    private fun beginChatRecognition() {
+        transitionSafely(VoiceEvent.WAKE)
+        val epoch = sessions.begin()
+        commandVoiceEpoch = epoch
+        startRecognition(epoch)
+    }
+
+    private fun endChatAndReturnToWake(epoch: Long) {
+        coordinator.endChat("USER")
+        chatActive = false; chatGeneration++; pendingChatGeneration = null
+        feedback.cancel()
+        abandonFocus()
+        transitionSafely(VoiceEvent.COMMAND_FINISHED)
+        startWake()
+    }
+
     private fun finishWithFeedback(id: Long, message: String, code: String) {
         if (!sessions.isCurrent(id)) return
         if (code.startsWith("STT_") || code == "CANCELLED") VoiceSubtitles.store.clear(id)
@@ -514,6 +613,8 @@ class VoiceAssistantService : Service() {
     }
 
     private fun cancelSession(clearScreen: Boolean = true) {
+        if (chatActive) coordinator.endChat("STOP")
+        chatActive = false; chatGeneration++; pendingChatGeneration = null
         VoiceSubtitles.store.clear()
         diagnosticOnly = false
         feedbackSessions.cancel()
@@ -611,6 +712,7 @@ class VoiceAssistantService : Service() {
         const val ACTION_COMMAND_LISTEN = "com.khuongnd.dexassistant.ui.action.COMMAND_LISTEN"
         const val ACTION_START = "com.khuongnd.dexassistant.ui.action.START_VOICE_SERVICE"
         const val ACTION_STOP = "com.khuongnd.dexassistant.ui.action.STOP_VOICE_SERVICE"
+        const val ACTION_END_CHAT = "com.khuongnd.dexassistant.ui.action.END_CHAT"
         const val ACTION_PAUSE = "com.khuongnd.dexassistant.ui.action.PAUSE_VOICE_SERVICE"
         const val ACTION_RESUME = "com.khuongnd.dexassistant.ui.action.RESUME_VOICE_SERVICE"
         const val HEALTH_PREFERENCES = "voice_health"

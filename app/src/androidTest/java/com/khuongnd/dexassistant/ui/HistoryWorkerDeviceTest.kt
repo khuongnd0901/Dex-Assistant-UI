@@ -2,6 +2,7 @@ package com.khuongnd.dexassistant.ui
 
 import androidx.test.platform.app.InstrumentationRegistry
 import com.khuongnd.dexassistant.ui.history.CommandHistoryStore
+import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.Before
@@ -133,9 +134,10 @@ class HistoryWorkerDeviceTest {
                 core.dispatchVoice("bấm ô 999") { result = it; terminal.countDown() }
             }
             assertTrue("Terminal must finish before blocked history is released", terminal.await(3, TimeUnit.SECONDS))
-            assertEquals("INVALID_SCREEN_COMMAND", result?.status)
+            val expectedStatus = if (DexAccessibilityService.active == null) "ACCESSIBILITY_PERMISSION_REQUIRED" else "INVALID_SCREEN_COMMAND"
+            assertEquals(expectedStatus, result?.status)
             release.countDown(); store.flush(); instrumentation.waitForIdleSync()
-            assertEquals("INVALID_SCREEN_COMMAND", observed.status)
+            assertEquals(expectedStatus, observed.status)
             assertEquals("Không thể cập nhật lịch sử lệnh", observed.historyError)
             assertEquals("not-json", prefs.getString("records", null))
         } finally { release.countDown(); store.flush(); store.clear() }

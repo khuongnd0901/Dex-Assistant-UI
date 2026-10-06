@@ -29,6 +29,7 @@ class AssistantWebSocket(
     private var closedByUser = false
     private var lastRequest: PendingRequest? = null
     private var quotaRequestId: UUID? = null
+    private val chat = ChatSession()
     private val reconnectScheduler = Executors.newSingleThreadScheduledExecutor()
 
     @Synchronized
@@ -38,6 +39,7 @@ class AssistantWebSocket(
         }
         check(!disposed) { "WebSocket is closed" }
         generation++
+        chat.invalidate()
         reconnectFuture?.cancel(false); reconnectFuture = null
         this.endpoint = endpoint
         this.token = token
@@ -55,6 +57,7 @@ class AssistantWebSocket(
     @Synchronized
     fun disconnect() {
         generation++
+        chat.invalidate()
         reconnectFuture?.cancel(false); reconnectFuture = null
         closedByUser = true
         socket?.close(1000, "User disconnected")
@@ -83,6 +86,30 @@ class AssistantWebSocket(
     fun retryLast(): Boolean {
         val request = lastRequest ?: return false
         return send(request)
+    }
+
+    @Synchronized
+    fun startChat(): UUID {
+        check(socket != null) { "WebSocket is not connected" }
+        val request = chat.start()
+        if (!sendEnvelope(request.type, request.id, request.payload)) {
+            chat.invalidate(); error("Chat start was not sent")
+        }
+        return UUID.fromString(request.payload.getString("sessionId"))
+    }
+
+    @Synchronized
+    fun sendChatTurn(text: String): UUID {
+        val request = chat.turn(text)
+        if (!sendEnvelope(request.type, request.id, request.payload)) {
+            chat.invalidate(); error("Chat turn was not sent")
+        }
+        return request.id
+    }
+
+    @Synchronized
+    fun endChat(reason: String = "USER") {
+        chat.end(reason)?.let { sendEnvelope(it.type, it.id, it.payload) }
     }
 
     @Synchronized
@@ -120,7 +147,9 @@ class AssistantWebSocket(
             .put("correlationId", JSONObject.NULL)
             .put("sentAt", Instant.now().toString())
             .put("payload", payload)
-        return socket?.send(envelope.toString()) == true
+        val frame = envelope.toString()
+        if (type.startsWith("chat.") && frame.toByteArray(Charsets.UTF_8).size > 16_384) return false
+        return socket?.send(frame) == true
     }
 
     /** Validate identity at delivery, so queued old-socket events cannot affect a newer command. */
@@ -144,7 +173,12 @@ class AssistantWebSocket(
         override fun onMessage(webSocket: WebSocket, text: String) {
             dispatchCallback(webSocket) {
                 runCatching {
-                    when (ProtocolParser.type(text)) {
+                    when (val type = ProtocolParser.type(text)) {
+                        "chat.session.started", "chat.turn.response", "chat.session.ended", "chat.error" ->
+                            runCatching { chat.accept(text) }.fold(
+                                onSuccess = { it?.let(listener::onChatEvent) },
+                                onFailure = { chat.invalidate(); listener.onChatProtocolError() },
+                            )
                         "execution.plan" -> {
                             listener.onMetric("ws.plan_received", "plan", SystemClock.elapsedRealtimeNanos())
                             listener.onCorrelatedActions(JSONObject(text).optString("correlationId"), ProtocolParser.actions(text))
@@ -169,19 +203,22 @@ class AssistantWebSocket(
                                 listener.onCommandError(correlationId, code, message)
                             }
                         }
+                        else -> if (type.startsWith("chat.")) listener.onChatProtocolError()
                     }
-                }.onFailure { listener.onError("INVALID_MESSAGE: ${it.message}") }
+                }.onFailure { listener.onError("INVALID_MESSAGE") }
             }
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             dispatchCallback(webSocket) {
                 if (response?.code == 401) {
+                    chat.invalidate()
                     closedByUser = true
                     listener.onAuthenticationFailure()
                     return@dispatchCallback
             }
             listener.onState("RECONNECTING")
+            chat.invalidate()
             listener.onDisconnected()
             scheduleReconnect()
             }
@@ -190,6 +227,7 @@ class AssistantWebSocket(
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             dispatchCallback(webSocket) {
                 if (!closedByUser) {
+                    chat.invalidate()
                     scheduleReconnect()
                     listener.onState("RECONNECTING")
                     if (socket === webSocket) listener.onDisconnected()
@@ -226,6 +264,8 @@ class AssistantWebSocket(
         fun onQuotaUnsupported()
         fun onDisconnected()
         fun onMetric(event: String, correlationId: String, elapsedNanos: Long)
+        fun onChatEvent(event: ChatSession.Event) = Unit
+        fun onChatProtocolError() = Unit
     }
 
     private data class PendingRequest(val id: UUID, val text: String, val capabilities: String?)

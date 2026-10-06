@@ -16,6 +16,21 @@ Use JDK 17 and the Gradle wrapper. The baseline targets Android 15/API 35 and
 supports API 30+ in the current scaffold. The physical Fold3 has been verified as Android 15/API 35; use canonical
 D-011 and T-006 evidence for the accepted assistant test baseline.
 
+## Android test target on this host
+
+The canonical test selector is `/mnt/d/DeX-Assistant/scripts/android/select-test-target.sh`.
+Run it with `dex` for desktop/freeform tests or `foldable` for hinge/layout tests.
+It prefers a connected Galaxy Z Fold3 `SM-F926*` on API 35 and otherwise starts
+the matching Windows AVD under `D:\Android\AVD`. Use the exact reported serial
+for every device command. `D:\Android\Sdk\cmdline-tools\latest\bin\sdkmanager.bat`
+manages SDK packages; ADB is `D:\Android\Sdk\platform-tools\adb.exe`. For WSL
+Gradle builds use JDK 17 and `/home/khuongnd/Android/Sdk`. The AVD approximates
+Android 15 foldable/DeX layout but cannot verify Samsung DeX or real mic/button
+behavior. Full setup and limitations: backend `scripts/android/README.md`.
+Use Linux `adb` for a Fold3 visible to WSL. The Windows AVD uses Windows ADB
+server port 5038 (`adb.exe -P 5038`); port 5037 may connect to the separate
+Linux ADB server. Follow the selector's `ADB` and `SERIAL` output.
+
 ## Agent ownership
 
 The Android agent owns UI, connection/reconnect behavior, WebSocket client

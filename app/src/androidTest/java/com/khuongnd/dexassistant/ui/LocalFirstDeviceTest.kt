@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.net.wifi.WifiManager
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -35,12 +36,30 @@ class LocalFirstDeviceTest {
     }
 
     @Test fun reasoningWithoutConnectionHasStableFailure() {
-        command("mở nhạc phù hợp tâm trạng")
-        compose.waitUntil(10_000) {
-            CommandHistoryStore(context).read().firstOrNull()?.outcome == "AI_UNAVAILABLE"
+        val controller = com.khuongnd.dexassistant.ui.AssistantController.shared(context)
+        controller.disconnect()
+        val query = "giải thích vì sao thủy triều lên xuống"
+        val history = CommandHistoryStore(context)
+        val priorIds = history.read().map { it.id }.toSet()
+        var failureState: UiState? = null
+        val observer: (UiState) -> Unit = { state ->
+            if (state.status == "SEND_FAILED" && state.message == "Khó quá, không làm được") failureState = state
         }
-        assertEquals("BACKEND_REQUIRED", CommandHistoryStore(context).read().first().route)
-        compose.onNodeWithText("SEND_FAILED: Khó quá, không làm được").assertExists()
+        controller.addObserver(observer)
+        try {
+            compose.onNodeWithTag("command").performClick()
+            compose.onNodeWithText("Vietnamese command").performScrollTo().performTextInput(query)
+            val submittedAt = android.os.SystemClock.elapsedRealtime()
+            compose.onNodeWithText("Run command").performScrollTo().performClick()
+            compose.waitUntil(5_000) { failureState != null }
+            val elapsed = android.os.SystemClock.elapsedRealtime() - submittedAt
+            android.util.Log.i("T009Offline", "submitToFailureMs=$elapsed")
+            assertEquals("Khó quá, không làm được", failureState?.message)
+            val results = history.read().filter { it.id !in priorIds && it.originalText == query }
+            assertTrue("No matching backend-required history entry", results.isNotEmpty())
+            assertTrue("history=${results.map { it.route to it.outcome }}",
+                results.any { it.route == "BACKEND_REQUIRED" && it.outcome == "AI_UNAVAILABLE" })
+        } finally { controller.removeObserver(observer) }
     }
 
     @Test fun deviceOwnerWifiExecutesLocallyAndRestoresState() {
@@ -130,6 +149,7 @@ class LocalFirstDeviceTest {
     }
 
     private fun command(text: String) {
+        compose.onNodeWithTag("command").performClick()
         compose.onNodeWithText("Vietnamese command").performScrollTo().performTextInput(text)
         compose.onNodeWithText("Run command").performScrollTo().performClick()
     }

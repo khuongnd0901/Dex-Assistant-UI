@@ -75,6 +75,11 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private val executedActions = mutableSetOf<String>()
     private val receivedPlans = mutableSetOf<String>()
     private var connectionActive = false
+    @Volatile private var chatObserver: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)? = null
+    fun observeChat(observer: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)?) { chatObserver = observer }
+    fun startChat() = onMain { runCatching { webSocket.startChat() }.onFailure { chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(null, UUID.randomUUID(), "CHAT_PROVIDER_UNAVAILABLE", "Chat connection unavailable", true)) } }
+    fun sendChat(text: String) = onMain { runCatching { webSocket.sendChatTurn(text) }.onFailure { chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(null, UUID.randomUUID(), "CHAT_INVALID_SESSION", "Chat session unavailable", false)) } }
+    fun endChat(reason: String = "USER") = onMain { webSocket.endChat(reason) }
     private val watchdog = Runnable { finish("ACTION_TIMEOUT", "Hết thời gian xử lý lệnh") }
     private val commandDeadline = Runnable { finish("COMMAND_TIMEOUT", "Hết thời gian xử lý lệnh") }
     fun addObserver(observer: (UiState) -> Unit) { observers.add(observer); observer(state) }
@@ -384,7 +389,11 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         state = state.copy(quota = snapshot, quotaStale = QuotaFreshness.isStale(snapshot.staleAfter)); publish()
     }
     override fun onQuotaUnsupported() = onMain { state = state.copy(quota = null, quotaStale = true); publish() }
-    override fun onDisconnected() = onMain { state = state.copy(quotaStale = true); publish(); if (backendDispatch) finish("DISCONNECTED", "Mất kết nối máy chủ") }
+    override fun onDisconnected() = onMain {
+        state = state.copy(quotaStale = true); publish()
+        if (backendDispatch) finish("DISCONNECTED", "Mất kết nối máy chủ")
+        chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(null, UUID.randomUUID(), "CHAT_INVALID_SESSION", "Chat connection ended", true))
+    }
 
     fun clearHistory() {
         val ticket = historyPublication.next()
@@ -417,6 +426,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         // Deliberately excludes command text and credentials.
         android.util.Log.i("DexMetric", "$event correlationId=$correlationId elapsedNanos=$elapsedNanos")
     }
+    override fun onChatEvent(event: com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) { onMain { chatObserver?.invoke(event) } }
 
     private fun update(status: String, message: String) {
         state = state.copy(status = status, message = message)

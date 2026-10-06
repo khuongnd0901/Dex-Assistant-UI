@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.khuongnd.dexassistant.ui.theme.DexAssistantTheme
 import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
+import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 
 class MainActivity : ComponentActivity() {
     private var uiState by mutableStateOf(UiState())
@@ -43,7 +44,8 @@ class MainActivity : ComponentActivity() {
                 AssistantScreen(uiState, controller::provision, controller::connect,
                     controller::refreshHealth, controller::applyPermissions,
                     controller::startVoice, controller::stopVoice, controller::send, controller::clearHistory,
-                    onPauseVoice = controller::pauseVoice, onResumeVoice = controller::resumeVoice, onDiagnostic = controller::diagnosticListen)
+                    onPauseVoice = controller::pauseVoice, onResumeVoice = controller::resumeVoice, onDiagnostic = controller::diagnosticListen,
+                    onEndChat = { if (VoiceAssistantService.active != null) startService(android.content.Intent(this, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_END_CHAT)) })
             }
         }
     }
@@ -71,7 +73,7 @@ fun AssistantScreen(
     state: UiState, onProvision: (String, String) -> Unit, onConnect: () -> Unit,
     onRefresh: () -> Unit, onApplyPermissions: () -> Unit, onStartVoice: () -> Unit,
     onStopVoice: () -> Unit, onSend: (String) -> Unit, onClearHistory: () -> Unit,
-    modifier: Modifier = Modifier, onPauseVoice: () -> Unit = {}, onResumeVoice: () -> Unit = {}, onDiagnostic: () -> Unit = {},
+    modifier: Modifier = Modifier, onPauseVoice: () -> Unit = {}, onResumeVoice: () -> Unit = {}, onDiagnostic: () -> Unit = {}, onEndChat: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val live by com.khuongnd.dexassistant.ui.voice.VoiceLiveState.state.collectAsState()
@@ -107,6 +109,7 @@ fun AssistantScreen(
                             Button(onClick = onStopVoice, modifier = Modifier.weight(1f).testTag("voiceStop"), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text("Dừng", maxLines = 1) }
                         }
                         Button(onClick = onDiagnostic, Modifier.fillMaxWidth().testTag("diagnosticListen")) { Text("Nghe thử · không thực hiện lệnh", maxLines = 1) }
+                        Button(onClick = onEndChat, Modifier.fillMaxWidth().testTag("endChat")) { Text("Kết thúc trò chuyện", maxLines = 1) }
                         if (!compact) Text(live.microphone, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.clickable { detail = live.microphone; dialog = "detail" })
                     }

@@ -1,4 +1,89 @@
-# Current Android status — 2026-10-05
+# Current Android status — 2026-10-06
+
+## T-007 Android test target fallback — verified
+
+The canonical `scripts/android/select-test-target.sh` prefers a connected
+Galaxy Z Fold3 `SM-F926*`/API35 and otherwise starts the Windows API35 DeX-like
+or foldable AVD. This checkout's `AGENTS.md` now records the D-drive SDK path,
+actual `adb.exe` path, Linux Gradle SDK and emulator limitations. See backend
+`scripts/android/README.md` and completed T-007 follow-up plan. On this host
+the selector returned `DeX_Command_Test_API35`/`emulator-5554`; Windows ADB
+port5038 confirmed API35, 1920×1080/160dpi and freeform=1. Linux ADB could
+not reach Windows AVD localhost:5555. No Fold3 or AVD data was reset.
+
+## T-014-09 Fold3 natural voice Chat acceptance — IN_PROGRESS
+
+This execution container has no `adb` command or configured Android SDK;
+`adb devices -l` failed with `command not found`. No physical Fold3 session,
+microphone route, natural wake/three-turn Chat, real TTS, spoken interruption,
+echo rejection, latency/resource, or Command regression was verified here.
+
+Added an on-screen `Kết thúc trò chuyện` control in `MainActivity`. It sends a
+local `ACTION_END_CHAT` only while the voice service exists. During an active
+Chat session, the service requests `USER` end, invalidates pending callbacks,
+cancels STT/TTS and audio focus, then returns to wake-word standby. The control
+has not been run on device. Spoken exit during TTS is still unsupported by the
+sequential microphone path; no echo-safe detector was added in this slice.
+
+Validation: JDK17 `./gradlew test lint assembleDebug --max-workers=1 --offline`
+failed before any task ran: `SDK location not found`, with no `ANDROID_HOME` or
+`local.properties`. `git diff --check` PASS. No APK was produced or installed;
+no commit/push. Keep T-014-09 IN_PROGRESS. Main agent owns canonical task and
+evidence updates; stop after this task.
+
+## T-014-07 host Chat integration demo — Android slice verified
+
+Opt-in `ChatLiveDemoTest` connects the production Android `AssistantWebSocket`
+over a real loopback WebSocket to the canonical backend fixture. On 2026-10-06,
+the focused JDK17 host run PASS: three correlated Chat turns returned the exact
+time/story/follow-up fixture replies, each completed an explicitly injected TTS
+callback, and no Command action callback fired. The Chat observer path in
+`AssistantController` does not call the Command history store. USER end was acknowledged; a
+cancelled turn was not replayed after disconnect, and reconnect started a new
+session after an 800 ms demo-only wait for asynchronous server close. The client
+does not expose close completion, so this wait does not prove deterministic
+reconnect timing. XML output: `/tmp/T-014-07-android-live-demo.xml` (one test,
+zero failures; session and request IDs in stdout). Final-source JDK17
+`./gradlew test lint assembleDebug --max-workers=1 --offline` PASS in 4m26s:
+app 133 tests/variant (one opt-in live test skipped without fixture), DPC 5
+tests/variant, lint and both debug APKs; CRLF-aware `git diff --check` PASS.
+App APK SHA256 `47b3ad2b535250b28cabd566479252deec785e6a9f95574dc06ec6ffcd73038a`.
+`VoiceAssistantService` also
+needed the active-Chat `START` routing branch to compile with JDK17; it now sends
+that utterance as an ordinary Chat turn. Canonical main agent owns final
+T-014-07 evidence/status. No AVD,
+physical microphone or real TTS was exercised. No commit/push or owner device
+change. T-014-06 remains open for spoken exit during TTS.
+
+## T-014-06 voice Chat/TTS — IN_PROGRESS
+
+Whole-utterance Chat entry/exit, Chat-only turn routing, TTS reply playback and
+wake-free follow-up listening are wired in the current worktree. Stop/Pause
+cancellation invalidates Chat locally and requests remote end. Exact phrase
+routing tests were added. `git diff --check` passes. `./gradlew test` was
+attempted but Gradle stopped at startup because host Java is25.0.4.1 while the
+Android build requires JDK17; lint/APK build were not run. Spoken exit during
+TTS remains open: current capture is sequential and no echo-safe detector has
+been implemented or verified. Canonical evidence:
+`/mnt/d/DeX-Assistant/.agent/evidence/T-014-06-android-voice-chat-2026-10-06.md`.
+Do not begin T-014-07 until requested. No commit/push or device changes.
+
+## T-014-05 Chat session/protocol client — DONE
+
+Android Chat V1 now has a volatile session UUID, start/turn/end/error frames,
+correlated active-turn response parsing and disconnect/end invalidation in
+`ChatSession`/`AssistantWebSocket`. Chat events stay separate from Command
+actions and history. Focused lifecycle/WebSocket tests cover stale replies,
+one in-flight turn, nullable start error, invalid session and Command isolation.
+Final-source JDK17 `./gradlew test --max-workers=1 --offline` PASS: app130 tests
+and DPC5 tests per variant. `./gradlew lint assembleDebug
+assembleDebugAndroidTest --max-workers=1 --offline` PASS143 tasks; `git diff
+--check` PASS. The old resource merge NPE was stale generated Gradle state;
+moving its generated merger directories to `/tmp` allowed a clean build with
+no tracked config edit. No commit/push or physical install. Canonical evidence:
+`/mnt/d/DeX-Assistant/.agent/evidence/T-014-05-android-chat-client-2026-10-06.md`.
+TTS, voice orchestration and runnable demo remain open; stop before the next
+T-014 subtask unless separately requested.
 
 ## T-006 DeX STT subtitles — implementation and focused acceptance
 
