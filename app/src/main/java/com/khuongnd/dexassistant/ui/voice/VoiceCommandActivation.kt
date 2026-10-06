@@ -16,7 +16,10 @@ import androidx.core.content.ContextCompat
 class VoiceActivationGate(private val debounceMs: Long = 600) {
     private var lastAccepted: Long? = null
     @Synchronized fun admit(now: Long, allowed: Boolean, state: VoiceState?): Boolean {
-        if (!allowed || !idle(state)) return false
+        if (!allowed || (!idle(state) && state != VoiceState.TRANSCRIBING)) return false
+        // A press during STT submits the current utterance; the initial start
+        // press must not debounce that explicit submit request.
+        if (state == VoiceState.TRANSCRIBING) return true
         if (lastAccepted?.let { now - it < debounceMs } == true) return false
         lastAccepted = now
         return true
@@ -48,7 +51,10 @@ object VoiceCommandActivation {
         if (Looper.myLooper() != Looper.getMainLooper()) return false
         val service = VoiceAssistantService.active
         if (!gate.admit(SystemClock.elapsedRealtime(), allowed(context), service?.currentVoiceState())) return false
-        return if (service != null) service.beginCommandListening() else runCatching {
+        return if (service != null) {
+            if (service.currentVoiceState() == VoiceState.TRANSCRIBING) service.submitCurrentPartial()
+            else service.beginCommandListening()
+        } else runCatching {
             ContextCompat.startForegroundService(context, Intent(context, VoiceAssistantService::class.java)
                 .setAction(VoiceAssistantService.ACTION_COMMAND_LISTEN))
             true

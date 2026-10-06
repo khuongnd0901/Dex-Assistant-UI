@@ -1,5 +1,56 @@
 # Current Android status — 2026-10-06
 
+## T-006 second USB mic press submits current STT partial — IN_PROGRESS
+
+Implemented the owner-requested second supported hardware-mic invocation during
+`TRANSCRIBING`: retain latest nonblank partial for the active epoch, consume the
+turn once, destroy Google STT and pass text through the existing final-text
+handler (ordinary commands, selection/confirmation and Chat). Empty partial
+executes nothing; subsequent partial/final/error callbacks are stale. Added
+host admission/exactly-once regression assertions. JDK17
+`./gradlew test lint assembleDebug --max-workers=1 --offline` PASS: 133 app
+tests per debug/release variant, zero failures/errors and one opt-in skip each;
+aggregate lint and APK build PASS. APK SHA-256
+`d0fced0a153d1234e688b439f8fd514596f6b8e7f29313b98bed4e0d08c701b8`, signed
+with the Fold3's existing certificate `9ddb7f47…abd83d03`. Two incremental
+installs reported success but the package later disappeared; explicit
+`adb install --no-incremental -r` persisted through a follow-up query. No manual
+uninstall or clear-data command ran; data retention remains unknown. Owner
+re-enabled Accessibility and granted RECORD_AUDIO; Android confirms both.
+Initial owner attempt while a partial was visible had no `stt_manual_submit`:
+Google final arrived at22:49:13.861 and command dispatch followed at22:49:13.881.
+A later `KEY_VOICECOMMAND` down/up was captured while state was `PAUSED by user`,
+so Pause guard rejected it.
+Samsung chooser inspection found DeX Assistant as a digital assistant.
+During ADB UI navigation a tap appears to have selected it without owner
+intent; RoleManager now reports DeX, app readiness is READY and voice was
+TRANSCRIBING. Owner confirmed keeping DeX for the test. Three recognition
+epochs logged `stt_manual_submit` and a single dispatch 13–14 ms later, with no
+later Google final. Terminal results include `INVALID_SCREEN_COMMAND`,
+`SEND_FAILED`, and `VERIFIED`. The last may mean the screen changed; owner was
+asked to check. Filtered raw USB capture was interrupted before its pipe
+flushed. See canonical evidence
+`/home/kunrg/DeX-Assistant/.agent/evidence/T-006-second-mic-fold3-2026-10-06.md`.
+
+## Fold3 physical rerun — 2026-10-06
+
+Owner connected SM-F926B/API35 at `192.168.1.18:34393`. Current source
+`a3ae17a` built with JDK17: unit tests, lint, app/test APKs PASS; APKs signed
+with existing test identity and installed via `-r`, preserving data. T-011
+ConfigCommand 8PASS/1 AOSP-only SKIP; Maps address dispatch and Maps+YouTube
+pair PASS on DeX display2; matcher p95 0.352ms. T-010 second full grid run
+11PASS/1 opt-in SKIP, synthetic100 prepare/clear PASS. T-006 subtitles PASS4/1
+metadata SKIP. Native model/resolver and canned offline Vietnamese TTS PASS;
+STT exact offline `vi-VN` unavailable and real recognizer produced no callback
+within30s without supplied speech. T-003 DPC Wi-Fi instrumentation lost wireless
+ADB during its Wi-Fi toggle; device later answered LAN ping, but Wi-Fi state
+could not be read back and old ADB port refused connections. Keep T-003 open.
+T-014 active Chat/spoken exit/echo and natural Command/resource gates remain
+open. Canonical details: `/home/kunrg/DeX-Assistant/.agent/evidence/Fold3-rerun-2026-10-06.md`.
+Owner reconnected ADB at port `45283`; Wi-Fi is confirmed enabled. Direct mic
+handoff, volume restoration, dashboard layout and read-only capture observer
+also PASS. Natural utterance/Chat acceptance remains open.
+
 ## T-007 Android test target fallback — verified
 
 The canonical `scripts/android/select-test-target.sh` prefers a connected

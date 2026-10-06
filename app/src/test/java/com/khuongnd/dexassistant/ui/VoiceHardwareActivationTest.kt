@@ -24,9 +24,17 @@ class VoiceHardwareActivationTest {
     @Test fun rejectedReadinessAndBusyTurnsNeverConsumeAdmission() {
         val gate = VoiceActivationGate()
         assertFalse(gate.admit(1000, false, VoiceState.LISTENING))
-        VoiceState.entries.filterNot { VoiceActivationGate.idle(it) }.forEach {
+        VoiceState.entries.filterNot { VoiceActivationGate.idle(it) || it == VoiceState.TRANSCRIBING }.forEach {
             assertFalse("Reject $it", gate.admit(1000, true, it))
         }
+        assertTrue("Active STT accepts explicit submit even inside start debounce",
+            gate.admit(1050, true, VoiceState.TRANSCRIBING))
+        assertTrue("Repeated submit reaches service; session guard consumes only once",
+            gate.admit(1051, true, VoiceState.TRANSCRIBING))
+        val sessions = com.khuongnd.dexassistant.ui.voice.VoiceSessionGuard()
+        val epoch = sessions.begin()
+        assertTrue(sessions.consumeFinal(epoch))
+        assertFalse("A second submit/final callback cannot consume the turn again", sessions.consumeFinal(epoch))
         assertTrue(gate.admit(1000, true, VoiceState.LISTENING))
         assertFalse(gate.admit(1100, true, VoiceState.LISTENING))
         assertTrue(gate.admit(1600, true, VoiceState.LISTENING))

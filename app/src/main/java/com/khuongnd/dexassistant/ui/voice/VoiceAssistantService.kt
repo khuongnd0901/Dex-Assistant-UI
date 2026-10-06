@@ -46,6 +46,7 @@ class VoiceAssistantService : Service() {
     private var recorder: AudioRecord? = null
     private var recognizer: SpeechRecognizer? = null
     private var recognizerEpoch: Long? = null
+    private var latestPartial = ""
     private var watchdog: Runnable? = null
     private var feedbackWatchdog: Runnable? = null
     private var commandId: String? = null
@@ -191,6 +192,24 @@ class VoiceAssistantService : Service() {
         return true
     }
 
+    /** Explicit second hardware-button press submits the current STT partial once. */
+    fun submitCurrentPartial(): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper() || !VoiceCommandActivation.allowed(this) ||
+            stateMachine.state != VoiceState.TRANSCRIBING) return false
+        val id = recognizerEpoch ?: return false
+        if (!isRecognizing(id) || !sessions.consumeFinal(id)) return false
+        val text = latestPartial.trim()
+        timing(id, "stt_manual_submit", if (text.isBlank()) "EMPTY" else "PARTIAL")
+        VoiceLiveState.text(text, true)
+        if (!diagnosticOnly) {
+            VoiceSubtitles.store.text(id, text, true, SystemClock.elapsedRealtime())
+            main.postDelayed({ VoiceSubtitles.store.expire(SystemClock.elapsedRealtime()) }, 3000)
+        }
+        destroyRecognizer()
+        handleFinalText(id, text)
+        return true
+    }
+
     @SuppressLint("MissingPermission", "WakelockTimeout") // Actual permission is checked before constructing AudioRecord.
     private fun startWake() {
         if (stateMachine.state != VoiceState.LISTENING) return
@@ -301,6 +320,7 @@ class VoiceAssistantService : Service() {
     }
     private fun startRecognition(id: Long) {
         if (!sessions.isCurrent(id)) return
+        latestPartial = ""
         if (!diagnosticOnly) VoiceSubtitles.store.begin(id)
         timing(id, "stt_requested")
         val component = CommandRecognizer.component(this)
@@ -362,6 +382,7 @@ class VoiceAssistantService : Service() {
         override fun onPartialResults(partialResults: Bundle?) {
             if (isRecognizing(id)) {
                 val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                if (text.isNotBlank()) latestPartial = text
                 VoiceLiveState.text(text, false)
                 if (text.isNotBlank()) timing(id, "stt_partial")
                 if (!diagnosticOnly) VoiceSubtitles.store.text(id, text, false, SystemClock.elapsedRealtime())
@@ -387,6 +408,12 @@ class VoiceAssistantService : Service() {
                 main.postDelayed({ VoiceSubtitles.store.expire(SystemClock.elapsedRealtime()) }, 3000)
             }
             destroyRecognizer()
+            handleFinalText(id, text)
+        }
+    }
+
+    private fun handleFinalText(id: Long, text: String) {
+            if (!sessions.isCurrent(id)) return
             if (diagnosticOnly) {
                 finishDiagnostic(id, "COMPLETE")
                 return
@@ -446,7 +473,6 @@ class VoiceAssistantService : Service() {
             }
             returnedId = requestId
             if (!completedSynchronously && sessions.isCurrent(id)) commandId = requestId
-        }
     }
 
     private fun speakInteractionPrompt(prompt: com.khuongnd.dexassistant.ui.execution.ActionRouter.Prompt) {
@@ -609,6 +635,7 @@ class VoiceAssistantService : Service() {
         val old = recognizer
         recognizer = null
         recognizerEpoch = null
+        latestPartial = ""
         runCatching { old?.cancel(); old?.destroy() }
     }
 
