@@ -180,8 +180,10 @@ class AssistantWebSocket(
                                 onFailure = { chat.invalidate(); listener.onChatProtocolError() },
                             )
                         "execution.plan" -> {
-                            listener.onMetric("ws.plan_received", "plan", SystemClock.elapsedRealtimeNanos())
-                            listener.onCorrelatedActions(JSONObject(text).optString("correlationId"), ProtocolParser.actions(text))
+                            val correlationId = JSONObject(text).optString("correlationId")
+                            val actions = ProtocolParser.actions(text)
+                            listener.onMetric("ws.plan_received", correlationId, SystemClock.elapsedRealtimeNanos())
+                            listener.onCorrelatedActions(correlationId, actions)
                         }
                         "command.completed" -> {
                             val envelope = JSONObject(text)

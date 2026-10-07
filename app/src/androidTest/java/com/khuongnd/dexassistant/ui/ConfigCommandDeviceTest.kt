@@ -179,6 +179,24 @@ class ConfigCommandDeviceTest {
         }
     }
 
+    @Test fun semanticActionIsNotAdvertisedBeforeFold3Acceptance() {
+        val context = instrumentation.targetContext
+        val registry = registry()
+        instrumentation.runOnMainSync {
+            val router = ActionRouter(context, registry, LocalActionExecutor(context, DpcClient(context), registry::appPackage))
+            val supported = router.supportedActions()
+            assertFalse(ActionId.CLICK_TARGET in supported)
+            val descriptor = DeviceCommandProtocol.capabilities(registry, supported)
+            assertEquals(1, descriptor.getInt("actionSchemaVersion"))
+            assertFalse(descriptor.getJSONArray("supportedActions").toString().contains("CLICK_TARGET"))
+            val target = ActionCatalog.validate("CLICK_TARGET", mapOf("target" to mapOf("appId" to "youtube", "text" to "Phát")), 2)
+            var result: LocalResult? = null
+            router.execute("semantic-unavailable", target, null) { result = it }
+            assertEquals(LocalOutcome.REJECTED, result?.outcome)
+            assertNotNull(result?.errorCode)
+        }
+    }
+
     @Test fun duplicateTtsAndCancelledParentCannotReviveCall() {
         val context = instrumentation.targetContext
         val registry = registry()

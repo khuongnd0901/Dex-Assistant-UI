@@ -69,6 +69,7 @@ class DesktopUiAccess(private val service: DexAccessibilityService) {
             ScreenWindow(window.id,window.layer,window.type,ScreenRect(rect.left,rect.top,rect.right,rect.bottom),window.isFocused,window.isActive)
         }
         val obscuring = topology.filter { it.layer > chosen.layer }.map { it.bounds }
+        val windowBounds = topology.first { it.id == chosen.id }.bounds
         val root = chosen.root ?: return null
         val packageName = root.packageName?.toString() ?: run { recycle(root); return null }
         val records = mutableListOf<UiNodeRecord>()
@@ -77,11 +78,11 @@ class DesktopUiAccess(private val service: DexAccessibilityService) {
             if (++visited > 4096 || depth > 40 || !node.refresh()) return
             val rect = Rect(); node.getBoundsInScreen(rect)
             val bounds = ScreenRect(rect.left,rect.top,rect.right,rect.bottom)
-            if (node.isVisibleToUser && node.isEnabled && bounds.width > 0 && bounds.height > 0 && bounds.inside(screen) &&
+            if (node.isVisibleToUser && node.isEnabled && bounds.width > 0 && bounds.height > 0 && bounds.inside(screen) && bounds.inside(windowBounds) &&
                 obscuring.none(bounds::intersects)) {
                 records.add(UiNodeRecord(path,parent,bounds,node.text?.toString().orEmpty(),node.contentDescription?.toString().orEmpty(),
                     node.viewIdResourceName.orEmpty(),node.isClickable || node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK },
-                    node.isScrollable,node.actionList.map { it.id }.toSet(),node.hashCode().toString()))
+                    node.isScrollable,node.actionList.map { it.id }.toSet(),node.hashCode().toString(),node.className?.toString().orEmpty()))
             }
             for (i in 0 until minOf(128,node.childCount)) {
                 if (visited >= 4096) break
@@ -106,6 +107,10 @@ class DesktopUiAccess(private val service: DexAccessibilityService) {
         try { root.packageName?.toString() } finally { recycle(root) }
     }.getOrNull()
     fun targets(text: String): List<Target> = tree()?.let { tree -> AppUiAdapters.textTargets(tree.nodes,text).map { Target(tree,it) } }.orEmpty()
+    fun semanticTargets(packageName: String, selector: SemanticUiResolver.Selector): List<Target> =
+        tree()?.takeIf { it.packageName == packageName }?.let { tree ->
+            SemanticUiResolver.resolve(tree.nodes,selector).map { Target(tree,it) }
+        }.orEmpty()
     fun youtubeResults(): List<Target> = tree()?.takeIf { it.packageName == "com.google.android.youtube" }
         ?.let { tree -> AppUiAdapters.youtubeResults(tree.nodes).map { Target(tree,it) } }.orEmpty()
     fun fullscreen(enabled: Boolean): List<Target> = tree()?.takeIf { it.packageName == "com.google.android.youtube" }

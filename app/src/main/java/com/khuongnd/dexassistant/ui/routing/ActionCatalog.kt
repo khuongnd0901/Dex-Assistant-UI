@@ -1,11 +1,11 @@
 package com.khuongnd.dexassistant.ui.routing
 
-/** Schema one is shared with DEVICE_COMMAND. Execution policy is deliberately absent from config. */
+/** Shared DEVICE_COMMAND actions. Execution policy is deliberately absent from config. */
 enum class ActionId {
     APP_LAUNCH, WIFI_SET, BLUETOOTH_SET, VOLUME_SET, BRIGHTNESS_SET, MEDIA_TRANSPORT,
     YOUTUBE_SEARCH, YOUTUBE_PLAY_QUERY, YOUTUBE_SELECT, YOUTUBE_FULLSCREEN, MEDIA_SEEK,
     NAVIGATE, SEARCH_PLACE, CALL_CONTACT, CALL_NUMBER, WEB_SEARCH, CLICK_TEXT, SCROLL,
-    FEED_NEXT, FEED_PREVIOUS, SYSTEM_ACTION, APP_PAIR_LAUNCH,
+    FEED_NEXT, FEED_PREVIOUS, SYSTEM_ACTION, APP_PAIR_LAUNCH, CLICK_TARGET,
 }
 
 data class TypedAction(val action: ActionId, val params: Map<String, Any>) {
@@ -16,10 +16,13 @@ data class TypedAction(val action: ActionId, val params: Map<String, Any>) {
 
 object ActionCatalog {
     const val schemaVersion = 1
+    const val semanticSchemaVersion = 2
     private val appId = Regex("[a-z][a-z0-9_]{0,63}")
     private val phone = Regex("\\+?[0-9]{3,15}")
-    fun validate(action: String, params: Map<String, Any>): TypedAction {
+    fun validate(action: String, params: Map<String, Any>, version: Int = schemaVersion): TypedAction {
+        require(version == schemaVersion || version == semanticSchemaVersion)
         val id = ActionId.valueOf(action)
+        require(id != ActionId.CLICK_TARGET || version == semanticSchemaVersion)
         fun keys(vararg allowed: String) { require(params.keys.all { it in allowed }) { "Unknown parameter for $id" } }
         fun text(key: String, max: Int = 500): String {
             val value = params[key] as? String ?: error("Expected text: $key")
@@ -65,7 +68,24 @@ object ActionCatalog {
             ActionId.SCROLL -> { keys("direction"); option("direction", "FORWARD", "BACKWARD") }
             ActionId.FEED_NEXT, ActionId.FEED_PREVIOUS -> keys()
             ActionId.SYSTEM_ACTION -> { keys("operation"); option("operation", "BACK", "HOME", "SETTINGS", "NOTIFICATIONS") }
+            ActionId.CLICK_TARGET -> {
+                keys("target")
+                require(params.size == 1)
+                val target = params["target"] as? Map<*, *> ?: error("Expected target object")
+                require(target.keys.all { it is String && it in setOf("appId", "role", "text", "contentDescription", "resourceId", "contextText", "ordinal") })
+                val targetApp = target["appId"] as? String ?: error("Expected appId")
+                require(appId.matches(targetApp))
+                if (target.containsKey("role")) require(target["role"] in setOf("BUTTON", "TEXT", "IMAGE", "LIST_ITEM"))
+                val identifiers = listOf("text", "contentDescription", "resourceId", "contextText")
+                require(identifiers.any { target.containsKey(it) })
+                identifiers.filter(target::containsKey).forEach { key ->
+                    val value = target[key] as? String ?: error("Expected text: $key")
+                    require(value.isNotBlank() && value.length <= 200 && value.none { it.isISOControl() })
+                }
+                if (target.containsKey("ordinal")) require((target["ordinal"] as? Int)?.let { it in 1..50 } == true)
+            }
         }
-        return TypedAction(id, java.util.Collections.unmodifiableMap(LinkedHashMap(params)))
+        val immutableParams = if (id == ActionId.CLICK_TARGET) mapOf("target" to java.util.Collections.unmodifiableMap(LinkedHashMap(params["target"] as Map<*, *>))) else params
+        return TypedAction(id, java.util.Collections.unmodifiableMap(LinkedHashMap(immutableParams)))
     }
 }

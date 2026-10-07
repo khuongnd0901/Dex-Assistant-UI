@@ -1,4 +1,14 @@
-# Current Android status — 2026-10-06
+# Current Android status - 2026-10-07
+
+## T-015 M2 semantic DeX resolver — host implementation, Fold3 acceptance pending
+
+Android now has a bounded local CLICK_TARGET resolver: configured package and selected Samsung DeX window, exact selector fields, role and card-local context, clickable ancestor, deterministic ordinal after filtering, spoken choice/confirmation, live tree revalidation and one gesture. YouTube cards retain artist/context for spoken choices; duplicate titles with missing or identical artist metadata fail as TARGET_AMBIGUOUS before any gesture. Production still advertises schema 1 and excludes CLICK_TARGET until physical Fold3 acceptance. Next: run semantic fixture and natural YouTube/Maps/paired-window acceptance on Fold3, then enable schema 2 only after readiness is proven.
+
+Validation: JDK17 offline `./gradlew test lint assembleDebug assembleDebugAndroidTest --max-workers=1` PASS (201 tasks); final source rerun `./gradlew test assembleDebug --max-workers=1` PASS (131 tasks), including 8 resolver/adapter tests. Scoped diff check PASS. No ADB device was available; physical DeX execution remains unverified.
+
+## T-015 M1 contract — verified
+
+Schema-2 validation and the shared fixture passed on both repositories. M2 adds direct local semantic execution under selected DeX scope, spoken confirmation and live revalidation. Remote capability remains disabled at schema 1 until Fold3 acceptance; see the M2 status above and canonical T-015 evidence.
 
 ## T-006 second USB mic press submits current STT partial — IN_PROGRESS
 

@@ -31,6 +31,7 @@ import com.khuongnd.dexassistant.ui.AssistantController
 import com.khuongnd.dexassistant.ui.MainActivity
 import java.util.concurrent.Executors
 import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
+import com.khuongnd.dexassistant.ui.latency.CommandLatency
 
 /** Microphone ownership is sequential: wake recorder -> STT service -> feedback -> wake. */
 class VoiceAssistantService : Service() {
@@ -47,6 +48,18 @@ class VoiceAssistantService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private var recognizerEpoch: Long? = null
     private var latestPartial = ""
+    private var measuredEpoch: Long? = null
+    private var speechEndAtNanos: Long? = null
+    private val voiceLatency = CommandLatency { name, micros ->
+        android.util.Log.i("DexLatency", "epoch=$measuredEpoch metric=$name durationUs=$micros")
+    }
+    private fun voiceMark(id: Long, name: String, atNanos: Long = SystemClock.elapsedRealtimeNanos()) {
+        if (measuredEpoch != id) { voiceLatency.clear(); measuredEpoch = id; speechEndAtNanos = null }
+        voiceLatency.start(name, atNanos)
+    }
+    private fun voiceEnd(id: Long, name: String) {
+        if (measuredEpoch == id) voiceLatency.end(name, SystemClock.elapsedRealtimeNanos())
+    }
     private var watchdog: Runnable? = null
     private var feedbackWatchdog: Runnable? = null
     private var commandId: String? = null
@@ -200,6 +213,8 @@ class VoiceAssistantService : Service() {
         if (!isRecognizing(id) || !sessions.consumeFinal(id)) return false
         val text = latestPartial.trim()
         timing(id, "stt_manual_submit", if (text.isBlank()) "EMPTY" else "PARTIAL")
+        voiceEnd(id, "sttLatency")
+        voiceEnd(id, "speechEndToFinalLatency")
         VoiceLiveState.text(text, true)
         if (!diagnosticOnly) {
             VoiceSubtitles.store.text(id, text, true, SystemClock.elapsedRealtime())
@@ -234,6 +249,7 @@ class VoiceAssistantService : Service() {
             stage("wake_worker_started")
             if (!sessions.isCurrent(id)) return@execute
             var detected = false
+            var detectedAtNanos = 0L
             var audio: AudioRecord? = null
             val result = runCatching {
                 val engine = wakeEngine?.also { it.resetSession(); stage("model_reused") }
@@ -278,7 +294,7 @@ class VoiceAssistantService : Service() {
                             val blocked = when (input.activeRecordingConfiguration?.isClientSilenced) { true -> "âm thanh bị hệ thống chặn"; false -> "đang nhận âm thanh"; null -> "chưa xác minh âm thanh" }
                             VoiceLiveState.microphone("$route · $blocked · RMS %.3f".format(java.util.Locale.ROOT, rms))
                         }
-                        if (engine.accept(samples, count)) { stage("wake_detected"); detected = true; break }
+                        if (engine.accept(samples, count)) { detectedAtNanos = SystemClock.elapsedRealtimeNanos(); stage("wake_detected"); detected = true; break }
                     }
                 }
             }
@@ -294,6 +310,7 @@ class VoiceAssistantService : Service() {
                 activeWakeEpoch = null
                 when {
                     detected -> {
+                        voiceMark(id, "wakeLatency", detectedAtNanos)
                         transitionSafely(VoiceEvent.WAKE)
                         report("Wake detected; opening Vietnamese STT")
                         // STT readiness does not wait for screenshot/analysis (up to 1.5s).
@@ -361,6 +378,8 @@ class VoiceAssistantService : Service() {
             if (isRecognizing(id) && !announcedReady) {
                 announcedReady = true
                 timing(id, "stt_ready")
+                voiceEnd(id, "wakeLatency")
+                voiceMark(id, "sttLatency")
                 VoiceLiveState.ready(true)
                 if (!diagnosticOnly) VoiceSubtitles.store.phase(id, SubtitlePhase.LISTENING)
                 feedback.readyTone()
@@ -377,6 +396,8 @@ class VoiceAssistantService : Service() {
         override fun onBufferReceived(buffer: ByteArray?) = Unit // Raw audio is never stored.
         override fun onEndOfSpeech() { if (isRecognizing(id)) {
             timing(id, "speech_end")
+            voiceMark(id, "speechEndToFinalLatency")
+            speechEndAtNanos = SystemClock.elapsedRealtimeNanos()
             if (!diagnosticOnly) VoiceSubtitles.store.phase(id, SubtitlePhase.RECOGNIZING)
         } }
         override fun onPartialResults(partialResults: Bundle?) {
@@ -401,6 +422,8 @@ class VoiceAssistantService : Service() {
         override fun onResults(results: Bundle?) {
             if (!isRecognizing(id) || !sessions.consumeFinal(id)) return
             timing(id, "stt_final")
+            voiceEnd(id, "sttLatency")
+            voiceEnd(id, "speechEndToFinalLatency")
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
             VoiceLiveState.text(text, true)
             if (!diagnosticOnly) {
@@ -441,7 +464,8 @@ class VoiceAssistantService : Service() {
             report("Routing final Vietnamese command")
             val parentCommand = commandId
             if (parentCommand != null && coordinator.isAwaitingInteraction(parentCommand)) {
-                if (coordinator.continueInteraction(parentCommand, text)) return
+                if (coordinator.continueInteraction(parentCommand, text,
+                        if (measuredEpoch == id) speechEndAtNanos else null)) return
                 commandId = null
             }
             var returnedId: String? = null
@@ -459,7 +483,7 @@ class VoiceAssistantService : Service() {
                 }
             }, interaction = { prompt ->
                 if (commandId == prompt.parentId && commandVoiceEpoch?.let(sessions::isCurrent) == true) speakInteractionPrompt(prompt)
-            }) { result ->
+            }, speechEndNanos = if (measuredEpoch == id) speechEndAtNanos else null) { result ->
                 val activeEpoch = commandVoiceEpoch ?: return@dispatchVoice
                 if (!sessions.isCurrent(activeEpoch) || (commandId != result.requestId && returnedId != null)) return@dispatchVoice
                 timing(activeEpoch, "command_terminal", result.status)
@@ -472,6 +496,7 @@ class VoiceAssistantService : Service() {
                 } else finishWithFeedback(activeEpoch, spokenResult(result.status), result.status)
             }
             returnedId = requestId
+            android.util.Log.i("DexLatency", "epoch=$id requestId=$requestId stage=correlated")
             if (!completedSynchronously && sessions.isCurrent(id)) commandId = requestId
     }
 

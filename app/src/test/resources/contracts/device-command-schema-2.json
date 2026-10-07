@@ -1,0 +1,25 @@
+{
+  "clientCapabilities": {
+    "actionSchemaVersion": 2,
+    "supportedActions": ["APP_LAUNCH", "CLICK_TARGET"],
+    "configuredAppIds": ["youtube", "maps"]
+  },
+  "valid": [
+    {"actionSchemaVersion": 2, "action": "APP_LAUNCH", "params": {"app": "youtube"}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "Nơi này có anh", "contextText": "Sơn Tùng", "role": "LIST_ITEM", "ordinal": 1}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "maps", "resourceId": "com.google.android.apps.maps:id/search", "contentDescription": "Search"}}}
+  ],
+  "invalid": [
+    {"actionSchemaVersion": 1, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "A"}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "other", "text": "A"}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "ordinal": 1}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": " "}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "A", "role": "LINK"}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "A", "ordinal": 0}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "A", "ordinal": 1.0}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": ["A"]}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "A", "coordinates": [1, 2]}}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "A"}, "confirmed": true}},
+    {"actionSchemaVersion": 2, "action": "CLICK_TARGET", "params": {"target": {"appId": "youtube", "text": "A"}}, "policy": "AUTO"}
+  ]
+}

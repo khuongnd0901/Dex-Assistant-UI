@@ -7,9 +7,9 @@ import java.util.Locale
 data class UiNodeRecord(
     val path: String, val parentPath: String?, val bounds: ScreenRect,
     val text: String, val description: String, val viewId: String,
-    val clickable: Boolean, val scrollable: Boolean, val actions: Set<Int>, val identity: String = "",
+    val clickable: Boolean, val scrollable: Boolean, val actions: Set<Int>, val identity: String = "", val className: String = "",
 )
-data class AppUiTarget(val node: UiNodeRecord, val label: String)
+data class AppUiTarget(val node: UiNodeRecord, val label: String, val contextText: String = "")
 object AppUiAdapters {
     private val duration = Regex("(?:^| )\\d{1,2}:\\d{2}(?: |$)")
     private val adLabels = setOf("quảng cáo", "sponsored", "ad")
@@ -43,10 +43,21 @@ object AppUiAdapters {
             val video = children.any { "duration" in it.viewId || "video_length" in it.viewId ||
                 duration.containsMatchIn(it.text + " " + it.description) }
             val ad = children.any { label(it.text) in adLabels }
-            if (thumbnail && video && !ad) AppUiTarget(card, title.text) else null
+            val artist = children.firstOrNull { child ->
+                child.path != title.path && child.text.isNotBlank() &&
+                    child.viewId.substringAfterLast('/') in setOf("channel", "channel_name", "artist", "owner", "subtitle")
+            }?.text.orEmpty()
+            if (thumbnail && video && !ad) AppUiTarget(card, title.text, artist) else null
         }.distinctBy { it.node.path }.sortedWith(compareBy({ it.node.bounds.top }, { it.node.bounds.left }))
 
     }
+
+    /** A spoken choice must distinguish cards sharing a title without relying on screen position. */
+    fun youtubeChoicesUnambiguous(targets: List<AppUiTarget>): Boolean = targets
+        .groupBy { label(it.label) }.values.all { sameTitle ->
+            sameTitle.size == 1 || sameTitle.all { it.contextText.isNotBlank() } &&
+                sameTitle.map { label(it.contextText) }.toSet().size == sameTitle.size
+        }
 
     fun fullscreen(nodes: List<UiNodeRecord>, enabled: Boolean): List<AppUiTarget> {
         val names = if (enabled) setOf("toàn màn hình", "full screen", "enter full screen")

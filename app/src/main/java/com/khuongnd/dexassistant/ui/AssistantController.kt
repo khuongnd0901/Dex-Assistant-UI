@@ -27,6 +27,7 @@ import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
 import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
 import com.khuongnd.dexassistant.ui.screen.ScreenCommandParser
+import com.khuongnd.dexassistant.ui.latency.CommandLatency
 
 data class VoiceCommandResult(val requestId: String, val status: String, val message: String)
 
@@ -71,6 +72,19 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private var backendDispatch = false
     private var remoteDispatch = false
     private var remoteResultCode: String? = null
+    private var latency: CommandLatency? = null
+    private var latencyPath = "local"
+    private var speechEndAtNanos: Long? = null
+    private fun markActionStart() {
+        val start = speechEndAtNanos ?: return
+        speechEndAtNanos = null
+        val now = SystemClock.elapsedRealtimeNanos()
+        if (now >= start) latencyEvent("speechEndToActionStartLatency", (now - start) / 1_000)
+    }
+    private fun latencyEvent(name: String, micros: Long) {
+        pendingId?.let { android.util.Log.i("DexLatency", "requestId=$it path=$latencyPath metric=$name durationUs=$micros") }
+    }
+    private fun safeReason(value: String): String = if (value.matches(Regex("[A-Z][A-Z0-9_]{0,63}"))) value else "OTHER"
     private var pendingRemoteAction: DeviceAction? = null
     private val executedActions = mutableSetOf<String>()
     private val receivedPlans = mutableSetOf<String>()
@@ -84,7 +98,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private val commandDeadline = Runnable { finish("COMMAND_TIMEOUT", "Hết thời gian xử lý lệnh") }
     fun addObserver(observer: (UiState) -> Unit) { observers.add(observer); observer(state) }
     fun removeObserver(observer: (UiState) -> Unit) { observers.remove(observer) }
-    fun dispatchVoice(text: String, progress: ((String, String) -> Unit)? = null, interaction: ((ActionRouter.Prompt) -> Unit)? = null, completion: (VoiceCommandResult) -> Unit): String {
+    fun dispatchVoice(text: String, progress: ((String, String) -> Unit)? = null, interaction: ((ActionRouter.Prompt) -> Unit)? = null, speechEndNanos: Long? = null, completion: (VoiceCommandResult) -> Unit): String {
         val id = UUID.randomUUID().toString()
         commandGate.enqueue(id)
         // Always enqueue so callers can retain the returned correlation ID before completion.
@@ -95,6 +109,8 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             else {
                 pendingCompletion = completion; pendingProgress = progress; pendingInteractionPrompt = interaction; pendingDispatched = false; activeText = text
                 backendDispatch = false; remoteDispatch = false; remoteResultCode = null; executedActions.clear(); receivedPlans.clear()
+                latencyPath = "local"; latency = CommandLatency(::latencyEvent)
+                speechEndAtNanos = speechEndNanos
                 progress?.invoke(id, "ROUTING")
                 if (pendingId != id) return@post
                 main.postDelayed(watchdog, 30_000)
@@ -114,8 +130,9 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     fun isAwaitingInteraction(requestId: String) = pendingId == requestId && actionRouter.awaitingInteraction
     fun interactionPromptFinished(prompt: ActionRouter.Prompt, success: Boolean): Boolean =
         pendingId == prompt.parentId && actionRouter.promptFinished(prompt, success)
-    fun continueInteraction(requestId: String, text: String): Boolean {
+    fun continueInteraction(requestId: String, text: String, speechEndNanos: Long? = null): Boolean {
         if (pendingId != requestId || !actionRouter.awaitingInteraction) return false
+        speechEndAtNanos = speechEndNanos
         if (actionRouter.continueInteraction(text)) return true
         // A new final command replaces the interaction; the old completion must not speak over it.
         recordHistory(activeText, if (backendDispatch) Route.BACKEND_REQUIRED.name else Route.LOCAL.name, null, "CANCELLED")
@@ -125,12 +142,17 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     }
     private fun finish(status: String, message: String) {
         val id = pendingId ?: return
+        actionRouter.cancel()
+        latency?.end("executionLatency", SystemClock.elapsedRealtimeNanos())
+        android.util.Log.i("DexLatency", "requestId=$id path=$latencyPath terminalReason=${safeReason(status)}")
+        latency?.clear(); latency = null
+        speechEndAtNanos = null
         val callback = pendingCompletion
         pendingRemoteAction?.also { action ->
             pendingRemoteAction = null
             webSocket.sendActionResult(action.planId, action.actionId, "REJECTED", status)
         }
-        commandGate.finish(id); pendingCompletion = null; pendingProgress = null; pendingInteractionPrompt = null; main.removeCallbacks(watchdog); main.removeCallbacks(commandDeadline); actionRouter.cancel()
+        commandGate.finish(id); pendingCompletion = null; pendingProgress = null; pendingInteractionPrompt = null; main.removeCallbacks(watchdog); main.removeCallbacks(commandDeadline)
         if (backendDispatch) recordHistory(activeText, Route.BACKEND_REQUIRED.name, null, status)
         callback?.invoke(VoiceCommandResult(id, status, message))
     }
@@ -205,8 +227,11 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             if (pendingDispatched) { update("COMMAND_IN_PROGRESS", "Đang xử lý lệnh trước"); return }
             pendingDispatched = true
         } else { dispatchVoice(text) { }; return }
+        latency?.start("routeLatency", SystemClock.elapsedRealtimeNanos())
         val screenCommand = ScreenCommandParser.parse(text)
         if (screenCommand != null) {
+            latency?.end("routeLatency", SystemClock.elapsedRealtimeNanos())
+            latency?.start("executionLatency", SystemClock.elapsedRealtimeNanos())
             val service = DexAccessibilityService.active
             val screenRequestId = pendingId
             val complete: (String) -> Unit = { status -> onMain {
@@ -216,7 +241,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                     finish(status, status)
                 }
             } }
-            if (service == null) complete("ACCESSIBILITY_PERMISSION_REQUIRED") else service.execute(screenCommand, complete)
+            if (service == null) complete("ACCESSIBILITY_PERMISSION_REQUIRED") else { markActionStart(); service.execute(screenCommand, complete) }
             return
         }
         DexAccessibilityService.active?.clear()
@@ -228,6 +253,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         val activeRequestId = pendingId
         val decision = router.route(text, actionRouter.foregroundAppId())
         val routed = decision.command
+        latency?.end("routeLatency", SystemClock.elapsedRealtimeNanos())
         when (routed.route) {
             Route.LOCAL -> if (decision.capability?.available == false) {
                 val error = decision.capability.unavailableReason ?: "POLICY_DENIED"
@@ -237,9 +263,11 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                 if (pendingId != activeRequestId) return
                 val typed = routed.resolved?.typedAction
                 if (typed == null) { finish("INVALID_ARGUMENTS", "Lệnh chưa hợp lệ"); return }
+                if (typed.action.name == "CLICK_TARGET") latencyPath = "semantic"
+                latency?.start("executionLatency", SystemClock.elapsedRealtimeNanos())
                 main.removeCallbacks(watchdog)
                 actionRouter.execute(activeRequestId!!, typed, pendingInteractionPrompt, routed.resolved.commandId,
-                    localCommandId = routed.resolved.commandId) { result -> onMain {
+                    localCommandId = routed.resolved.commandId, metric = ::actionMetric) { result -> onMain {
                 if (pendingId != activeRequestId) return@onMain
                 recordHistory(text, routed.route.name, routed.intent?.name, result.errorCode ?: result.outcome.name)
                 state = state.copy(status = result.outcome.name, message = result.errorCode ?: result.outcome.name); publish()
@@ -257,6 +285,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             }
             Route.BACKEND_REQUIRED -> runCatching {
                 backendDispatch = true
+                latencyPath = "fallback"
                 pendingId?.let { pendingProgress?.invoke(it, "SENDING") }
                 check(pendingId == activeRequestId) { "Command cancelled" }
                 webSocket.sendCommand(text, UUID.fromString(pendingId), DeviceCommandProtocol.capabilities(commandRegistry, actionRouter.supportedActions()))
@@ -330,6 +359,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     override fun onActions(actions: List<DeviceAction>) = Unit
     override fun onCorrelatedActions(requestId: String, actions: List<DeviceAction>) = onMain {
         if (pendingId != requestId || !backendDispatch) return@onMain
+        latencyPath = "remote"
         val planId = actions.firstOrNull()?.planId ?: return@onMain
         if (receivedPlans.isNotEmpty() || !receivedPlans.add(planId)) return@onMain
         if (actions.size > 8 || actions.map { it.actionId }.distinct().size != actions.size || actions.any { it.planId != planId }) {
@@ -351,8 +381,10 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         }
         main.removeCallbacks(watchdog)
         onMetric("action.start", action.actionId, SystemClock.elapsedRealtimeNanos())
+        if (typed.action.name == "CLICK_TARGET") latencyPath = "semantic"
+        latency?.start("executionLatency", SystemClock.elapsedRealtimeNanos())
         pendingRemoteAction = action
-        actionRouter.execute(requestId, typed, pendingInteractionPrompt, action.actionId) { result -> onMain {
+        actionRouter.execute(requestId, typed, pendingInteractionPrompt, action.actionId, metric = ::actionMetric) { result -> onMain {
             if (pendingId != requestId || pendingRemoteAction?.actionId != action.actionId) return@onMain
             pendingRemoteAction = null
             val success = result.outcome.name in setOf("DISPATCHED", "VERIFIED")
@@ -361,6 +393,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             webSocket.sendActionResult(action.planId, action.actionId,
                 if (success) "SUCCESS" else if (result.outcome.name == "REJECTED") "REJECTED" else "FAILED", result.errorCode)
             onMetric("action.result", action.actionId, SystemClock.elapsedRealtimeNanos())
+            latency?.end("executionLatency", SystemClock.elapsedRealtimeNanos())
             if (success) executeActions(requestId, actions, index + 1) else main.postDelayed(watchdog, 30_000)
         } }
     }
@@ -423,8 +456,28 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     }
 
     override fun onMetric(event: String, correlationId: String, elapsedNanos: Long) {
-        // Deliberately excludes command text and credentials.
-        android.util.Log.i("DexMetric", "$event correlationId=$correlationId elapsedNanos=$elapsedNanos")
+        if (correlationId != pendingId) return
+        when (event) {
+            "action_start" -> markActionStart()
+            "ws.send" -> latency?.start("backendLatency", elapsedNanos)
+            "ws.plan_received" -> latency?.end("backendLatency", elapsedNanos)
+        }
+    }
+    private fun actionMetric(event: String, atNanos: Long) {
+        when (event) {
+            "ui_resolution_start" -> latency?.start("uiResolutionLatency", atNanos)
+            "ui_resolution_end" -> latency?.end("uiResolutionLatency", atNanos)
+            "confirmation_start" -> {
+                latency?.end("executionLatency", atNanos)
+                latency?.start("confirmationWaitLatency", atNanos)
+            }
+            "confirmation_end" -> {
+                latency?.end("confirmationWaitLatency", atNanos)
+            }
+            "execution_resume" -> {
+                latency?.start("executionLatency", atNanos)
+            }
+        }
     }
     override fun onChatEvent(event: com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) { onMain { chatObserver?.invoke(event) } }
 
