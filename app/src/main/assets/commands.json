@@ -312,6 +312,8 @@
       "patterns": [
         "bật tiếng",
         "bật âm thanh",
+        "mở tiếng",
+        "mở âm thanh",
         "bỏ tắt tiếng"
       ],
       "args": {
@@ -441,6 +443,7 @@
         "tìm youtube bài {query}",
         "nhạc {query}",
         "tìm nhạc {query}",
+        "mở youtube tìm nhạc {query}",
         "tìm video {query}",
         "tìm kiếm nhạc {query}",
         "tìm kiếm video {query}",
@@ -475,6 +478,7 @@
       "id": "youtube_select_index",
       "action": "YOUTUBE_SELECT",
       "patterns": [
+        "mở video số {index}",
         "chọn video số {index}",
         "phát kết quả số {index}"
       ],

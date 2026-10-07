@@ -47,13 +47,41 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     private var epoch = 0L
     private val gestureGate = ScreenSessionGate()
     private var session: Session? = null
+    private val youtubePreview = SemanticPreviewSession<DesktopUiAccess.Target>()
+    val hasYoutubePreviewHistory get() = youtubePreview.hasHistory
+    val hasReadyYoutubePreview get() = youtubePreview.current(android.os.SystemClock.elapsedRealtime(), ::previewUnchanged) != null
+    val youtubePreviewCount get() = youtubePreview.current(android.os.SystemClock.elapsedRealtime(), ::previewUnchanged)?.size ?: 0
+    val youtubePreviewOverlayAttached get() = overlaySurface?.isValid == true || overlay?.isAttachedToWindow == true
+    private fun previewUnchanged(targets: List<DesktopUiAccess.Target>): Boolean {
+        val latest = DesktopUiAccess(this).youtubeResults()
+        return latest.size == targets.size && targets.indices.all { index ->
+            targets[index].target == latest[index].target && targets[index].unchanged(latest[index].tree)
+        }
+    }
+    private fun invalidateYoutubePreview() { youtubePreview.invalidate(); clear(preserveSemanticHistory = true) }
+    fun showYoutubePreview(targets: List<DesktopUiAccess.Target>): Boolean {
+        if (targets.isEmpty() || targets.size > 50 || !previewUnchanged(targets)) return false
+        if (!showNamedTargets(targets.map { it.target.node.bounds })) return false
+        youtubePreview.publish(targets, android.os.SystemClock.elapsedRealtime())
+        return true
+    }
+    fun consumeYoutubePreview(): SemanticPreviewSession.Selection<DesktopUiAccess.Target> {
+        val result = youtubePreview.consume(android.os.SystemClock.elapsedRealtime(), ::previewUnchanged)
+        if (result != SemanticPreviewSession.Selection.Missing) clear(preserveSemanticHistory = true)
+        return result
+    }
+    fun clearForFeedback() {
+        if (!youtubePreview.hasHistory) clear()
+        else if (youtubePreview.current(android.os.SystemClock.elapsedRealtime(), ::previewUnchanged) == null)
+            invalidateYoutubePreview()
+    }
     private var preparingDisplayId: Int? = null
     private var preparingSnapshot: ScreenSnapshot? = null
     private var overlay: View? = null
     private var windowManager: WindowManager? = null
     private var overlaySurface: Surface? = null
     private var overlayControl: SurfaceControl? = null
-    private val expiry = Runnable { clear() }
+    private val expiry = Runnable { if (youtubePreview.hasHistory) invalidateYoutubePreview() else clear() }
     private data class Session(val id: String, val snapshot: ScreenSnapshot, val grid: ScreenRect?, val depth: Int)
 
     override fun onServiceConnected() {
@@ -81,6 +109,13 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         event.repeatCount, event.isCanceled, event.downTime,
     ) { VoiceCommandActivation.request(this) }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (youtubePreview.hasHistory) {
+            if (event?.eventType in setOf(AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                    AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED) &&
+                youtubePreview.current(android.os.SystemClock.elapsedRealtime(), ::previewUnchanged) == null)
+                invalidateYoutubePreview()
+            return
+        }
         val current = session
         // A grid is an explicit coordinate tool, not a frozen app/node map. A popup,
         // scroll or app switch does not change its cell coordinates on this display.
@@ -108,6 +143,10 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
     override fun onDisplayRemoved(displayId: Int) = validateDesktopDisplay()
     override fun onDisplayChanged(displayId: Int) = validateDesktopDisplay()
     private fun validateDesktopDisplay() {
+        if (youtubePreview.hasHistory) {
+            if (youtubePreview.current(android.os.SystemClock.elapsedRealtime(), ::previewUnchanged) == null) invalidateYoutubePreview()
+            return
+        }
         subtitleRenderer.render(VoiceSubtitles.store.state.value)
         val expected = session?.snapshot ?: preparingSnapshot ?: return
         val desktops = displays.getDisplays(SAMSUNG_DESKTOP_CATEGORY).filter { it.isValid }.map { display ->
@@ -122,6 +161,13 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
 
     /** A fresh voice turn must not replace a still-live explicit coordinate subdivision. */
     fun prepareForVoiceCommand(isCurrent: () -> Boolean = { true }, complete: (String) -> Unit) {
+        if (youtubePreview.hasHistory) {
+            if (!isCurrent()) { complete("SCREEN_SESSION_EXPIRED"); return }
+            val ready = youtubePreview.current(android.os.SystemClock.elapsedRealtime(), ::previewUnchanged) != null
+            if (!ready) invalidateYoutubePreview()
+            complete(if (ready) "READY" else "SCREEN_CHANGED")
+            return
+        }
         val current = session
         if (current?.grid != null) {
             if (!isCurrent()) { complete("SCREEN_SESSION_EXPIRED"); return }
@@ -215,7 +261,8 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         return runCatching { show(); handler.postDelayed(expiry, 35_000); true }.getOrElse { clear(); false }
     }
 
-    fun clear() {
+    fun clear(preserveSemanticHistory: Boolean = false) {
+        if (!preserveSemanticHistory) youtubePreview.reset()
         epoch++
         gestureGate.invalidate()
         handler.removeCallbacks(expiry)
@@ -223,6 +270,9 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         session = null; preparingDisplayId = null; preparingSnapshot = null; imageTargets = emptyList(); imageFingerprints = emptyMap()
     }
     fun execute(command: ScreenCommand, complete: (String) -> Unit) {
+        if (youtubePreview.hasHistory && command.verb == ScreenVerb.CLICK_TARGET) {
+            clear(); complete("CONFIRMATION_REQUIRED"); return
+        }
         if (command.verb == ScreenVerb.CANCEL) { clear(); complete("CANCELLED"); return }
         if (command.verb == ScreenVerb.INVALID) { clear(); complete("INVALID_SCREEN_COMMAND"); return }
         if (command.verb == ScreenVerb.GRID) { freshGrid(complete); return }

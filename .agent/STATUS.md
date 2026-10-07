@@ -1,5 +1,52 @@
 # Current Android status - 2026-10-07
 
+## T-015 current host implementation — host verified, Fold3 acceptance pending
+
+M4 monotonic metrics correlate request/epoch, include actual router dispatch,
+semantic resolution/revalidation, confirmation wait, bounded paths and terminals.
+Earlier physical original-M4 sample:8local requests,6DISPATCHED/2SCREEN_CONTINUE,
+speech-end callback→action p95 92.822ms; small sample is not SRS acceptance.
+Owner's transient wake miss recovered; cause remains open. No wake model,
+threshold or microphone-route change.
+
+Current source additionally fixes configured YouTube numeric selection before
+the reserved screen grammar, `chia ô số 4`, and UNMUTE `mở tiếng`/`mở âm thanh`.
+Command-only STT complete/possibly-complete silence hints1500L/1000L retain
+final/manual-submit handling and baseline Chat/diagnostic recognition. Providers
+may ignore the hints; natural comparison has not run.
+
+YouTube launch/search now bounded-observe selected DeX cards, exact query field
+for search, prepare semantic indexes and report readiness without claiming
+playback or rendered pixels. Service-owned RAM map expires after35s without
+extension by voice preparation; complete ordering/window/card identity is
+validated before atomic consumption into common spoken confirmation. Expired/
+changed/consumed maps retain a stale marker until explicit new command; raw
+`bấm số` cannot bypass confirmation. Feedback and voice preparation preserve
+active map; cancellation/Stop/Pause/display/window/card change clear it.
+
+Final JDK17 `./gradlew test lint assembleDebug assembleDebugAndroidTest
+--max-workers=1 --offline` PASS1m21s (201 tasks): app154 tests per variant,
+zero failures/errors and1 opt-in skip each; DPC5 per variant PASS. Focused
+semantic-session/engine/YouTube tests PASS; `git diff --check` PASS. Final log
+`/tmp/T011-close-contract-android-build.log` (final close-contract source);
+auto-index source also passed `/tmp/T015-preview-scoped-final-build.log`. New opt-in physical
+fixtures: YoutubePreviewDeviceTest opens YouTube and checks map/overlay attachment
+through feedback/preparation without selection/gesture (pixelsVerified=false);
+YoutubeSemanticObserverDeviceTest emits only scoped card counts/caption resource
+IDs/classes; VoiceRuntimeDeviceTest checks endpoint-hint Long extras.
+T-011 APP_CLOSE_WINDOW contract-only support now matches backend schema2:
+strict configured `{app}`, schema1 rejection and copied shared fixture. Runtime
+still advertises schema1 and excludes APP_CLOSE_WINDOW/CLICK_TARGET; direct close
+execution returns CAPABILITY_UNAVAILABLE. No close command/guessed caption control
+was added. Final contract-source test/lint/app+test APK validation PASS; actual close executor
+and physical acceptance remain pending structural evidence.
+
+Main agent owns signing/install and natural Fold3 launch/search/index-confirmation,
+STT comparison, semantic/fallback/backend populations and physical regressions.
+Preserve owner data, keys, grants and existing unrelated changes. Canonical task/
+plan/evidence remains in backend repository. No commit/device mutation by this
+Android agent.
+
 ## T-015 M2 semantic DeX resolver — host implementation, Fold3 acceptance pending
 
 Android now has a bounded local CLICK_TARGET resolver: configured package and selected Samsung DeX window, exact selector fields, role and card-local context, clickable ancestor, deterministic ordinal after filtering, spoken choice/confirmation, live tree revalidation and one gesture. YouTube cards retain artist/context for spoken choices; duplicate titles with missing or identical artist metadata fail as TARGET_AMBIGUOUS before any gesture. Production still advertises schema 1 and excludes CLICK_TARGET until physical Fold3 acceptance. Next: run semantic fixture and natural YouTube/Maps/paired-window acceptance on Fold3, then enable schema 2 only after readiness is proven.

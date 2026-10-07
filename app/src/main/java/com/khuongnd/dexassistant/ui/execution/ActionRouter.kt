@@ -43,7 +43,7 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
     val awaitingInteraction get() = pending != null
     private fun ui() = DexAccessibilityService.active?.let(::DesktopUiAccess)
     fun foregroundAppId(): String? = ui()?.foregroundPackage()?.let(registry::appIdForPackage)
-    fun supportedActions(): Set<ActionId> = ActionId.entries.toSet() - setOf(ActionId.BLUETOOTH_SET, ActionId.CLICK_TARGET)
+    fun supportedActions(): Set<ActionId> = ActionId.entries.toSet() - setOf(ActionId.BLUETOOTH_SET, ActionId.CLICK_TARGET, ActionId.APP_CLOSE_WINDOW)
 
     fun execute(parentId: String, action: TypedAction, prompt: ((Prompt) -> Unit)?, actionId: String = "local", localCommandId: String? = null, metric: ((String, Long) -> Unit)? = null, complete: (LocalResult) -> Unit) {
         if (closed) { complete(LocalResult(LocalOutcome.REJECTED,"ROUTER_CLOSED")); return }
@@ -54,9 +54,19 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
         stepTimer = Runnable { if (current(token)) finish(LocalResult(LocalOutcome.FAILED,"ACTION_TIMEOUT")) }
             .also { main.postDelayed(it,30_000) }
         val validated = runCatching { ActionCatalog.validate(action.action.name,action.params,
-            if (action.action == ActionId.CLICK_TARGET) ActionCatalog.semanticSchemaVersion else ActionCatalog.schemaVersion) }.getOrNull()
+            if (action.action in ActionCatalog.schemaTwoOnlyActions) ActionCatalog.semanticSchemaVersion else ActionCatalog.schemaVersion) }.getOrNull()
         if (validated == null) { finish(LocalResult(LocalOutcome.REJECTED,"INVALID_ARGUMENTS")); return }
         when (validated.action) {
+            ActionId.APP_CLOSE_WINDOW -> finish(LocalResult(LocalOutcome.REJECTED, "CAPABILITY_UNAVAILABLE"))
+            ActionId.APP_LAUNCH -> {
+                executeNative(validated) { result ->
+                    if (current(token)) {
+                        if (validated.string("app") == "youtube" && result.outcome == LocalOutcome.DISPATCHED)
+                            observeYoutubePreview(token, null, SystemClock.elapsedRealtime() + 10_000)
+                        else finish(result)
+                    }
+                }
+            }
             ActionId.CLICK_TARGET -> {
                 val spec = validated.params["target"] as Map<*, *>
                 val appPackage = registry.appPackage(spec["appId"] as String)
@@ -110,14 +120,33 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
             }
             ActionId.YOUTUBE_SEARCH -> executeNative(validated) { result ->
                 if (current(token)) {
-                    if (result.outcome == LocalOutcome.DISPATCHED) youtube.searched(parentId,validated.string("query"))
-                    finish(result)
+                    if (result.outcome == LocalOutcome.DISPATCHED) {
+                        youtube.searched(parentId,validated.string("query"))
+                        observeYoutubePreview(token, validated.string("query"), SystemClock.elapsedRealtime() + 10_000)
+                    } else finish(result)
                 }
             }
             ActionId.YOUTUBE_SELECT -> {
+                metric("path_semantic")
+                if (validated.params.containsKey("index")) {
+                    when (val preview = DexAccessibilityService.active?.consumeYoutubePreview()) {
+                        is SemanticPreviewSession.Selection.Ready -> {
+                            if (validated.int("index") !in 1..preview.targets.size) finish(LocalResult(LocalOutcome.REJECTED,"TARGET_NOT_FOUND"))
+                            else selectYoutube(preview.targets, validated, token)
+                            return
+                        }
+                        SemanticPreviewSession.Selection.Stale -> { finish(LocalResult(LocalOutcome.REJECTED,"SCREEN_CHANGED")); return }
+                        else -> Unit
+                    }
+                }
                 val expected = youtube.queryForSelection(parentId)
                 if (expected != null) observeYoutube(token, expected, SystemClock.elapsedRealtime()+10_000, validated)
-                else selectYoutube(ui()?.youtubeResults().orEmpty(),validated,token)
+                else {
+                    metric("ui_resolution_start")
+                    val results = ui()?.youtubeResults().orEmpty()
+                    metric("ui_resolution_end")
+                    selectYoutube(results,validated,token)
+                }
             }
             ActionId.YOUTUBE_FULLSCREEN -> chooseUi(ui()?.fullscreen(validated.boolean("enabled")).orEmpty())
             ActionId.YOUTUBE_PLAY_QUERY -> {
@@ -181,6 +210,8 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
     private fun spokenNumber(number: String) = number.toCharArray().joinToString(" ")
     private fun observeYoutube(token: Long, query: String, deadline: Long, selection: TypedAction? = null) {
         if (!current(token)) return
+        metric("path_semantic")
+        metric("ui_resolution_start")
         val access = ui()
         val tree = access?.tree()
         val queryVisible = tree?.packageName == "com.google.android.youtube" && tree.nodes.any {
@@ -189,6 +220,7 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
         val results = tree?.takeIf { queryVisible }?.let { snapshot ->
             AppUiAdapters.youtubeResults(snapshot.nodes).map { DesktopUiAccess.Target(snapshot,it) }
         }.orEmpty()
+        metric("ui_resolution_end")
         when (youtube.observe(results.map { it.target }, queryVisible, SystemClock.elapsedRealtime() >= deadline, selection)) {
             YoutubeCommandHandler.Observation.CHOOSE -> if (selection == null) chooseUi(results) else selectYoutube(results,selection,token)
             YoutubeCommandHandler.Observation.AMBIGUOUS -> finish(LocalResult(LocalOutcome.REJECTED,"TARGET_AMBIGUOUS"))
@@ -197,6 +229,33 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
             YoutubeCommandHandler.Observation.WAIT -> observer = Runnable { observeYoutube(token,query,deadline,selection) }
                 .also { main.postDelayed(it,250) }
         }
+    }
+    private fun observeYoutubePreview(token: Long, query: String?, deadline: Long) {
+        if (!current(token)) return
+        metric("path_semantic"); metric("ui_resolution_start")
+        val tree = ui()?.tree()
+        val queryVisible = tree != null && tree.packageName == registry.appPackage("youtube") && (query == null || tree.nodes.any {
+            AppUiAdapters.label(it.text) == AppUiAdapters.label(query) && ("search" in it.viewId || "edit" in it.viewId)
+        })
+        val targets = tree?.takeIf { queryVisible }?.let { snapshot ->
+            AppUiAdapters.youtubeResults(snapshot.nodes).map { DesktopUiAccess.Target(snapshot, it) }
+        }.orEmpty()
+        metric("ui_resolution_end")
+        when (youtube.preview(targets.map { it.target }, query != null, queryVisible, SystemClock.elapsedRealtime() >= deadline)) {
+            YoutubeCommandHandler.Observation.CHOOSE -> {
+                if (DexAccessibilityService.active?.showYoutubePreview(targets) == true)
+                    finish(LocalResult(LocalOutcome.VERIFIED, if (query == null) "YOUTUBE_INDEX_READY" else "YOUTUBE_RESULTS_READY"))
+                else finish(LocalResult(LocalOutcome.REJECTED,"SCREEN_CHANGED"))
+                return
+            }
+            YoutubeCommandHandler.Observation.AMBIGUOUS -> { finish(LocalResult(LocalOutcome.REJECTED,"TARGET_AMBIGUOUS")); return }
+            YoutubeCommandHandler.Observation.UNAVAILABLE -> {
+                finish(LocalResult(LocalOutcome.REJECTED, if (query != null && !queryVisible) "YOUTUBE_SEARCH_UNVERIFIED" else "TARGET_NOT_FOUND"))
+                return
+            }
+            else -> Unit
+        }
+        observer = Runnable { observeYoutubePreview(token, query, deadline) }.also { main.postDelayed(it, 250) }
     }
     private fun observeAppPair(token: Long, firstApp: String, secondApp: String, displayId: Int, display: ScreenRect, deadline: Long) {
         if (!current(token)) return
@@ -226,6 +285,7 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
         }
     }
     private fun chooseUi(targets: List<DesktopUiAccess.Target>) {
+        metric("path_semantic")
         if (targets.isEmpty()) { finish(LocalResult(LocalOutcome.REJECTED,if (ui() == null) "ACCESSIBILITY_PERMISSION_REQUIRED" else "TARGET_NOT_FOUND")); return }
         if (targets.size > 50) { finish(LocalResult(LocalOutcome.REJECTED,"TARGET_TOO_MANY")); return }
         if (targets.size > 1) ownsOverlay = DexAccessibilityService.active?.showNamedTargets(targets.map { it.target.node.bounds }) == true
@@ -233,10 +293,12 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
             .filter { it.isNotBlank() }.joinToString(", ")) { complete ->
             val access = ui()
             if (access == null) complete(LocalResult(LocalOutcome.REJECTED,"ACCESSIBILITY_PERMISSION_REQUIRED"))
-            else { metric("action_start"); access.click(target) { complete(screenResult(it)) } }
+            else { access.click(target, beforeDispatch = { metric("action_start") },
+                resolutionMetric = ::metric) { complete(screenResult(it)) } }
         } })
     }
     private fun numberedFallback(token: Long) {
+        metric("path_fallback")
         val service = DexAccessibilityService.active
         if (service == null) { finish(LocalResult(LocalOutcome.REJECTED,"ACCESSIBILITY_PERMISSION_REQUIRED")); return }
         if (ui()?.foregroundPackage() != "com.google.android.youtube") { finish(LocalResult(LocalOutcome.REJECTED,"APP_CONTEXT_REQUIRED")); return }

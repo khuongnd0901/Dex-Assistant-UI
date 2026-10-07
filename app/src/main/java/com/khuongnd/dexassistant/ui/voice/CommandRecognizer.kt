@@ -27,13 +27,21 @@ object CommandRecognizer {
         }
     }
 
-    fun intent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+    fun intent(commandEndpointHints: Boolean = true): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "vi-VN")
         .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         // Explicitly permit the selected service's online path. This is a service hint.
         .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+        .also { intent ->
+            // Controlled command endpointer trial. Services may ignore these hints;
+            // only a final callback or explicit mic submit commits text.
+            if (commandEndpointHints) {
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_500L)
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1_000L)
+            }
+        }
 
     fun errorCode(error: Int): String = when (error) {
         SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "STT_NETWORK"

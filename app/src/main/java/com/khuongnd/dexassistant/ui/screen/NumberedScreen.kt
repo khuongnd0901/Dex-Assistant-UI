@@ -28,7 +28,7 @@ object ScreenCommandParser {
         val clean = normalized.replace(Regex("\\b(o|so)(?=[0-9])"), "$1 ")
         if (clean in listOf("huy", "huy bo", "bo qua", "huy lenh")) return ScreenCommand(ScreenVerb.CANCEL)
         if (clean in listOf("hien luoi", "mo luoi")) return ScreenCommand(ScreenVerb.GRID)
-        val match = Regex("^(bam(?: vao)? (?:so |o (?:so )?)?|chia o )(.+)$").matchEntire(clean)
+        val match = Regex("^(bam(?: vao)? (?:so |o (?:so )?)?|chia o (?:so )?)(.+)$").matchEntire(clean)
         if (match != null) {
             val prefix = match.groupValues[1]; val number = number(match.groupValues[2])
             // Plain semantic clicks are handled by the typed command engine with confirmation.

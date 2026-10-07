@@ -228,7 +228,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             pendingDispatched = true
         } else { dispatchVoice(text) { }; return }
         latency?.start("routeLatency", SystemClock.elapsedRealtimeNanos())
-        val screenCommand = ScreenCommandParser.parse(text)
+        val screenCommand = router.screenCommand(text, actionRouter.foregroundAppId())
         if (screenCommand != null) {
             latency?.end("routeLatency", SystemClock.elapsedRealtimeNanos())
             latency?.start("executionLatency", SystemClock.elapsedRealtimeNanos())
@@ -241,11 +241,15 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                     finish(status, status)
                 }
             } }
-            if (service == null) complete("ACCESSIBILITY_PERMISSION_REQUIRED") else { markActionStart(); service.execute(screenCommand, complete) }
+            if (service == null) complete("ACCESSIBILITY_PERMISSION_REQUIRED")
+            else if (service.hasYoutubePreviewHistory && router.youtubeIndexSelection(text)) complete("SCREEN_CHANGED")
+            else if (service.hasYoutubePreviewHistory && screenCommand.verb == com.khuongnd.dexassistant.ui.screen.ScreenVerb.CLICK_TARGET)
+                service.execute(screenCommand, complete)
+            else { markActionStart(); service.execute(screenCommand, complete) }
             return
         }
-        DexAccessibilityService.active?.clear()
         if (CommandPrivacy.requiresLocalHandling(text)) {
+            DexAccessibilityService.active?.clear()
             recordHistory(text, Route.UNSUPPORTED.name, null, "LOCAL_ONLY_UNSUPPORTED")
             update("UNSUPPORTED", "Lệnh chứa thông tin đăng nhập hoặc kết nối Wi-Fi chỉ được xử lý trên máy; tính năng này chưa được hỗ trợ")
             return
@@ -253,6 +257,8 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         val activeRequestId = pendingId
         val decision = router.route(text, actionRouter.foregroundAppId())
         val routed = decision.command
+        if (routed.resolved?.typedAction?.let { it.action == com.khuongnd.dexassistant.ui.routing.ActionId.YOUTUBE_SELECT && it.params.containsKey("index") } != true)
+            DexAccessibilityService.active?.clear()
         latency?.end("routeLatency", SystemClock.elapsedRealtimeNanos())
         when (routed.route) {
             Route.LOCAL -> if (decision.capability?.available == false) {
@@ -465,6 +471,9 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     }
     private fun actionMetric(event: String, atNanos: Long) {
         when (event) {
+            "path_semantic" -> latencyPath = "semantic"
+            "path_fallback" -> latencyPath = "fallback"
+            "action_start" -> markActionStart()
             "ui_resolution_start" -> latency?.start("uiResolutionLatency", atNanos)
             "ui_resolution_end" -> latency?.end("uiResolutionLatency", atNanos)
             "confirmation_start" -> {

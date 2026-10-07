@@ -13,6 +13,19 @@ class DeviceCommandProtocolTest {
     private fun decode(arguments: JSONObject) = DeviceCommandProtocol.decode(action(arguments),registry,ActionId.entries.toSet())
     private fun semantic(target: JSONObject) = JSONObject().put("actionSchemaVersion",2).put("action","CLICK_TARGET").put("params",JSONObject().put("target",target))
     private fun decodeSemantic(arguments: JSONObject) = DeviceCommandProtocol.decode(action(arguments),registry,ActionId.entries.toSet(),2)
+    @Test fun closeWindowRequiresSchemaTwoConfiguredAppAndExplicitCapability() {
+        val args = JSONObject("""{"actionSchemaVersion":2,"action":"APP_CLOSE_WINDOW","params":{"app":"youtube"}}""")
+        assertEquals(ActionId.APP_CLOSE_WINDOW, decodeSemantic(args).action)
+        assertEquals("youtube", decodeSemantic(args).string("app"))
+        assertTrue(runCatching { decode(args) }.isFailure)
+        assertTrue(runCatching { DeviceCommandProtocol.decode(action(args),registry,
+            ActionId.entries.toSet() - ActionCatalog.schemaTwoOnlyActions,2) }.isFailure)
+        assertTrue(runCatching { DeviceCommandProtocol.capabilities(registry,setOf(ActionId.APP_CLOSE_WINDOW)) }.isFailure)
+        assertTrue(runCatching { decodeSemantic(JSONObject(args.toString()).put("params",JSONObject().put("app","unconfigured"))) }.isFailure)
+        assertTrue(runCatching { ActionCatalog.validate("APP_CLOSE_WINDOW",mapOf("app" to "youtube")) }.isFailure)
+        assertTrue(runCatching { ActionCatalog.validate("APP_CLOSE_WINDOW",mapOf("app" to "youtube","forceStop" to true),2) }.isFailure)
+        assertEquals(Route.UNSUPPORTED, LocalCommandParser(registry).route("tắt youtube").route)
+    }
     @Test fun strictPrimitiveTypesUnknownPolicyAndUnsupportedActionReject() {
         val valid = arguments()
         assertEquals("Nguyễn Văn A",decode(valid).string("contact"))
@@ -82,9 +95,9 @@ class DeviceCommandProtocolTest {
     @Test fun canonicalBackendFixtureMatchesAndroidForEveryActionAndInvalidCase() {
         val fixture = javaClass.getResourceAsStream("/contracts/device-command-schema-1.json")!!.bufferedReader().use { JSONObject(it.readText()) }
         val valid = fixture.getJSONArray("valid")
-        assertEquals(ActionId.entries.size - 1,valid.length())
+        assertEquals(ActionId.entries.size - ActionCatalog.schemaTwoOnlyActions.size,valid.length())
         val decoded = (0 until valid.length()).map { decode(valid.getJSONObject(it)).action }.toSet()
-        assertEquals(ActionId.entries.toSet() - ActionId.CLICK_TARGET,decoded)
+        assertEquals(ActionId.entries.toSet() - ActionCatalog.schemaTwoOnlyActions,decoded)
         val invalid = fixture.getJSONArray("invalid")
         for (index in 0 until invalid.length()) assertTrue("Invalid shared fixture $index",runCatching { decode(invalid.getJSONObject(index)) }.isFailure)
     }

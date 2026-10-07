@@ -24,6 +24,11 @@ class YoutubeCommandHandler {
     }
 
     fun queryForSelection(parentId: String): String? = search?.takeIf { it.parentId == parentId }?.query
+    fun preview(targets: List<AppUiTarget>, queryRequired: Boolean, queryVisible: Boolean, expired: Boolean): Observation {
+        if (queryRequired && !queryVisible) return if (expired) Observation.UNAVAILABLE else Observation.WAIT
+        if (targets.isEmpty()) return if (expired) Observation.UNAVAILABLE else Observation.WAIT
+        return if (AppUiAdapters.youtubeChoicesUnambiguous(targets)) Observation.CHOOSE else Observation.AMBIGUOUS
+    }
 
     fun observe(targets: List<AppUiTarget>, queryVisible: Boolean, expired: Boolean,
                 selection: TypedAction? = null): Observation {

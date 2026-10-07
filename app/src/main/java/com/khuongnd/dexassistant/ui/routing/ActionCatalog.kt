@@ -5,7 +5,7 @@ enum class ActionId {
     APP_LAUNCH, WIFI_SET, BLUETOOTH_SET, VOLUME_SET, BRIGHTNESS_SET, MEDIA_TRANSPORT,
     YOUTUBE_SEARCH, YOUTUBE_PLAY_QUERY, YOUTUBE_SELECT, YOUTUBE_FULLSCREEN, MEDIA_SEEK,
     NAVIGATE, SEARCH_PLACE, CALL_CONTACT, CALL_NUMBER, WEB_SEARCH, CLICK_TEXT, SCROLL,
-    FEED_NEXT, FEED_PREVIOUS, SYSTEM_ACTION, APP_PAIR_LAUNCH, CLICK_TARGET,
+    FEED_NEXT, FEED_PREVIOUS, SYSTEM_ACTION, APP_PAIR_LAUNCH, CLICK_TARGET, APP_CLOSE_WINDOW,
 }
 
 data class TypedAction(val action: ActionId, val params: Map<String, Any>) {
@@ -17,12 +17,13 @@ data class TypedAction(val action: ActionId, val params: Map<String, Any>) {
 object ActionCatalog {
     const val schemaVersion = 1
     const val semanticSchemaVersion = 2
+    val schemaTwoOnlyActions = setOf(ActionId.CLICK_TARGET, ActionId.APP_CLOSE_WINDOW)
     private val appId = Regex("[a-z][a-z0-9_]{0,63}")
     private val phone = Regex("\\+?[0-9]{3,15}")
     fun validate(action: String, params: Map<String, Any>, version: Int = schemaVersion): TypedAction {
         require(version == schemaVersion || version == semanticSchemaVersion)
         val id = ActionId.valueOf(action)
-        require(id != ActionId.CLICK_TARGET || version == semanticSchemaVersion)
+        require(id !in schemaTwoOnlyActions || version == semanticSchemaVersion)
         fun keys(vararg allowed: String) { require(params.keys.all { it in allowed }) { "Unknown parameter for $id" } }
         fun text(key: String, max: Int = 500): String {
             val value = params[key] as? String ?: error("Expected text: $key")
@@ -35,7 +36,7 @@ object ActionCatalog {
         fun bool(key: String) { require(params[key] is Boolean) { "Expected boolean: $key" } }
         fun option(key: String, vararg values: String): String = text(key).also { require(it in values) { "Invalid $key" } }
         when (id) {
-            ActionId.APP_LAUNCH -> { keys("app"); require(appId.matches(text("app", 64))) }
+            ActionId.APP_LAUNCH, ActionId.APP_CLOSE_WINDOW -> { keys("app"); require(appId.matches(text("app", 64))) }
             ActionId.APP_PAIR_LAUNCH -> {
                 keys("firstApp", "secondApp")
                 val first = text("firstApp", 64); val second = text("secondApp", 64)

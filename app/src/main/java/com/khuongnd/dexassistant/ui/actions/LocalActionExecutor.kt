@@ -38,9 +38,11 @@ class LocalActionExecutor(
 
     /** Both local and remote typed actions enter this boundary; sensitive calls require continuation. */
     fun execute(action: TypedAction, complete: (LocalResult) -> Unit) {
-        val validated = runCatching { ActionCatalog.validate(action.action.name, action.params) }.getOrNull()
+        val validated = runCatching { ActionCatalog.validate(action.action.name, action.params,
+            if (action.action in ActionCatalog.schemaTwoOnlyActions) ActionCatalog.semanticSchemaVersion else ActionCatalog.schemaVersion) }.getOrNull()
         if (validated == null) { complete(LocalResult(LocalOutcome.REJECTED, "INVALID_ARGUMENTS")); return }
         val args = validated.params.mapValues { it.value.toString() }
+        if (validated.action == ActionId.APP_CLOSE_WINDOW) { complete(LocalResult(LocalOutcome.REJECTED, "CAPABILITY_UNAVAILABLE")); return }
         when (validated.action) {
             ActionId.APP_LAUNCH -> complete(launchAppId(args.getValue("app")))
             ActionId.APP_PAIR_LAUNCH -> complete(LocalResult(LocalOutcome.REJECTED,"DEX_DISPLAY_REQUIRED"))
@@ -130,6 +132,7 @@ class LocalActionExecutor(
 
     private fun launchAppId(id: String): LocalResult {
         val intent = launchIntent(id) ?: return LocalResult(LocalOutcome.FAILED, "APP_NOT_FOUND")
+        if (id == "youtube") return launchYoutubeOnDesktop(intent)
         return dispatch(intent)
     }
 
@@ -166,7 +169,19 @@ class LocalActionExecutor(
         } catch (_: PackageManager.NameNotFoundException) { false }
         // SEARCH resolves on YouTube but can leave its existing task on the previous screen.
         // Its results deep link carries the query; browser fallback is only for an absent app.
-        return dispatch(YoutubeSearchIntents.build(query, inApp = available))
+        if (!available) return LocalResult(LocalOutcome.REJECTED, "APP_NOT_FOUND")
+        return launchYoutubeOnDesktop(YoutubeSearchIntents.build(query))
+    }
+
+    private fun launchYoutubeOnDesktop(intent: Intent): LocalResult {
+        val display = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+            .getDisplays(com.khuongnd.dexassistant.ui.screen.DexAccessibilityService.SAMSUNG_DESKTOP_CATEGORY)
+            .filter { it.isValid && it.displayId != android.view.Display.DEFAULT_DISPLAY }.singleOrNull()
+            ?: return LocalResult(LocalOutcome.REJECTED, "DEX_DISPLAY_UNAVAILABLE")
+        return runCatching {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), ActivityOptions.makeBasic().setLaunchDisplayId(display.displayId).toBundle())
+            LocalResult(LocalOutcome.DISPATCHED)
+        }.getOrElse { LocalResult(LocalOutcome.FAILED, "LAUNCH_FAILED") }
     }
 
     private fun dispatch(intent: Intent): LocalResult = runCatching {

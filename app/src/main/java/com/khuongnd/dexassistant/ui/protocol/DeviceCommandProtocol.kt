@@ -7,7 +7,7 @@ import org.json.JSONObject
 object DeviceCommandProtocol {
     fun capabilities(registry: CommandRegistry, supported: Set<ActionId>, schemaVersion: Int = ActionCatalog.schemaVersion): JSONObject {
         require(schemaVersion == ActionCatalog.schemaVersion || schemaVersion == ActionCatalog.semanticSchemaVersion)
-        require(schemaVersion == ActionCatalog.semanticSchemaVersion || ActionId.CLICK_TARGET !in supported)
+        require(schemaVersion == ActionCatalog.semanticSchemaVersion || supported.none { it in ActionCatalog.schemaTwoOnlyActions })
         return JSONObject()
         .put("actionSchemaVersion",schemaVersion)
         .put("supportedActions",JSONArray(supported.map { it.name }.sorted()))
@@ -52,7 +52,7 @@ object DeviceCommandProtocol {
         }
         require(validated.action in supported)
         when (validated.action) {
-            ActionId.APP_LAUNCH -> require(registry.appPackage(validated.string("app")) != null)
+            ActionId.APP_LAUNCH, ActionId.APP_CLOSE_WINDOW -> require(registry.appPackage(validated.string("app")) != null)
             ActionId.APP_PAIR_LAUNCH -> {
                 val first = validated.string("firstApp"); val second = validated.string("secondApp")
                 require(first in registry.appIds && second in registry.appIds && first != second)

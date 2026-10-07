@@ -10,6 +10,42 @@ class CommandEngineTest {
     private val json = listOf(File("src/main/assets/commands.json"),File("app/src/main/assets/commands.json")).first { it.isFile }.readText()
     private val registry = CommandRegistry.fromJson(json)
     private val engine = LocalCommandEngine(registry)
+    @Test fun unmuteAliasesReuseExistingVolumeAction() {
+        for (text in listOf("mở tiếng", "mở âm thanh", "bật âm thanh", "bật tiếng")) {
+            val action = requireNotNull(engine.resolve(text)).typedAction
+            assertEquals(ActionId.VOLUME_SET, action.action)
+            assertEquals(mapOf("operation" to "UNMUTE"), action.params)
+        }
+        assertNull(engine.resolve("đừng mở tiếng"))
+        assertNull(engine.resolve("mở tiếng rồi mở youtube"))
+    }
+    @Test fun youtubeSearchAliasesPreserveOriginalQueryAndRejectCompoundRequests() {
+        for (text in listOf("mở youtube tìm nhạc Sơn Tùng", "tìm nhạc Sơn Tùng", "mở youtube tìm Sơn Tùng")) {
+            val action = requireNotNull(engine.resolve(text, "youtube")).typedAction
+            assertEquals(ActionId.YOUTUBE_SEARCH, action.action)
+            assertEquals("Sơn Tùng", action.string("query"))
+        }
+        assertNull(engine.resolve("mở youtube tìm nhạc Sơn Tùng rồi mở chrome", "youtube"))
+    }
+
+    @Test fun youtubeNumericSelectionPrecedesScreenReservationOnlyForValidScopedWholeCommands() {
+        val parser = LocalCommandParser(registry)
+        for (text in listOf("mở video số 1", "chọn video số một", "phát kết quả số 50", "Mở video số hai!")) {
+            assertNull(text, parser.screenCommand(text, "youtube"))
+            val result = parser.route(text, "youtube")
+            assertEquals(Route.LOCAL, result.route)
+            assertEquals(ActionId.YOUTUBE_SELECT, result.resolved!!.typedAction.action)
+            assertTrue(result.resolved!!.typedAction.int("index") in 1..50)
+            for (context in listOf("maps", "chrome", null))
+                assertEquals(text, com.khuongnd.dexassistant.ui.screen.ScreenVerb.INVALID, parser.screenCommand(text, context)?.verb)
+        }
+        for (text in listOf("mở video số 0", "mở video số 51", "mở video số abc", "mở video số", "chọn video số -1",
+            "phát kết quả số một rồi mở chrome", "đừng mở video số 1", "mở video số 1 và gọi mẹ"))
+            assertEquals(text, com.khuongnd.dexassistant.ui.screen.ScreenVerb.INVALID, parser.screenCommand(text, "youtube")?.verb)
+        assertEquals(com.khuongnd.dexassistant.ui.screen.ScreenCommand(com.khuongnd.dexassistant.ui.screen.ScreenVerb.CLICK_TARGET, 1),
+            parser.screenCommand("bấm số 1", "youtube"))
+        assertEquals(com.khuongnd.dexassistant.ui.screen.ScreenVerb.INVALID, parser.screenCommand("bấm số abc", "youtube")?.verb)
+    }
 
     @Test fun ownerAddressPhraseTargetsMapsWithOriginalSlotAcrossPairedContexts() {
         for (context in listOf("maps", "youtube", "chrome", null)) {

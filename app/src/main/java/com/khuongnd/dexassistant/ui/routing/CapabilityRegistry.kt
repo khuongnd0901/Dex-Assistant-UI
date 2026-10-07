@@ -18,6 +18,8 @@ class CommandRouter(
     private val registry: CapabilityRegistry,
 ) {
     data class Decision(val command: RoutedCommand, val capability: Capability?)
+    fun screenCommand(text: String, foregroundAppId: String? = null) = parser.screenCommand(text, foregroundAppId)
+    fun youtubeIndexSelection(text: String) = parser.youtubeIndexSelection(text)
     fun route(text: String, foregroundAppId: String? = null): Decision {
         val command = parser.route(text, foregroundAppId)
         return Decision(command, command.intent?.let(registry::capability))

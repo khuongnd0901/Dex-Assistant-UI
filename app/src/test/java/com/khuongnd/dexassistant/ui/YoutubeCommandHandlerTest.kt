@@ -14,6 +14,18 @@ class YoutubeCommandHandlerTest {
             "", "", "", true, false, emptySet()), title, artist)
     private fun index(value: Int) = ActionCatalog.validate("YOUTUBE_SELECT", mapOf("index" to value))
     private fun title(value: String) = ActionCatalog.validate("YOUTUBE_SELECT", mapOf("title" to value))
+    @Test fun indexPreviewRequiresObservedQueryBeforeAcceptingCardsAndNeverFallsBackToGrid() {
+        val handler = YoutubeCommandHandler()
+        val cards = listOf(card(0, "Sơn Tùng", "Artist"))
+        assertEquals(YoutubeCommandHandler.Observation.WAIT, handler.preview(cards, true, false, false))
+        assertEquals(YoutubeCommandHandler.Observation.UNAVAILABLE, handler.preview(cards, true, false, true))
+        assertEquals(YoutubeCommandHandler.Observation.CHOOSE, handler.preview(cards, true, true, false))
+        assertEquals(YoutubeCommandHandler.Observation.CHOOSE, handler.preview(cards, false, false, false))
+        assertEquals(YoutubeCommandHandler.Observation.WAIT, handler.preview(emptyList(), true, true, false))
+        assertEquals(YoutubeCommandHandler.Observation.UNAVAILABLE, handler.preview(emptyList(), true, true, true))
+        assertEquals(YoutubeCommandHandler.Observation.AMBIGUOUS,
+            handler.preview(listOf(card(0, "Duplicate"), card(1, "Duplicate")), true, true, false))
+    }
 
     @Test fun searchContextBelongsOnlyToItsParent() {
         val handler = YoutubeCommandHandler()

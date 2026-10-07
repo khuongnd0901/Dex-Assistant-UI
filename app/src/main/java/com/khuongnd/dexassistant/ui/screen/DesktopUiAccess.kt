@@ -121,11 +121,14 @@ class DesktopUiAccess(private val service: DexAccessibilityService) {
         if (!target.unchanged(latest)) return null
         return latest
     }
-    fun click(target: Target, complete: (String) -> Unit) {
+    fun click(target: Target, beforeDispatch: (() -> Unit)? = null, resolutionMetric: ((String) -> Unit)? = null, complete: (String) -> Unit) {
+        resolutionMetric?.invoke("ui_resolution_start")
         val latest = revalidated(target)
+        resolutionMetric?.invoke("ui_resolution_end")
         if (latest == null) { complete("SCREEN_CHANGED"); return }
         // Scoped coordinates avoid ACTION_CLICK being rerouted to a newly focused phone window.
         val bounds = target.target.node.bounds
+        beforeDispatch?.invoke()
         gesture(latest.displayId,bounds.x,bounds.y,bounds.x,bounds.y,80,complete)
     }
 

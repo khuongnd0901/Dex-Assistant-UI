@@ -363,7 +363,7 @@ class VoiceAssistantService : Service() {
                     finishWithFeedback(id, "Hết thời gian nghe. Hãy gọi lại.", "STT_TIMEOUT")
                 }
             }.also { main.postDelayed(it, 30_000) }
-            recognizer!!.startListening(CommandRecognizer.intent())
+            recognizer!!.startListening(CommandRecognizer.intent(commandEndpointHints = !chatActive && !diagnosticOnly))
         }.onFailure {
             destroyRecognizer()
             finishWithFeedback(id, "Không thể nhận giọng nói. Hãy gọi lại.", "STT_START_FAILED")
@@ -465,7 +465,10 @@ class VoiceAssistantService : Service() {
             val parentCommand = commandId
             if (parentCommand != null && coordinator.isAwaitingInteraction(parentCommand)) {
                 if (coordinator.continueInteraction(parentCommand, text,
-                        if (measuredEpoch == id) speechEndAtNanos else null)) return
+                        if (measuredEpoch == id) speechEndAtNanos else null)) {
+                    android.util.Log.i("DexLatency", "epoch=$id requestId=$parentCommand stage=correlated")
+                    return
+                }
                 commandId = null
             }
             var returnedId: String? = null
@@ -618,7 +621,7 @@ class VoiceAssistantService : Service() {
     private fun finishWithFeedback(id: Long, message: String, code: String) {
         if (!sessions.isCurrent(id)) return
         if (code.startsWith("STT_") || code == "CANCELLED") VoiceSubtitles.store.clear(id)
-        DexAccessibilityService.active?.clear()
+        DexAccessibilityService.active?.clearForFeedback()
         destroyRecognizer()
         if (diagnosticOnly) { finishDiagnostic(id, code); return }
         val abandoned = commandId

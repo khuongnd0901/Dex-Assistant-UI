@@ -32,6 +32,21 @@ class LocalCommandParser(private val registry: CommandRegistry = CommandRegistry
     constructor(appAliases: Set<String>) : this(CommandRegistry.default()) {
         allowedAppIds = appAliases.mapNotNull(registry::appIdForAlias).toSet()
     }
+    /** Only a valid configured YouTube index action may precede the numeric screen guard. */
+    fun youtubeIndexSelection(original: String): Boolean = engine.resolve(original, "youtube")?.typedAction?.let {
+        it.action == ActionId.YOUTUBE_SELECT && it.params.containsKey("index")
+    } == true
+    fun screenCommand(original: String, foregroundAppId: String? = null): com.khuongnd.dexassistant.ui.screen.ScreenCommand? {
+        val screen = com.khuongnd.dexassistant.ui.screen.ScreenCommandParser.parse(original)
+            ?: if (youtubeNumeric.containsMatchIn(folded(VietnameseNormalizer.normalize(original))))
+                com.khuongnd.dexassistant.ui.screen.ScreenCommand(com.khuongnd.dexassistant.ui.screen.ScreenVerb.INVALID)
+            else return null
+        if (screen.verb == com.khuongnd.dexassistant.ui.screen.ScreenVerb.INVALID && foregroundAppId == "youtube") {
+            val action = engine.resolve(original, foregroundAppId)?.typedAction
+            if (action?.action == ActionId.YOUTUBE_SELECT && action.params.containsKey("index")) return null
+        }
+        return screen
+    }
     fun route(original: String, foregroundAppId: String? = null): RoutedCommand {
         val text = VietnameseNormalizer.normalize(original)
         if (CommandPrivacy.requiresLocalHandling(original)) return RoutedCommand(Route.UNSUPPORTED,text)
@@ -49,6 +64,7 @@ class LocalCommandParser(private val registry: CommandRegistry = CommandRegistry
         return RoutedCommand(Route.BACKEND_REQUIRED,text)
     }
     companion object {
+        private val youtubeNumeric = Regex("(?:^| )(?:mo video so|chon video so|phat ket qua so)(?: |$)")
         private val close = Regex("(?:tat|dong) (.+)")
         private val unsupported = Regex("(?:chia doi man hinh|nhap .+)")
     }

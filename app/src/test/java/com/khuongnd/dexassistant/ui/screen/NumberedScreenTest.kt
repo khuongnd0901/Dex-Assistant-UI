@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NumberedScreenTest {
+    @Test fun subdivideAcceptsExplicitNumberMarkerAndKeepsGridBounds() {
+        for (phrase in listOf("chia ô số 4", "chia ô số4", "chia ô số bốn", "chia ô4", "chia ô 4"))
+            assertEquals(phrase, ScreenCommand(ScreenVerb.SUBDIVIDE, 4), ScreenCommandParser.parse(phrase))
+        for (phrase in listOf("chia ô số 0", "chia ô số 25", "chia ô số", "chia ô số abc", "chia ô số 4 rồi bấm ô 2"))
+            assertEquals(phrase, ScreenVerb.INVALID, ScreenCommandParser.parse(phrase)?.verb)
+    }
     @Test fun compactCellNumbersKeepWholeInputAndSubdivisionGeometry() {
         for (phrase in listOf("chia ô2", "chia ô 2"))
             assertEquals(ScreenCommand(ScreenVerb.SUBDIVIDE, 2), ScreenCommandParser.parse(phrase))

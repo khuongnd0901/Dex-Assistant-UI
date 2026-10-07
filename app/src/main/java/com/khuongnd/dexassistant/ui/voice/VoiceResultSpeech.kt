@@ -5,6 +5,11 @@ object VoiceResultSpeech {
     fun message(status: String): String = when (status) {
         "SUCCESS", "VERIFIED", "COMPLETED", "APP_PAIR_VERIFIED" -> "Đã thực hiện."
         "DISPATCHED" -> "Đã gửi yêu cầu."
+        "YOUTUBE_SEARCH_UNVERIFIED" -> "Chưa xác minh được kết quả tìm kiếm YouTube. Hãy gọi lại."
+        "YOUTUBE_INDEX_READY" -> "Đã chuẩn bị số chọn video. Hãy nói mở video số và số bạn chọn, rồi xác nhận."
+        "YOUTUBE_RESULTS_READY" -> "Đã tìm thấy kết quả và chuẩn bị số chọn video. Hãy chọn theo số, rồi xác nhận."
+        "CONFIRMATION_REQUIRED" -> "Hãy nói mở video số và số bạn chọn, rồi xác nhận."
+        "TARGET_NOT_FOUND" -> "Chưa tìm thấy video phù hợp trên màn hình DeX. Hãy gọi lại."
         "CANCELLED" -> "Đã hủy."
         "ACCESSIBILITY_PERMISSION_REQUIRED" -> "Hãy bật dịch vụ Trợ năng DeX trong cài đặt."
         "SCREEN_SESSION_EXPIRED", "SCREEN_CHANGED" -> "Màn hình đã thay đổi. Hãy gọi lại."

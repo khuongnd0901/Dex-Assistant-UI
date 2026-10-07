@@ -36,6 +36,28 @@ class VoiceRuntimeDeviceTest {
         }
     }
 
+    @Test fun commandRecognizerEndpointHintsKeepVietnameseAndFinalResultContract() {
+        val intent = CommandRecognizer.intent()
+        val extras = requireNotNull(intent.extras)
+        assertEquals(RecognizerIntent.ACTION_RECOGNIZE_SPEECH, intent.action)
+        assertEquals("vi-VN", intent.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE))
+        assertEquals(RecognizerIntent.LANGUAGE_MODEL_FREE_FORM, intent.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL))
+        assertTrue(intent.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
+        assertEquals(1, intent.getIntExtra(RecognizerIntent.EXTRA_MAX_RESULTS, -1))
+        assertFalse(intent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true))
+        assertTrue(extras.get(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS) is Long)
+        assertTrue(extras.get(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS) is Long)
+        assertEquals(1_500L, intent.getLongExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, -1L))
+        assertEquals(1_000L, intent.getLongExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, -1L))
+        assertFalse(intent.hasExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS))
+        assertFalse(intent.hasExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION))
+        val baseline = CommandRecognizer.intent(commandEndpointHints = false)
+        assertFalse(baseline.hasExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS))
+        assertFalse(baseline.hasExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS))
+        assertEquals("vi-VN", baseline.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE))
+        assertTrue(baseline.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
+    }
+
     @Test fun commandRecognizerUsesVietnameseOnlineAllowedAndExcludesOurStub() {
         val intent = CommandRecognizer.intent()
         assertEquals("vi-VN", intent.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE))
