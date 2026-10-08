@@ -34,7 +34,7 @@ class DashboardLayoutTest {
         val display = context.getSystemService(DisplayManager::class.java).getDisplays(DexAccessibilityService.SAMSUNG_DESKTOP_CATEGORY).singleOrNull { it.isValid }
         val options = ActivityOptions.makeBasic()
         display?.let { val size = Point(); it.getRealSize(size); options.setLaunchDisplayId(it.displayId); options.setLaunchBounds(Rect(0,0,size.x,size.y)) }
-        val dimensions = mutableStateOf(320 to 480); var resumes = 0; var diagnostics = 0
+        val dimensions = mutableStateOf(320 to 480); var resumes = 0; var diagnostics = 0; var sends = 0
         var view: ComposeView? = null
         fun root(view: View): ViewRootForTest? {
             if (view is ViewRootForTest) return view
@@ -44,7 +44,7 @@ class DashboardLayoutTest {
         try { ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java), options.toBundle()).use { scenario ->
             scenario.onActivity { activity ->
                 view = ComposeView(activity).apply {
-                    setContent { DexAssistantTheme { AssistantScreen(UiState(voiceState="PAUSED"), { _, _ -> }, {}, {}, {}, {}, {}, {}, {},
+                    setContent { DexAssistantTheme { AssistantScreen(UiState(voiceState="PAUSED"), { _, _ -> }, {}, {}, {}, {}, {}, { sends++ }, {},
                         Modifier.requiredSize(dimensions.value.first.dp, dimensions.value.second.dp), onResumeVoice={resumes++}, onDiagnostic={diagnostics++}) } }
                 }
                 activity.setContentView(view)
@@ -67,21 +67,143 @@ class DashboardLayoutTest {
                     val nodes = owner.semanticsOwner.getAllSemanticsNodes(false)
                     fun tagged(tag: String) = nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
                     val bounds = tagged("dashboard").boundsInRoot
-                    for (tag in listOf("voiceStart","voicePause","voiceStop","diagnosticListen","settings","quota","history","command","transcript")) {
+                    for (tag in listOf("voiceStart","voicePause","voiceStop","advancedMenu","commandInput","runCommand","showAllCommands","transcript")) {
                         val control = tagged(tag).boundsInRoot
                         assertTrue("$tag outside viewport $viewport", control.width > 0 && control.height > 0 && control.left >= bounds.left && control.top >= bounds.top && control.right <= bounds.right && control.bottom <= bounds.bottom)
                         if (tag != "transcript") assertTrue("$tag clipped height", control.height >= 40f)
                     }
                     val card = tagged("transcript").boundsInRoot; val text = tagged("transcriptText").boundsInRoot
                     assertTrue("Transcript line must fit", text.height > 0 && text.top >= card.top && text.bottom <= card.bottom)
-                    assertFalse("Main page must have no scroll", nodes.any { it.config.contains(SemanticsActions.ScrollBy) })
+                    assertTrue("Only command pane may scroll", nodes.filter { it.config.contains(SemanticsActions.ScrollBy) }.all { it.boundsInRoot.left >= tagged("commandList").boundsInRoot.left })
                     if (viewport == 600 to 320) {
                         assertTrue(tagged("voiceStart").config[SemanticsActions.OnClick].action!!.invoke())
-                        assertTrue(tagged("diagnosticListen").config[SemanticsActions.OnClick].action!!.invoke())
                     }
                 }
+                if (viewport == 320 to 480) {
+                    scenario.onActivity {
+                        val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                        assertTrue(nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "showAllCommands" }
+                            .config[SemanticsActions.OnClick].action!!.invoke())
+                    }
+                    val fullDeadline = android.os.SystemClock.elapsedRealtime() + 3_000
+                    var fullReady = false
+                    while (!fullReady && android.os.SystemClock.elapsedRealtime() < fullDeadline) {
+                        Thread.sleep(50)
+                        scenario.onActivity {
+                            fullReady = view?.let(::root)?.semanticsOwner?.getAllSemanticsNodes(false)?.any {
+                                it.config.getOrNull(SemanticsProperties.TestTag) == "commandSearch"
+                            } == true
+                        }
+                    }
+                    assertTrue("Full catalog did not open", fullReady)
+                    scenario.onActivity {
+                        val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                        fun tagged(tag: String) = nodes.firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
+                            ?: error("Missing $tag; tags=${nodes.mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }}")
+                        val bounds = tagged("dashboard").boundsInRoot
+                        for (tag in listOf("commandSearch", "commandList")) {
+                            val control = tagged(tag).boundsInRoot
+                            assertTrue("$tag hidden in compact full list", control.height > 0 && control.bottom <= bounds.bottom)
+                        }
+                        assertTrue(tagged("showAllCommands").config[SemanticsActions.OnClick].action!!.invoke())
+                    }
+                    instrumentation.waitForIdleSync()
+                }
             }
-            assertEquals(1,resumes); assertEquals(1,diagnostics)
+            assertEquals(1,resumes); assertEquals(0,diagnostics)
+            scenario.onActivity {
+                val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                assertTrue(nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "showAllCommands" }
+                    .config[SemanticsActions.OnClick].action!!.invoke())
+            }
+            val catalogDeadline = android.os.SystemClock.elapsedRealtime() + 3_000
+            var catalogReady = false
+            while (!catalogReady && android.os.SystemClock.elapsedRealtime() < catalogDeadline) {
+                Thread.sleep(50)
+                scenario.onActivity {
+                    catalogReady = view?.let(::root)?.semanticsOwner?.getAllSemanticsNodes(false)?.any {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "commandSearch"
+                    } == true
+                }
+            }
+            assertTrue("Full catalog did not open at 600x320", catalogReady)
+            scenario.onActivity {
+                val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                val example = nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "example_open_app" }
+                assertTrue(example.config[SemanticsActions.OnClick].action!!.invoke())
+                assertEquals("Canonical tap must not run", 0, sends)
+            }
+            val canonicalDeadline = android.os.SystemClock.elapsedRealtime() + 3_000
+            var canonicalReady = false
+            while (!canonicalReady && android.os.SystemClock.elapsedRealtime() < canonicalDeadline) {
+                Thread.sleep(50)
+                scenario.onActivity {
+                    canonicalReady = view?.let(::root)?.semanticsOwner?.getAllSemanticsNodes(false)?.any {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "runCommand"
+                    } == true
+                }
+            }
+            assertTrue("Canonical choice did not reveal input", canonicalReady)
+            scenario.onActivity {
+                val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                val input = nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "commandInput" }
+                assertEquals("mở YouTube", input.config.getOrNull(SemanticsProperties.EditableText)?.text)
+                assertTrue(nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "showAllCommands" }
+                    .config[SemanticsActions.OnClick].action!!.invoke())
+            }
+            catalogReady = false
+            val aliasCatalogDeadline = android.os.SystemClock.elapsedRealtime() + 3_000
+            while (!catalogReady && android.os.SystemClock.elapsedRealtime() < aliasCatalogDeadline) {
+                Thread.sleep(50)
+                scenario.onActivity {
+                    catalogReady = view?.let(::root)?.semanticsOwner?.getAllSemanticsNodes(false)?.any {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "commandSearch"
+                    } == true
+                }
+            }
+            assertTrue("Full catalog did not reopen", catalogReady)
+            scenario.onActivity {
+                val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                fun tagged(tag: String) = nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
+                assertTrue("search=${tagged("commandSearch").boundsInRoot} list=${tagged("commandList").boundsInRoot}", tagged("commandSearch").boundsInRoot.height > 0)
+                assertTrue(tagged("expand_open_app").config[SemanticsActions.OnClick].action!!.invoke())
+            }
+            val aliasDeadline = android.os.SystemClock.elapsedRealtime() + 3_000
+            var aliasReady = false
+            while (!aliasReady && android.os.SystemClock.elapsedRealtime() < aliasDeadline) {
+                Thread.sleep(50)
+                scenario.onActivity {
+                    aliasReady = view?.let(::root)?.semanticsOwner?.getAllSemanticsNodes(false)?.any {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "alias_open_app_1"
+                    } == true
+                }
+            }
+            assertTrue("Expanded alias did not appear", aliasReady)
+            scenario.onActivity {
+                val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                val alias = nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "alias_open_app_1" }
+                assertTrue(alias.config[SemanticsActions.OnClick].action!!.invoke())
+                assertEquals("Alias tap must not run", 0, sends)
+            }
+            val inputDeadline = android.os.SystemClock.elapsedRealtime() + 3_000
+            var inputReady = false
+            while (!inputReady && android.os.SystemClock.elapsedRealtime() < inputDeadline) {
+                Thread.sleep(50)
+                scenario.onActivity {
+                    inputReady = view?.let(::root)?.semanticsOwner?.getAllSemanticsNodes(false)?.any {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "runCommand"
+                    } == true
+                }
+            }
+            assertTrue("Run input did not return after closing catalog", inputReady)
+            scenario.onActivity {
+                val nodes = requireNotNull(view?.let(::root)).semanticsOwner.getAllSemanticsNodes(false)
+                val input = nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "commandInput" }
+                assertEquals("bật YouTube", input.config.getOrNull(SemanticsProperties.EditableText)?.text)
+                val run = nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == "runCommand" }
+                assertTrue(run.config[SemanticsActions.OnClick].action!!.invoke())
+            }
+            assertEquals(1, sends)
         } } finally { restoreVoicePolicy(context, originalPolicy) }
     }
 }

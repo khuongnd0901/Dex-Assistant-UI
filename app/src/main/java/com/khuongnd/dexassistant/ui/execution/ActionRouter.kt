@@ -43,7 +43,11 @@ class ActionRouter(private val context: Context, private val registry: CommandRe
     val awaitingInteraction get() = pending != null
     private fun ui() = DexAccessibilityService.active?.let(::DesktopUiAccess)
     fun foregroundAppId(): String? = ui()?.foregroundPackage()?.let(registry::appIdForPackage)
-    fun supportedActions(): Set<ActionId> = ActionId.entries.toSet() - setOf(ActionId.BLUETOOTH_SET, ActionId.CLICK_TARGET, ActionId.APP_CLOSE_WINDOW)
+    fun supportedActions(): Set<ActionId> = supportedActionIds()
+
+    companion object {
+        fun supportedActionIds(): Set<ActionId> = ActionId.entries.toSet() - setOf(ActionId.BLUETOOTH_SET, ActionId.CLICK_TARGET, ActionId.APP_CLOSE_WINDOW)
+    }
 
     fun execute(parentId: String, action: TypedAction, prompt: ((Prompt) -> Unit)?, actionId: String = "local", localCommandId: String? = null, metric: ((String, Long) -> Unit)? = null, complete: (LocalResult) -> Unit) {
         if (closed) { complete(LocalResult(LocalOutcome.REJECTED,"ROUTER_CLOSED")); return }

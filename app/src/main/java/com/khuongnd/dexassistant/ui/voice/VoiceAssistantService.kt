@@ -72,6 +72,7 @@ class VoiceAssistantService : Service() {
     private var diagnosticOnly = false
     private var diagnosticRestore = VoiceState.STOPPED
     private var chatActive = false
+        set(value) { field = value; VoiceLiveState.chatActive(value) }
     private var chatGeneration = 0L
     private var lastMicUpdate = 0L
     private val wakeLock by lazy {

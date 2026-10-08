@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.khuongnd.dexassistant.ui.theme.DexAssistantTheme
 import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
@@ -93,56 +95,129 @@ fun AssistantScreen(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { result ->
         aliasFeedback = if (result[android.Manifest.permission.READ_CONTACTS] == true && result[android.Manifest.permission.CALL_PHONE] == true) "Đã cấp quyền danh bạ và gọi điện." else "Chỉ dùng quyền đã cấp; thiếu quyền gọi sẽ mở bàn phím gọi."
     }
-    Scaffold(modifier = modifier.fillMaxSize().testTag("dashboard")) { inset ->
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().padding(inset).padding(8.dp)) {
-            val wide = maxWidth >= 700.dp
-            val compact = maxHeight < 400.dp
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!compact) Text("DeX Assistant · Hey Hey", style = MaterialTheme.typography.titleMedium)
-                Text("${state.voiceState} · ${state.dexStatus} · ${state.accessibilityStatus}", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { detail = "${state.voiceDetail}\n${state.status}: ${state.message}\n${state.assistantReadiness}\n${state.dexStatus}\n${state.accessibilityStatus}\n${live.microphone}"; dialog = "detail" })
-                @androidx.compose.runtime.Composable fun Controls() {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Button(onClick = if (state.voiceState == "PAUSED") onResumeVoice else onStartVoice, enabled = state.voiceState in setOf("STOPPED", "PAUSED", "ERROR"), modifier = Modifier.weight(1f).testTag("voiceStart"), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text(if (state.voiceState == "PAUSED") "Tiếp tục" else if (state.voiceState in setOf("STOPPED", "ERROR")) "Bắt đầu" else "Tự nghe", maxLines = 1) }
-                            Button(onClick = onPauseVoice, modifier = Modifier.weight(1f).testTag("voicePause"), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text("Tạm dừng", maxLines = 1) }
-                            Button(onClick = onStopVoice, modifier = Modifier.weight(1f).testTag("voiceStop"), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text("Dừng", maxLines = 1) }
+    val chatActive by com.khuongnd.dexassistant.ui.voice.VoiceLiveState.chatActive.collectAsState()
+    val examples = androidx.compose.runtime.remember(context) { LocalCommandExamples.load(context) }
+    var showAllCommands by androidx.compose.runtime.remember { mutableStateOf(false) }
+    var commandSearch by androidx.compose.runtime.remember { mutableStateOf("") }
+    var expandedAliases by androidx.compose.runtime.remember { mutableStateOf(emptySet<String>()) }
+    var advancedExpanded by androidx.compose.runtime.remember { mutableStateOf(false) }
+    val canRun = command.isNotBlank() && !Regex("\\{[^}]+\\}").containsMatchIn(command)
+    @androidx.compose.runtime.Composable fun Controls() {
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Button(onClick = if (state.voiceState == "PAUSED") onResumeVoice else onStartVoice,
+                enabled = state.voiceState in setOf("STOPPED", "PAUSED", "ERROR"),
+                modifier = Modifier.weight(1f).testTag("voiceStart"), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                Text(if (state.voiceState == "PAUSED") "Tiếp tục" else if (state.voiceState in setOf("STOPPED", "ERROR")) "Bắt đầu" else "Tự nghe", maxLines = 1)
+            }
+            Button(onClick = onPauseVoice, modifier = Modifier.weight(1f).testTag("voicePause"), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text("Tạm dừng", maxLines = 1) }
+            Button(onClick = onStopVoice, modifier = Modifier.weight(1f).testTag("voiceStop"), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text("Dừng", maxLines = 1) }
+        }
+    }
+    @androidx.compose.runtime.Composable fun Transcript(modifier: Modifier) {
+        androidx.compose.material3.Card(modifier.testTag("transcript").clickable(enabled = live.transcript.isNotBlank()) { detail = live.transcript; dialog = "detail" }) {
+            Column(Modifier.fillMaxSize().padding(8.dp)) {
+                Text(if (live.diagnostic) "Nghe thử" else if (live.final) "Đã nghe" else "Đang nghe", style = MaterialTheme.typography.labelLarge)
+                Text(live.transcript.ifBlank { if (live.ready) "Sẵn sàng — nói lệnh." else "Nói Hey Hey để ra lệnh." },
+                    Modifier.weight(1f).testTag("transcriptText"), maxLines = 8, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+        }
+    }
+    @androidx.compose.runtime.Composable fun CommandPane(modifier: Modifier, compactFull: Boolean) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (!compactFull) androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedTextField(command, { command = it }, modifier = Modifier.weight(1f).testTag("commandInput"),
+                    label = { Text("Nhập lệnh") }, singleLine = true)
+                Button(onClick = { onSend(command.trim()); command = "" }, enabled = canRun,
+                    modifier = Modifier.testTag("runCommand")) { Text("Chạy") }
+            }
+            androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Lệnh local", style = MaterialTheme.typography.titleSmall)
+                androidx.compose.material3.TextButton(onClick = { showAllCommands = !showAllCommands }, Modifier.testTag("showAllCommands")) {
+                    Text(if (showAllCommands) "Thu gọn" else "Xem tất cả")
+                }
+            }
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).testTag("commandList"),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (showAllCommands) OutlinedTextField(commandSearch, { commandSearch = it },
+                    modifier = Modifier.fillMaxWidth().testTag("commandSearch"), label = { Text("Tìm lệnh hoặc nhóm") }, singleLine = true)
+                if (compactFull) Text("Chọn câu để điền ô lệnh.", style = MaterialTheme.typography.bodySmall)
+                val visible = if (showAllCommands) LocalCommandExamples.search(examples, commandSearch)
+                    else examples.filter { it.id in LocalCommandExamples.featuredIds }
+                if (showAllCommands) Text("${examples.size} lệnh · ${examples.sumOf { it.phrases.size }} cách nói", style = MaterialTheme.typography.bodySmall)
+                if (visible.isEmpty()) Text("Không tìm thấy lệnh phù hợp.")
+                var shownGroups = 0
+                LocalCommandExamples.groupOrder.forEach { group ->
+                    val entries = visible.filter { it.group == group }
+                    if (entries.isEmpty()) return@forEach
+                    if (shownGroups > 0) androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+                    shownGroups++
+                    Text(group, style = MaterialTheme.typography.titleSmall)
+                    entries.forEach { example ->
+                        androidx.compose.material3.OutlinedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(8.dp)) {
+                                androidx.compose.material3.TextButton(onClick = { command = example.text; if (compactFull) showAllCommands = false },
+                                    modifier = Modifier.fillMaxWidth().testTag("example_${example.id}")) {
+                                    Text(example.text, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start)
+                                }
+                                if (example.note.isNotBlank()) Text(example.note, style = MaterialTheme.typography.bodySmall)
+                                if (showAllCommands && example.aliases.isNotEmpty()) {
+                                    androidx.compose.material3.TextButton(onClick = {
+                                        expandedAliases = if (example.id in expandedAliases) expandedAliases - example.id else expandedAliases + example.id
+                                    }, modifier = Modifier.testTag("expand_${example.id}")) {
+                                        Text(if (example.id in expandedAliases) "Ẩn ${example.aliases.size} cách nói khác" else "Xem ${example.aliases.size} cách nói khác")
+                                    }
+                                    example.aliases.forEachIndexed { index, phrase ->
+                                        if (example.id in expandedAliases || (commandSearch.isNotBlank() && LocalCommandExamples.matches(phrase, commandSearch))) {
+                                            androidx.compose.material3.TextButton(onClick = { command = phrase; if (compactFull) showAllCommands = false },
+                                                modifier = Modifier.fillMaxWidth().testTag("alias_${example.id}_${index + 1}")) {
+                                                Text(phrase, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        Button(onClick = onDiagnostic, Modifier.fillMaxWidth().testTag("diagnosticListen")) { Text("Nghe thử · không thực hiện lệnh", maxLines = 1) }
-                        Button(onClick = onEndChat, Modifier.fillMaxWidth().testTag("endChat")) { Text("Kết thúc trò chuyện", maxLines = 1) }
-                        if (!compact) Text(live.microphone, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { detail = live.microphone; dialog = "detail" })
-                    }
-                }
-                @androidx.compose.runtime.Composable fun Transcript(modifier: Modifier) {
-                    androidx.compose.material3.Card(modifier.testTag("transcript").clickable(enabled = live.transcript.isNotBlank()) { detail = live.transcript; dialog = "detail" }) {
-                        Column(Modifier.fillMaxSize().padding(8.dp)) {
-                            if (!compact) Text(if (live.diagnostic) "Nghe thử" else if (live.final) "Đã nghe" else "Đang nghe", style = MaterialTheme.typography.labelLarge)
-                            Text(live.transcript.ifBlank { if (live.ready) "Sẵn sàng — nói lệnh." else "Nói Hey Hey, hoặc chọn Nghe thử." }, Modifier.weight(1f).testTag("transcriptText"), maxLines = if (compact) 1 else 8,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                            if (!compact) androidx.compose.material3.TextButton(onClick = { detail = live.transcript; dialog = "detail" }, enabled = live.transcript.isNotBlank()) { Text("Xem toàn bộ") }
-                        }
-                    }
-                }
-                if (wide) androidx.compose.foundation.layout.Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f)) { Controls() }
-                    Transcript(Modifier.weight(1f).fillMaxSize())
-                } else {
-                    Controls()
-                    Transcript(Modifier.weight(1f).fillMaxWidth())
-                }
-                androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("Cài đặt" to "settings", "Quota" to "quota", "Lịch sử" to "history", "Lệnh" to "command").forEach { (label, key) ->
-                        androidx.compose.material3.OutlinedButton(onClick = { dialog = key }, Modifier.weight(1f).testTag(key), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text(label, maxLines = 1) }
                     }
                 }
             }
         }
     }
+    Scaffold(modifier = modifier.fillMaxSize().testTag("dashboard")) { inset ->
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().padding(inset).padding(8.dp)) {
+            val compact = maxHeight < 400.dp
+            val wide = maxWidth >= 700.dp || (compact && maxWidth >= 560.dp)
+            val shortFullCatalog = showAllCommands && maxHeight < 520.dp
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("DeX Assistant", style = MaterialTheme.typography.titleMedium)
+                    androidx.compose.foundation.layout.Box {
+                        androidx.compose.material3.TextButton(onClick = { advancedExpanded = true }, Modifier.testTag("advancedMenu")) { Text("Thêm ⋮") }
+                        androidx.compose.material3.DropdownMenu(expanded = advancedExpanded, onDismissRequest = { advancedExpanded = false }) {
+                            listOf("Cài đặt" to "settings", "Quota" to "quota", "Lịch sử" to "history", "Chẩn đoán" to "diagnostic").forEach { (label, key) ->
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { dialog = key; advancedExpanded = false }, modifier = Modifier.testTag(key))
+                            }
+                        }
+                    }
+                }
+                Text("${state.voiceState} · ${state.dexStatus} · ${state.accessibilityStatus}", maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().clickable { detail = "${state.voiceDetail}\n${state.status}: ${state.message}\n${state.assistantReadiness}\n${state.dexStatus}\n${state.accessibilityStatus}\n${live.microphone}"; dialog = "detail" }.testTag("status"))
+                Controls()
+                if (chatActive) androidx.compose.material3.TextButton(onClick = onEndChat, Modifier.testTag("endChat")) { Text("Kết thúc trò chuyện") }
+                if (wide) androidx.compose.foundation.layout.Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Transcript(Modifier.weight(1f).fillMaxSize())
+                    CommandPane(Modifier.weight(1f).fillMaxSize(), shortFullCatalog)
+                } else {
+                    Transcript(Modifier.fillMaxWidth().height(if (compact || shortFullCatalog) 56.dp else 96.dp))
+                    CommandPane(Modifier.fillMaxWidth().weight(1f), shortFullCatalog)
+                }
+            }
+        }
+    }
     if (dialog.isNotBlank()) androidx.compose.material3.AlertDialog(
-        onDismissRequest = { dialog = ""; token = ""; command = "" },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = { dialog = ""; token = ""; command = "" }) { Text("Đóng") } },
-        title = { Text(when (dialog) { "settings" -> "Cài đặt"; "quota" -> "AI quota"; "history" -> "Lịch sử"; "command" -> "Lệnh nhập tay"; else -> "Chi tiết" }) },
+        onDismissRequest = { dialog = ""; token = "" },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { dialog = ""; token = "" }) { Text("Đóng") } },
+        title = { Text(when (dialog) { "settings" -> "Cài đặt"; "quota" -> "AI quota"; "history" -> "Lịch sử"; "diagnostic" -> "Chẩn đoán"; else -> "Chi tiết" }) },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (dialog) {
@@ -176,7 +251,7 @@ fun AssistantScreen(
                         }
                     }
                     "history" -> { if (state.historyClearing) Text("Đang xóa lịch sử lệnh…"); state.historyError?.let { Text(it) }; state.history.forEach { Text("${it.route}: ${it.originalText} — ${it.outcome}") }; Button(onClick = onClearHistory, enabled = !state.historyClearing && (state.history.isNotEmpty() || state.historyError != null)) { Text("Clear command history") } }
-                    "command" -> { OutlinedTextField(command, { command = it }, label = { Text("Vietnamese command") }); Button(onClick = { onSend(command); command = ""; dialog = "" }, enabled = command.isNotBlank()) { Text("Run command") } }
+                    "diagnostic" -> { Text(live.microphone); Button(onClick = onDiagnostic, Modifier.testTag("diagnosticListen")) { Text("Nghe thử · không thực hiện lệnh") }; Button(onClick = onRefresh) { Text("Làm mới trạng thái") } }
                     else -> Text(detail)
                 }
             }

@@ -1,4 +1,8 @@
-# Current Android status - 2026-10-07
+# Current Android status - 2026-10-08
+
+## T-016 dashboard redesign - full local catalog host/AVD verified, physical DeX pending
+
+Main view keeps voice controls, status, transcript, typed command and featured local examples. Full catalog now derives all 47 supported definitions/180 patterns from commands.json (3 unsupported Bluetooth patterns excluded), grouped in nine ordered intent groups with canonical phrase, expandable aliases, context/permission notes and accent-insensitive search. Tap fills only; short full-catalog mode auto-returns to visible input/Run after a phrase is chosen. The main page stays fixed and only the command list scrolls. AOSP AVD DeX_Command_Test_API35/API35, Windows ADB 5038 serial 127.0.0.1:5555: latest DashboardLayoutTest PASS1/1 across 320x480, 800x400, 600x320, including compact full view, canonical/alias fill and no send until Run. App/test APKs installed with `install -r`; no data clear or Fold3 mutation. JDK17 final `./gradlew test lint assembleDebug assembleDebugAndroidTest --offline --max-workers=1` PASS201 tasks; app unit tests156/debug and156/release, zero failures/errors and one expected skip each. Catalog unit test derives and checks exact supported pattern count, all phrase examples route LOCAL, nine groups and accentless search. Final visual polish: canonical and alias phrases are left-aligned within full-width touch targets; group headings use titleSmall with spacing between groups. JDK17 `:app:assembleDebug` PASS38 tasks and AVD `DashboardLayoutTest` PASS1/1 after this change. AOSP AVD cannot establish actual Samsung DeX placement or mic behavior; physical Fold3 acceptance remains open.
 
 ## T-015 current host implementation — host verified, Fold3 acceptance pending
 

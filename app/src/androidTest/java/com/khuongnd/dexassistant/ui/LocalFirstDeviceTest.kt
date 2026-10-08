@@ -47,10 +47,9 @@ class LocalFirstDeviceTest {
         }
         controller.addObserver(observer)
         try {
-            compose.onNodeWithTag("command").performClick()
-            compose.onNodeWithText("Vietnamese command").performScrollTo().performTextInput(query)
+            compose.onNodeWithTag("commandInput").performTextInput(query)
             val submittedAt = android.os.SystemClock.elapsedRealtime()
-            compose.onNodeWithText("Run command").performScrollTo().performClick()
+            compose.onNodeWithTag("runCommand").performClick()
             compose.waitUntil(5_000) { failureState != null }
             val elapsed = android.os.SystemClock.elapsedRealtime() - submittedAt
             android.util.Log.i("T009Offline", "submitToFailureMs=$elapsed")

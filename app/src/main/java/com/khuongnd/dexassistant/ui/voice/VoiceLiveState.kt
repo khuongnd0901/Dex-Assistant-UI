@@ -7,6 +7,9 @@ import kotlinx.coroutines.flow.asStateFlow
 data class LiveVoiceState(val transcript: String = "", val final: Boolean = false, val diagnostic: Boolean = false, val microphone: String = "Chưa đo micro", val ready: Boolean = false)
 /** RAM only. Never written to preferences/history/logs or sent by a partial callback. */
 object VoiceLiveState {
+    private val mutableChatActive = MutableStateFlow(false)
+    val chatActive = mutableChatActive.asStateFlow()
+    fun chatActive(value: Boolean) { mutableChatActive.value = value }
     private val combiningMarks = Regex("\\p{M}+")
     private val credentialCue = Regex("\\b(?:mat|khau|ma|pass\\w*|bear\\w*|tok\\w*|secr\\w*|api)\\b")
     private val mutable = MutableStateFlow(LiveVoiceState())
