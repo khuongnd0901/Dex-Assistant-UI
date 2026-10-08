@@ -1,0 +1,201 @@
+sampleId,group,promptTemplate,catalogId,condition,consent,source
+sample001,system,bật wifi,wifi_on,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample002,system,bật wi-fi,wifi_on,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample003,system,mở wifi,wifi_on,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample004,system,mở wi-fi,wifi_on,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample005,system,tắt wifi,wifi_off,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample006,system,tắt wi-fi,wifi_off,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample007,system,đặt âm lượng {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample008,system,đặt âm lượng lên {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample009,system,đặt âm lượng xuống {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample010,system,đặt âm lượng đến {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample011,system,đặt âm lượng về {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample012,system,chỉnh âm lượng {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample013,system,chỉnh âm lượng lên {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample014,system,chỉnh âm lượng xuống {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample015,system,chỉnh âm lượng đến {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample016,system,chỉnh âm lượng về {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample017,system,điều chỉnh âm lượng {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample018,system,điều chỉnh âm lượng lên {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample019,system,điều chỉnh âm lượng xuống {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample020,system,điều chỉnh âm lượng đến {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample021,system,điều chỉnh âm lượng về {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample022,system,tăng âm lượng {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample023,system,tăng âm lượng lên {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample024,system,tăng âm lượng xuống {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample025,system,tăng âm lượng đến {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample026,system,tăng âm lượng về {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample027,system,giảm âm lượng {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample028,system,giảm âm lượng lên {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample029,system,giảm âm lượng xuống {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample030,system,giảm âm lượng đến {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample031,system,giảm âm lượng về {percent},volume_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample032,system,tăng âm lượng,volume_increase,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample033,system,tăng âm lượng {steps} bước,volume_increase_steps,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample034,system,giảm âm lượng,volume_decrease,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample035,system,giảm âm lượng {steps} bước,volume_decrease_steps,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample036,system,đặt độ sáng {percent},brightness_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample037,system,đặt độ sáng lên {percent},brightness_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample038,system,đặt độ sáng xuống {percent},brightness_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample039,system,đặt độ sáng đến {percent},brightness_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample040,system,đặt độ sáng về {percent},brightness_percent,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample041,dex_ui,mở {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample042,dex_ui,bật {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample043,dex_ui,khởi động {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample044,dex_ui,mở ứng dụng {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample045,dex_ui,chuyển sang {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample046,dex_ui,mở lại {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample047,dex_ui,chia màn hình {firstApp} và {secondApp},split_app_pair,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample048,dex_ui,chia đôi màn hình {firstApp} với {secondApp},split_app_pair,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample049,dex_ui,mở song song {firstApp} và {secondApp},split_app_pair,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample050,dex_ui,tìm google {query},web_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample051,dex_ui,tìm trên google {query},web_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample052,dex_ui,tra cứu {query},web_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample053,dex_ui,tìm trên web {query},web_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample054,dex_ui,tìm địa điểm {query},web_search_in_chrome,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample055,dex_ui,bấm {text},click_text,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample056,dex_ui,nhấn {text},click_text,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample057,dex_ui,chạm {text},click_text,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample058,dex_ui,cuộn xuống,scroll_forward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample059,dex_ui,lướt xuống,scroll_forward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample060,dex_ui,xem tiếp,scroll_forward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample061,dex_ui,cuộn tiếp,scroll_forward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample062,dex_ui,lướt tiếp,scroll_forward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample063,dex_ui,cuộn lên,scroll_backward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample064,dex_ui,lướt lên,scroll_backward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample065,dex_ui,xem trước,scroll_backward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample066,dex_ui,cuộn ngược,scroll_backward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample067,dex_ui,xem nội dung trước,scroll_backward,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample068,dex_ui,video tiếp theo,feed_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample069,dex_ui,video tiếp,feed_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample070,dex_ui,lướt video tiếp,feed_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample071,dex_ui,video sau,feed_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample072,dex_ui,video trước,feed_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample073,dex_ui,lướt video trước,feed_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample074,dex_ui,video vừa rồi,feed_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample075,dex_ui,mở {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample076,dex_ui,bật {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample077,dex_ui,khởi động {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample078,dex_ui,mở ứng dụng {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample079,dex_ui,chuyển sang {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample080,dex_ui,mở lại {app},open_app,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample081,media,phát nhạc,media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample082,media,phát video,media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample083,media,tiếp tục nhạc,media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample084,media,tiếp tục video,media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample085,media,phát tiếp,media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample086,media,tiếp tục phát,media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample087,media,tạm dừng nhạc,media_pause,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample088,media,tạm dừng video,media_pause,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample089,media,tạm dừng,media_pause,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample090,media,dừng nhạc,media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample091,media,dừng video,media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample092,media,dừng phát,media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample093,media,ngừng phát,media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample094,media,bài tiếp theo,media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample095,media,video tiếp theo,media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample096,media,chuyển bài tiếp theo,media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample097,media,bài sau,media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample098,media,video sau,media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample099,media,bài trước,media_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample100,media,video trước,media_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample101,media,quay lại bài trước,media_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample102,media,bài vừa rồi,media_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample103,media,video vừa rồi,media_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample104,media,mở youtube tìm {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample105,media,tìm youtube {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample106,media,tìm youtube bài {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample107,media,nhạc {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample108,media,tìm nhạc {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample109,media,mở youtube tìm nhạc {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample110,media,tìm video {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample111,media,tìm kiếm nhạc {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample112,media,tìm kiếm video {query},youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample113,media,tìm {query} trên youtube,youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample114,media,tìm kiếm {query} trên youtube,youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample115,media,tìm {query} trên you tube,youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample116,media,tìm kiếm {query} trên you tube,youtube_search,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample117,media,mở nhạc {query},youtube_play_query,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample118,media,phát trên youtube {query},youtube_play_query,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample119,media,mở youtube phát {query},youtube_play_query,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample120,media,mở video số {index},youtube_select_index,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample121,maps,chỉ đường đến {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample122,maps,đưa tôi tới {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample123,maps,tìm đường về {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample124,maps,đưa tôi về {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample125,maps,đi bộ đến {destination},navigate_walking,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample126,maps,chỉ đường đi bộ đến {destination},navigate_walking,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample127,maps,tìm địa chỉ {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample128,maps,tìm địa chỉ {query} trong Google Maps,search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample129,maps,tìm địa điểm {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample130,maps,tìm trên bản đồ {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample131,maps,tìm xung quanh {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample132,maps,chỉ đường đến {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample133,maps,đưa tôi tới {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample134,maps,tìm đường về {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample135,maps,đưa tôi về {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample136,maps,đi bộ đến {destination},navigate_walking,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample137,maps,chỉ đường đi bộ đến {destination},navigate_walking,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample138,maps,tìm địa chỉ {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample139,maps,tìm địa chỉ {query} trong Google Maps,search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample140,maps,tìm địa điểm {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample141,maps,tìm trên bản đồ {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample142,maps,tìm xung quanh {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample143,maps,chỉ đường đến {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample144,maps,đưa tôi tới {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample145,maps,tìm đường về {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample146,maps,đưa tôi về {destination},navigate,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample147,maps,đi bộ đến {destination},navigate_walking,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample148,maps,chỉ đường đi bộ đến {destination},navigate_walking,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample149,maps,tìm địa chỉ {query},search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample150,maps,tìm địa chỉ {query} trong Google Maps,search_place,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample151,multi_step,bật wifi rồi phát nhạc,wifi_on+media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample152,multi_step,bật wi-fi rồi phát video,wifi_on+media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample153,multi_step,mở wifi rồi tiếp tục nhạc,wifi_on+media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample154,multi_step,mở wi-fi rồi tiếp tục video,wifi_on+media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample155,multi_step,tắt wifi rồi phát tiếp,wifi_off+media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample156,multi_step,tắt wi-fi rồi tiếp tục phát,wifi_off+media_play,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample157,multi_step,đặt âm lượng {percent} rồi tạm dừng nhạc,volume_percent+media_pause,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample158,multi_step,đặt âm lượng lên {percent} rồi tạm dừng video,volume_percent+media_pause,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample159,multi_step,đặt âm lượng xuống {percent} rồi tạm dừng,volume_percent+media_pause,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample160,multi_step,đặt âm lượng đến {percent} rồi dừng nhạc,volume_percent+media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample161,multi_step,đặt âm lượng về {percent} rồi dừng video,volume_percent+media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample162,multi_step,chỉnh âm lượng {percent} rồi dừng phát,volume_percent+media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample163,multi_step,chỉnh âm lượng lên {percent} rồi ngừng phát,volume_percent+media_stop,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample164,multi_step,chỉnh âm lượng xuống {percent} rồi bài tiếp theo,volume_percent+media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample165,multi_step,chỉnh âm lượng đến {percent} rồi video tiếp theo,volume_percent+media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample166,multi_step,chỉnh âm lượng về {percent} rồi chuyển bài tiếp theo,volume_percent+media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample167,multi_step,điều chỉnh âm lượng {percent} rồi bài sau,volume_percent+media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample168,multi_step,điều chỉnh âm lượng lên {percent} rồi video sau,volume_percent+media_next,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample169,multi_step,điều chỉnh âm lượng xuống {percent} rồi bài trước,volume_percent+media_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample170,multi_step,điều chỉnh âm lượng đến {percent} rồi video trước,volume_percent+media_previous,quiet,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample171,noisy,bật wifi,wifi_on,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample172,noisy,bật wi-fi,wifi_on,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample173,noisy,mở wifi,wifi_on,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample174,noisy,mở wi-fi,wifi_on,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample175,noisy,tắt wifi,wifi_off,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample176,noisy,tắt wi-fi,wifi_off,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample177,noisy,đặt âm lượng {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample178,noisy,đặt âm lượng lên {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample179,noisy,đặt âm lượng xuống {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample180,noisy,đặt âm lượng đến {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample181,noisy,đặt âm lượng về {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample182,noisy,chỉnh âm lượng {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample183,noisy,chỉnh âm lượng lên {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample184,noisy,chỉnh âm lượng xuống {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample185,noisy,chỉnh âm lượng đến {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample186,noisy,chỉnh âm lượng về {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample187,noisy,điều chỉnh âm lượng {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample188,noisy,điều chỉnh âm lượng lên {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample189,noisy,điều chỉnh âm lượng xuống {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample190,noisy,điều chỉnh âm lượng đến {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample191,noisy,điều chỉnh âm lượng về {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample192,noisy,tăng âm lượng {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample193,noisy,tăng âm lượng lên {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample194,noisy,tăng âm lượng xuống {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample195,noisy,tăng âm lượng đến {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample196,noisy,tăng âm lượng về {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample197,noisy,giảm âm lượng {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample198,noisy,giảm âm lượng lên {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample199,noisy,giảm âm lượng xuống {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE
+sample200,noisy,giảm âm lượng đến {percent},volume_percent,simulated driving noise; stationary safe recording,NO,PROMPT_ONLY_NOT_AUDIO_OR_REFERENCE

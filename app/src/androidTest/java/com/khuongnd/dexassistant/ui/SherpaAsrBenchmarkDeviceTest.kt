@@ -40,12 +40,41 @@ class SherpaAsrBenchmarkDeviceTest {
         assertTrue("Physical Galaxy Z Fold3 required; AVD is not performance evidence",
             Build.MODEL.startsWith("SM-F926") && Build.SUPPORTED_ABIS.contains("arm64-v8a"))
 
-        val base = requireNotNull(context.getExternalFilesDir(null))
+        val storage = args.getString("sherpaBenchmarkStorage", "external")
+        require(storage == "external" || storage == "internal") {
+            "sherpaBenchmarkStorage must be external or internal"
+        }
+        // Internal fallback supports devices where instrumentation's scoped-storage
+        // mount cannot read target external files populated by shell. Main stages
+        // files with target run-as; this test never copies or changes permissions.
+        val base = if (storage == "internal") File(context.filesDir, "sherpa-vi-benchmark")
+            else requireNotNull(context.getExternalFilesDir(null))
+        instrumentation.sendStatus(0, android.os.Bundle().apply {
+            putString("sherpaBenchmarkTargetPackage", context.packageName)
+            putString("sherpaBenchmarkInstrumentationPackage", instrumentation.context.packageName)
+            putString("sherpaBenchmarkBase", base.absolutePath)
+            putString("sherpaBenchmarkStorage", storage)
+            putInt("sherpaBenchmarkUid", Process.myUid())
+        })
         val model = File(base, "sherpa-vi-model")
-        val corpus = File(base, "sherpa-vi-wav")
+        val realSession = args.getString("sherpaRealCorpusSession")
+        require(realSession == null || realSession.matches(Regex("session-[0-9]{13}"))) {
+            "sherpaRealCorpusSession must be a collector session ID"
+        }
+        val corpus = if (realSession == null) File(base, "sherpa-vi-wav")
+            else File(context.filesDir, "sherpa-vi-real-corpus/$realSession")
         val output = File(base, "sherpa-vi-results").apply { mkdirs() }
         val required = listOf("encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt")
-        required.forEach { require(File(model, it).isFile) { "Missing benchmark model file: $it" } }
+        required.forEach {
+            val file = File(model, it)
+            require(file.isFile && file.canRead()) {
+                "Unreadable benchmark model: path=${file.absolutePath}; " +
+                    "target=${context.packageName}; instrumentation=${instrumentation.context.packageName}; " +
+                    "uid=${Process.myUid()}; storage=$storage; " +
+                    "modelDirExists=${model.exists()}; modelDirReadable=${model.canRead()}; " +
+                    "fileExists=${file.exists()}; isFile=${file.isFile}; readable=${file.canRead()}"
+            }
+        }
         val wavs = corpus.listFiles { file ->
             file.isFile && file.name.endsWith(".wav", ignoreCase = true)
         }?.sortedBy { it.name } ?: emptyList()
@@ -62,10 +91,24 @@ class SherpaAsrBenchmarkDeviceTest {
             put("note", "Explicit offline WAV only; NOT a Google STT comparison or live voice result")
             put("warmupsPerThread", 2)
             put("measuredRepeats", 5)
+            put("modelLoadKind", "first-observed per thread profile; filesystem/cache not cold-controlled")
+            put("coldLoadMeasured", false)
             put("wavCount", wavs.size)
+            put("corpusKind", if (realSession == null) "staged_wav" else "consented_real_pilot")
+            put("realCorpusSession", realSession ?: JSONObject.NULL)
         }
         val sha = JSONObject()
-        required.forEach { sha.put(it, sha256(File(model, it))) }
+        val trusted = JSONObject(File(model, "verified-model.json").readText())
+        require(trusted.getString("revision") == "83e140db6d23fbb8480fd5fb868f74ab80e7092c") {
+            "Model provenance revision mismatch"
+        }
+        val expectedHashes = trusted.getJSONObject("sha256")
+        required.forEach {
+            val actual = sha256(File(model, it))
+            require(actual == expectedHashes.getString(it)) { "Model integrity mismatch: $it" }
+            sha.put(it, actual)
+        }
+        manifest.put("modelRevision", trusted.getString("revision"))
         manifest.put("modelSha256", sha)
         val rows = JSONArray()
         for (threads in listOf(1, 2, 4)) {
@@ -140,7 +183,7 @@ class SherpaAsrBenchmarkDeviceTest {
     }
 
     private fun readWav16k(file: File): FloatArray {
-        require(file.length() in 44..1_920_000L) { "WAV must be <= 60s mono 16k/16-bit: ${file.name}" }
+        require(file.length() in 44..2_000_000L) { "WAV must be <= 60s mono 16k/16-bit: ${file.name}" }
         val bytes = file.readBytes()
         val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         fun fourcc(offset: Int) = String(bytes, offset, 4, Charsets.US_ASCII)
@@ -164,7 +207,7 @@ class SherpaAsrBenchmarkDeviceTest {
             }
             offset += 8 + length + (length and 1)
         }
-        require(validFormat && dataStart >= 0 && dataLength >= 320 &&
+        require(validFormat && dataStart >= 0 && dataLength in 320..1_920_000 &&
             dataLength % 2 == 0) { "Expected PCM16 mono 16k WAV: ${file.name}" }
         return FloatArray(dataLength / 2) { i ->
             b.getShort(dataStart + i * 2) / 32768f

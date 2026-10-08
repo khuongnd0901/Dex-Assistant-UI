@@ -12,7 +12,7 @@
 - Use user-consented recordings of short Vietnamese commands, include negative/positive pairs ("bật" vs "tắt"), names, Vietnamese diacritics, mixed English app names, DeX screen indices and background music/noise.
 - Proposed 200 authentic utterances: 40 system + 40 DeX + 40 media + 30 navigation + 20 multi-step + 30 noisy. If fewer, report actual N; do not synthesize speech and present as authentic.
 - Use opaque IDs matching a private `references.csv`; no names, phone numbers, audio or private transcripts committed or transmitted. Files in `getExternalFilesDir` are on-device only; reviewers must check device access and consent.
-- Measurement categories: cold load vs warm load (currently repeated decodes are warm; cold load measured each threads profile), clean/noisy, local vs cloud-provider, DeX connected vs disconnected.
+- Measurement categories: first-observed model load vs warmed decode (filesystem caches and runtime initialization are uncontrolled; cold-load measurement NOT_IMPLEMENTED), clean/noisy, local vs cloud-provider, DeX connected vs disconnected.
 - Baseline capture before/after: Android build/device SKU, model and weights hashes, process PSS, process CPU time, temperature/thermal service if available. Wait for cooldown between configurations.
 
 ## Latency semantics
