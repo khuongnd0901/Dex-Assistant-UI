@@ -1,3 +1,26 @@
+T-017 real pilot:12 owner-consented recordings/180 decodes PASS; WER5.263%, CER4.444%; parser exact action9/11 and opposition1/11. Voice LISTENING/original testAPK restored; policy/history unchanged. Production STT Google. See docs/benchmarks/sherpa-vi-zfold3/RESULTS.md; task IN_PROGRESS for full corpus/live/stability/rights.
+
+## T-017 preparation and physical smoke — 2026-10-08
+
+ preparation and Fold3 native WAV smoke PASS.
+Existing T-017 branch worktree `/home/kunrg/Dex-Assistant-UI-T017` contains pinned
+model downloader/manifest checks, internal-storage runner, consent-aware validator
+and200 prompt slots. Python12PASS; Android test/lint/testAPK PASS144tasks;
+storage fallback APK build49tasks PASS; final app lintDebug29tasks PASS. Matching-cert test-only install and
+45decode measurements on SM-F926B/API35/ARM64 PASS1/1. Three upstream WAVs,
+1/2/4threads: decode median66.33/53.54/55.53ms, p95 103.72/81.48/77.98ms;
+WER/CER null. Thermal0, battery91%/30.9C in six short samples. Original testAPK
+restored exact hash; policy/history/state snapshots byte-identical, PID15795,
+Accessibility bound, DPC/assistant role unchanged and app update timestamp intact.
+Owner reconnected ADB at192.168.1.18:38585 after streamed-install interruption;
+SDK37 file-based install worked. No production voice/source/app install or grants,
+roles/reset/Wi-Fi toggle. Keep T-017 IN_PROGRESS: M2partial smoke; authentic
+corpus/full accuracy/cold-load, live A/B,100mic/KWS sessions and distribution
+rights still open. Next: consented corpus/reference collection, full M2 and
+separate live harness. Private artifacts:
+`/home/kunrg/.local/share/dex-benchmarks/T017-20261008/`. Other unfinished tasks
+preserved. Canonical evidence: `/home/kunrg/DeX-Assistant/.agent/evidence/T-017-preparation-smoke-2026-10-08.md`.
+
 # Current Android status - 2026-10-08
 
 ## T-016 dashboard redesign - full local catalog host/AVD verified, physical DeX pending

@@ -13,3 +13,12 @@ captures/
 
 .kotlin/
 __pycache__/
+
+# Private benchmark inputs and outputs: never distribute weights/audio/transcripts.
+*.wav
+private-benchmark*/
+private-references*.csv
+sherpa-vi-model/
+sherpa-vi-wav/
+sherpa-vi-results/
+*.onnx
