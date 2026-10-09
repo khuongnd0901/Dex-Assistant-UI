@@ -27,6 +27,8 @@ import com.khuongnd.dexassistant.ui.security.AiCredentialStore
 import com.khuongnd.dexassistant.ui.security.AiProviderSettings
 import com.khuongnd.dexassistant.ui.ai.MobileAiProxy
 import com.khuongnd.dexassistant.ui.ai.MobileAiException
+import com.khuongnd.dexassistant.ui.ai.DirectChatState
+import com.khuongnd.dexassistant.ui.ai.DirectAiChat
 import com.khuongnd.dexassistant.ui.routing.TypedAction
 import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
@@ -103,9 +105,95 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private var connectionActive = false
     @Volatile private var chatObserver: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)? = null
     fun observeChat(observer: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)?) { chatObserver = observer }
-    fun startChat() = onMain { runCatching { webSocket.startChat() }.onFailure { chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(null, UUID.randomUUID(), "CHAT_PROVIDER_UNAVAILABLE", "Chat connection unavailable", true)) } }
-    fun sendChat(text: String) = onMain { runCatching { webSocket.sendChatTurn(text) }.onFailure { chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(null, UUID.randomUUID(), "CHAT_INVALID_SESSION", "Chat session unavailable", false)) } }
-    fun endChat(reason: String = "USER") = onMain { webSocket.endChat(reason) }
+    private val directChatState = DirectChatState()
+    private val directChat by lazy { DirectAiChat(AiCredentialStore(context), aiSettings) }
+    private val chatExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "dex-chat-ai").apply { isDaemon = true }
+    }
+    private var chatSession: UUID? = null
+    private var chatTurn: UUID? = null
+    private var chatTask: java.util.concurrent.Future<*>? = null
+    private var chatEpoch = 0L
+
+    /** Android owns the chat session; no WebSocket, persistence, or device action tools. */
+    fun startChat() = onMain {
+        if (chatSession != null) endChat("STOP")
+        val session = UUID.randomUUID()
+        val preferred = aiSettings.defaultProvider()
+        val available = preferred.supportsDirectCommands && aiSettings.enabled(preferred) &&
+            aiSettings.freeTierConfirmed(preferred) && aiSettings.model(preferred).isNotBlank() &&
+            AiCredentialStore(context).hasKey(preferred)
+        if (!available) {
+            chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
+                null, UUID.randomUUID(), "CHAT_PROVIDER_UNAVAILABLE",
+                "Cấu hình provider/model Free Tier trong Settings", false))
+        } else {
+            chatSession = session; chatEpoch++
+            directChatState.clear()
+            chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Started(session, 900))
+        }
+    }
+
+    fun sendChat(text: String) = onMain {
+        val session = chatSession
+        if (session == null || directChatState.expired()) {
+            endChat("STOP")
+            chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
+                session, UUID.randomUUID(), "CHAT_INVALID_SESSION", "Chat đã kết thúc", false))
+            return@onMain
+        }
+        if (chatTurn != null) {
+            chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
+                session, UUID.randomUUID(), "CHAT_TURN_IN_PROGRESS", "Đang trả lời", false))
+            return@onMain
+        }
+        val turn = runCatching { directChatState.begin(text) }.getOrElse {
+            val code = when (it.message) {
+                "CHAT_SENSITIVE_INPUT_REJECTED" -> "CHAT_SENSITIVE_INPUT_REJECTED"
+                "CHAT_TURN_LIMIT" -> "CHAT_TURN_LIMIT"
+                "CHAT_CONTEXT_LIMIT" -> "CHAT_CONTEXT_LIMIT"
+                else -> "CHAT_INPUT_TOO_LARGE"
+            }
+            chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
+                session, UUID.randomUUID(), code, code, false))
+            return@onMain
+        }
+        val requestId = UUID.randomUUID()
+        chatTurn = requestId
+        val epoch = chatEpoch
+        chatTask = chatExecutor.submit {
+            val result = runCatching { directChat.reply(turn) }
+            onMain {
+                if (chatSession != session || chatEpoch != epoch || chatTurn != requestId) return@onMain
+                chatTurn = null; chatTask = null
+                result.fold(onSuccess = { reply ->
+                    val count = runCatching { directChatState.complete(turn, reply) }.getOrElse {
+                        chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
+                            session, requestId, "CHAT_INVALID_OUTPUT", "Phản hồi không hợp lệ", false))
+                        return@fold
+                    }
+                    chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Reply(
+                        session, requestId, reply, count))
+                }, onFailure = { error ->
+                    val code = when ((error as? MobileAiException)?.code) {
+                        "AI_TIMEOUT", "CHAT_PROVIDER_TIMEOUT" -> "CHAT_PROVIDER_TIMEOUT"
+                        "CHAT_INVALID_OUTPUT" -> "CHAT_INVALID_OUTPUT"
+                        else -> "CHAT_PROVIDER_UNAVAILABLE"
+                    }
+                    chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
+                        session, requestId, code, code, code == "CHAT_PROVIDER_TIMEOUT"))
+                })
+            }
+        }
+    }
+
+    fun endChat(reason: String = "USER") = onMain {
+        val session = chatSession ?: return@onMain
+        chatEpoch++
+        chatTask?.cancel(true); chatTask = null
+        chatTurn = null; chatSession = null; directChatState.clear()
+        chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Ended(session))
+    }
     private val watchdog = Runnable { finish("ACTION_TIMEOUT", "Hết thời gian xử lý lệnh") }
     private val commandDeadline = Runnable { finish("COMMAND_TIMEOUT", "Hết thời gian xử lý lệnh") }
     fun addObserver(observer: (UiState) -> Unit) { observers.add(observer); observer(state) }
