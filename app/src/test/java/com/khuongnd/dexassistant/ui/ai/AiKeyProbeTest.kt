@@ -1,5 +1,7 @@
 package com.khuongnd.dexassistant.ui.ai
 
+import com.khuongnd.dexassistant.ui.security.AiProvider
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -7,8 +9,9 @@ import org.junit.Test
 
 class AiKeyProbeTest {
     @Test
-    fun providerEndpointsUseTlsAndDoNotContainKeysOrModelNames() {
-        val urls = listOf(AiKeyProbe.GEMINI_MODELS_URL, AiKeyProbe.GROQ_MODELS_URL)
+    fun everyProviderUsesFixedTlsEndpointWithoutCredentialsInUrl() {
+        val urls = AiProvider.entries.map(AiKeyProbe::modelsEndpoint)
+        assertEquals(5, urls.distinct().size)
         assertTrue(urls.all { it.startsWith("https://") })
         assertTrue(urls.none { it.contains("?") || it.contains("generateContent") || it.contains("chat/completions") })
     }
@@ -22,5 +25,28 @@ class AiKeyProbeTest {
         for (code in listOf(400, 404, 408, 500, 502, 503)) {
             assertFalse(AiKeyProbe.statusFor(code) == ProbeStatus.AUTHENTICATED)
         }
+    }
+
+    @Test
+    fun geminiModelListStripsPrefixAndFiltersModelsWithoutGenerateContent() {
+        val body = JSONObject("""{"models":[{"name":"models/gemini-example","supportedGenerationMethods":["generateContent"]},{"name":"models/embedding-only","supportedGenerationMethods":["embedContent"]}]}""")
+        assertEquals(listOf("gemini-example"), AiKeyProbe.parseModels(AiProvider.GEMINI, body))
+    }
+
+    @Test
+    fun openAiCompatibleModelListsKeepAccountIds() {
+        val body = JSONObject("""{"data":[{"id":"model-2"},{"id":"model-1"}]}""")
+        for (provider in AiProvider.entries.filter { it != AiProvider.GEMINI }) {
+            assertEquals(listOf("model-1", "model-2"), AiKeyProbe.parseModels(provider, body))
+        }
+    }
+
+    @Test
+    fun unimplementedPaidAdaptersStayDisabledForAutomaticRouting() {
+        for (provider in listOf(AiProvider.OPENAI, AiProvider.GROK, AiProvider.DEEPSEEK)) {
+            assertFalse(provider.supportsDirectCommands)
+        }
+        assertTrue(AiProvider.GEMINI.supportsDirectCommands)
+        assertTrue(AiProvider.GROQ.supportsDirectCommands)
     }
 }
