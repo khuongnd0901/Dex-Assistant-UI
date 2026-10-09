@@ -23,6 +23,11 @@ import com.khuongnd.dexassistant.ui.protocol.DeviceCommandProtocol
 import com.khuongnd.dexassistant.ui.routing.CommandRouter
 import com.khuongnd.dexassistant.ui.routing.Route
 import com.khuongnd.dexassistant.ui.security.CredentialStore
+import com.khuongnd.dexassistant.ui.security.AiCredentialStore
+import com.khuongnd.dexassistant.ui.security.AiProviderSettings
+import com.khuongnd.dexassistant.ui.ai.MobileAiProxy
+import com.khuongnd.dexassistant.ui.ai.MobileAiException
+import com.khuongnd.dexassistant.ui.routing.TypedAction
 import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
 import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
@@ -70,6 +75,13 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private var pendingCompletion: ((VoiceCommandResult) -> Unit)? = null
     private var pendingDispatched = false
     private var backendDispatch = false
+    private var directDispatch = false
+    private val aiSettings = AiProviderSettings(context)
+    private val aiProxy by lazy { MobileAiProxy(AiCredentialStore(context), aiSettings) }
+    private val directExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "dex-direct-ai").apply { isDaemon = true }
+    }
+    private var directTask: java.util.concurrent.Future<*>? = null
     private var remoteDispatch = false
     private var remoteResultCode: String? = null
     private var latency: CommandLatency? = null
@@ -108,7 +120,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             else if (!admitted) completion(VoiceCommandResult(id, "COMMAND_IN_PROGRESS", "Đang xử lý lệnh trước"))
             else {
                 pendingCompletion = completion; pendingProgress = progress; pendingInteractionPrompt = interaction; pendingDispatched = false; activeText = text
-                backendDispatch = false; remoteDispatch = false; remoteResultCode = null; executedActions.clear(); receivedPlans.clear()
+                backendDispatch = false; directDispatch = false; remoteDispatch = false; remoteResultCode = null; executedActions.clear(); receivedPlans.clear()
                 latencyPath = "local"; latency = CommandLatency(::latencyEvent)
                 speechEndAtNanos = speechEndNanos
                 progress?.invoke(id, "ROUTING")
@@ -135,7 +147,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         speechEndAtNanos = speechEndNanos
         if (actionRouter.continueInteraction(text)) return true
         // A new final command replaces the interaction; the old completion must not speak over it.
-        recordHistory(activeText, if (backendDispatch) Route.BACKEND_REQUIRED.name else Route.LOCAL.name, null, "CANCELLED")
+        recordHistory(activeText, if (backendDispatch || directDispatch) Route.BACKEND_REQUIRED.name else Route.LOCAL.name, null, "CANCELLED")
         pendingCompletion = null
         finish("CANCELLED", "Đã hủy lệnh trước")
         return false
@@ -143,6 +155,8 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private fun finish(status: String, message: String) {
         val id = pendingId ?: return
         actionRouter.cancel()
+        directTask?.cancel(true)
+        directTask = null
         latency?.end("executionLatency", SystemClock.elapsedRealtimeNanos())
         android.util.Log.i("DexLatency", "requestId=$id path=$latencyPath terminalReason=${safeReason(status)}")
         latency?.clear(); latency = null
@@ -153,7 +167,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             webSocket.sendActionResult(action.planId, action.actionId, "REJECTED", status)
         }
         commandGate.finish(id); pendingCompletion = null; pendingProgress = null; pendingInteractionPrompt = null; main.removeCallbacks(watchdog); main.removeCallbacks(commandDeadline)
-        if (backendDispatch) recordHistory(activeText, Route.BACKEND_REQUIRED.name, null, status)
+        if (backendDispatch || directDispatch) recordHistory(activeText, Route.BACKEND_REQUIRED.name, null, status)
         callback?.invoke(VoiceCommandResult(id, status, message))
     }
     private val main = Handler(Looper.getMainLooper())
@@ -211,6 +225,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     }
 
     fun connect() {
+        if (aiSettings.directMode()) return // Direct Command requires no custom backend.
         if (connectionActive) return
         val token = credentials.load()
         if (token == null || state.endpoint.isBlank()) {
@@ -289,7 +304,32 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                 state = state.copy(status = reason, message = "Lệnh chưa được hỗ trợ"); publish()
                 finish(reason, "Lệnh chưa được hỗ trợ")
             }
-            Route.BACKEND_REQUIRED -> runCatching {
+            Route.BACKEND_REQUIRED -> if (aiSettings.directMode()) {
+                directDispatch = true
+                latencyPath = "direct"
+                val requestId = activeRequestId ?: return
+                pendingProgress?.invoke(requestId, "SENDING")
+                state = state.copy(lastRequestId = requestId, message = "Direct AI planning"); publish()
+                directTask = directExecutor.submit {
+                    val result = runCatching { aiProxy.plan(text, commandRegistry, actionRouter.supportedActions()) }
+                    onMain {
+                        if (pendingId != requestId || !directDispatch) return@onMain
+                        result.fold(
+                            onSuccess = { actions ->
+                                if (actions.isEmpty()) finish("UNSUPPORTED_COMMAND", "Lệnh chưa được hỗ trợ")
+                                else {
+                                    pendingProgress?.invoke(requestId, "EXECUTING")
+                                    executeDirectActions(requestId, actions, 0)
+                                }
+                            },
+                            onFailure = { throwable ->
+                                val code = (throwable as? MobileAiException)?.code ?: "AI_UNAVAILABLE"
+                                finish(code, "Khó quá, không làm được")
+                            },
+                        )
+                    }
+                }
+            } else runCatching {
                 backendDispatch = true
                 latencyPath = "fallback"
                 pendingId?.let { pendingProgress?.invoke(it, "SENDING") }
@@ -354,6 +394,34 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         context.startService(Intent(context, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_STOP))
         update("VOICE_STOP_REQUESTED", "App requested microphone stop")
         refreshHealth()
+    }
+
+    /** Direct AI plans use exactly the existing guarded ActionRouter, without WebSocket receipts. */
+    private fun executeDirectActions(requestId: String, actions: List<TypedAction>, index: Int) {
+        if (pendingId != requestId || !directDispatch) return
+        if (index == actions.size) {
+            finish(if (remoteDispatch) "DISPATCHED" else "VERIFIED",
+                if (remoteDispatch) "Đã gửi yêu cầu thực hiện" else "Đã thực hiện")
+            return
+        }
+        val action = actions[index]
+        val actionId = requestId + ":" + index
+        if (!executedActions.add(actionId)) { finish("INVALID_LLM_OUTPUT", "Kế hoạch chưa hợp lệ"); return }
+        if (action.action.name == "CLICK_TARGET") latencyPath = "semantic"
+        latency?.start("executionLatency", SystemClock.elapsedRealtimeNanos())
+        actionRouter.execute(requestId, action, pendingInteractionPrompt, actionId, metric = ::actionMetric) { result ->
+            onMain {
+                if (pendingId != requestId || !directDispatch) return@onMain
+                latency?.end("executionLatency", SystemClock.elapsedRealtimeNanos())
+                when (result.outcome.name) {
+                    "VERIFIED", "DISPATCHED" -> {
+                        if (result.outcome.name == "DISPATCHED") remoteDispatch = true
+                        executeDirectActions(requestId, actions, index + 1)
+                    }
+                    else -> finish(result.errorCode ?: result.outcome.name, "Không thực hiện được lệnh")
+                }
+            }
+        }
     }
 
     override fun onState(state: String) = onMain {
