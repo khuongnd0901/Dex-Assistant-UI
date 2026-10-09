@@ -10,19 +10,14 @@ import androidx.core.content.ContextCompat
 import com.khuongnd.dexassistant.ui.device.DpcClient
 import com.khuongnd.dexassistant.ui.actions.LocalActionExecutor
 import com.khuongnd.dexassistant.ui.history.CommandHistoryStore
-import com.khuongnd.dexassistant.ui.protocol.AssistantWebSocket
-import com.khuongnd.dexassistant.ui.protocol.DeviceAction
 import com.khuongnd.dexassistant.ui.protocol.ProtocolParser
-import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
 import com.khuongnd.dexassistant.ui.routing.CommandPrivacy
 import com.khuongnd.dexassistant.ui.routing.LocalCommandParser
 import com.khuongnd.dexassistant.ui.routing.CapabilityRegistry
 import com.khuongnd.dexassistant.ui.execution.ActionRouter
 import com.khuongnd.dexassistant.ui.routing.CommandRegistry
-import com.khuongnd.dexassistant.ui.protocol.DeviceCommandProtocol
 import com.khuongnd.dexassistant.ui.routing.CommandRouter
 import com.khuongnd.dexassistant.ui.routing.Route
-import com.khuongnd.dexassistant.ui.security.CredentialStore
 import com.khuongnd.dexassistant.ui.security.AiCredentialStore
 import com.khuongnd.dexassistant.ui.security.AiProviderSettings
 import com.khuongnd.dexassistant.ui.ai.MobileAiProxy
@@ -45,8 +40,6 @@ class AssistantController(private val contextForVoice: Context, private val stat
     fun stop() { core.removeObserver(stateChanged) }
     fun observeVoiceHealth() = core.observeVoiceHealth()
     fun stopObservingVoiceHealth() = Unit
-    fun provision(endpoint: String, token: String) = core.provision(endpoint, token)
-    fun connect() = core.connect()
     fun send(text: String) = core.send(text)
     fun retry() = core.retry()
     fun refreshHealth() = core.refreshHealth()
@@ -66,7 +59,7 @@ class AssistantController(private val contextForVoice: Context, private val stat
     }
 }
 
-class AssistantCoordinator internal constructor(private val context: Context, private val history: CommandHistoryStore = CommandHistoryStore(context)) : AssistantWebSocket.Listener {
+class AssistantCoordinator internal constructor(private val context: Context, private val history: CommandHistoryStore = CommandHistoryStore(context)) {
     private val observers = linkedSetOf<(UiState) -> Unit>()
     private var started = false
     private val commandGate = CommandSessionGate()
@@ -76,7 +69,6 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private var activeText = ""
     private var pendingCompletion: ((VoiceCommandResult) -> Unit)? = null
     private var pendingDispatched = false
-    private var backendDispatch = false
     private var directDispatch = false
     private val aiSettings = AiProviderSettings(context)
     private val aiProxy by lazy { MobileAiProxy(AiCredentialStore(context), aiSettings) }
@@ -85,7 +77,6 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     }
     private var directTask: java.util.concurrent.Future<*>? = null
     private var remoteDispatch = false
-    private var remoteResultCode: String? = null
     private var latency: CommandLatency? = null
     private var latencyPath = "local"
     private var speechEndAtNanos: Long? = null
@@ -99,10 +90,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         pendingId?.let { android.util.Log.i("DexLatency", "requestId=$it path=$latencyPath metric=$name durationUs=$micros") }
     }
     private fun safeReason(value: String): String = if (value.matches(Regex("[A-Z][A-Z0-9_]{0,63}"))) value else "OTHER"
-    private var pendingRemoteAction: DeviceAction? = null
     private val executedActions = mutableSetOf<String>()
-    private val receivedPlans = mutableSetOf<String>()
-    private var connectionActive = false
     @Volatile private var chatObserver: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)? = null
     fun observeChat(observer: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)?) { chatObserver = observer }
     private val directChatState = DirectChatState()
@@ -208,7 +196,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             else if (!admitted) completion(VoiceCommandResult(id, "COMMAND_IN_PROGRESS", "Đang xử lý lệnh trước"))
             else {
                 pendingCompletion = completion; pendingProgress = progress; pendingInteractionPrompt = interaction; pendingDispatched = false; activeText = text
-                backendDispatch = false; directDispatch = false; remoteDispatch = false; remoteResultCode = null; executedActions.clear(); receivedPlans.clear()
+                directDispatch = false; remoteDispatch = false; executedActions.clear()
                 latencyPath = "local"; latency = CommandLatency(::latencyEvent)
                 speechEndAtNanos = speechEndNanos
                 progress?.invoke(id, "ROUTING")
@@ -235,7 +223,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         speechEndAtNanos = speechEndNanos
         if (actionRouter.continueInteraction(text)) return true
         // A new final command replaces the interaction; the old completion must not speak over it.
-        recordHistory(activeText, if (backendDispatch || directDispatch) Route.BACKEND_REQUIRED.name else Route.LOCAL.name, null, "CANCELLED")
+        recordHistory(activeText, if (directDispatch) Route.BACKEND_REQUIRED.name else Route.LOCAL.name, null, "CANCELLED")
         pendingCompletion = null
         finish("CANCELLED", "Đã hủy lệnh trước")
         return false
@@ -250,28 +238,21 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         latency?.clear(); latency = null
         speechEndAtNanos = null
         val callback = pendingCompletion
-        pendingRemoteAction?.also { action ->
-            pendingRemoteAction = null
-            webSocket.sendActionResult(action.planId, action.actionId, "REJECTED", status)
-        }
         commandGate.finish(id); pendingCompletion = null; pendingProgress = null; pendingInteractionPrompt = null; main.removeCallbacks(watchdog); main.removeCallbacks(commandDeadline)
-        if (backendDispatch || directDispatch) recordHistory(activeText, Route.BACKEND_REQUIRED.name, null, status)
+        if (directDispatch) recordHistory(activeText, Route.BACKEND_REQUIRED.name, null, status)
         callback?.invoke(VoiceCommandResult(id, status, message))
     }
     private val main = Handler(Looper.getMainLooper())
-    private val credentials = CredentialStore(context)
-    private val preferences = context.getSharedPreferences("assistant_config", Context.MODE_PRIVATE)
     private val voicePreferences = context.getSharedPreferences("voice_health", Context.MODE_PRIVATE)
     private val voiceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> refreshVoiceHealth() }
     private val dpc = DpcClient(context)
-    private val webSocket = AssistantWebSocket(this)
     private val commandRegistry = CommandRegistry.load(context)
     private val parser = LocalCommandParser(commandRegistry)
     private val router = CommandRouter(parser, CapabilityRegistry(context))
     private val localExecutor = LocalActionExecutor(context, dpc, commandRegistry::appPackage)
     private val actionRouter = ActionRouter(context, commandRegistry, localExecutor)
     private val historyPublication = com.khuongnd.dexassistant.ui.history.HistoryPublicationGate()
-    private var state = UiState(endpoint = preferences.getString("endpoint", "") ?: "")
+    private var state = UiState()
 
     fun start() {
         if (started) return
@@ -295,33 +276,6 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
 
     fun stopObservingVoiceHealth() {
         voicePreferences.unregisterOnSharedPreferenceChangeListener(voiceListener)
-    }
-
-    fun provision(endpoint: String, token: String) {
-        runCatching {
-            credentials.save(token)
-            preferences.edit().putString("endpoint", endpoint).apply()
-            state = state.copy(endpoint = endpoint, status = "PROVISIONED", message = "Credential stored")
-            publish()
-            webSocket.connect(endpoint, token)
-        }.onFailure { update("CONFIGURATION_ERROR", it.message ?: "Invalid configuration") }
-    }
-
-    fun disconnect() {
-        webSocket.disconnect()
-        if (backendDispatch) finish("DISCONNECTED", "Mất kết nối máy chủ")
-    }
-
-    fun connect() {
-        // Chat still uses WebSocket during migration; direct Command does not depend on connection.
-        if (connectionActive) return
-        val token = credentials.load()
-        if (token == null || state.endpoint.isBlank()) {
-            update("NOT_PROVISIONED", "Enter endpoint and token")
-            return
-        }
-        runCatching { webSocket.connect(state.endpoint, token) }
-            .onFailure { update("CONFIGURATION_ERROR", it.message ?: "Invalid endpoint") }
     }
 
     fun send(text: String) {
@@ -392,7 +346,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                 state = state.copy(status = reason, message = "Lệnh chưa được hỗ trợ"); publish()
                 finish(reason, "Lệnh chưa được hỗ trợ")
             }
-            Route.BACKEND_REQUIRED -> if (aiSettings.directMode()) {
+            Route.BACKEND_REQUIRED -> {
                 directDispatch = true
                 latencyPath = "direct"
                 val requestId = activeRequestId ?: return
@@ -417,15 +371,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                         )
                     }
                 }
-            } else runCatching {
-                backendDispatch = true
-                latencyPath = "fallback"
-                pendingId?.let { pendingProgress?.invoke(it, "SENDING") }
-                check(pendingId == activeRequestId) { "Command cancelled" }
-                webSocket.sendCommand(text, UUID.fromString(pendingId), DeviceCommandProtocol.capabilities(commandRegistry, actionRouter.supportedActions()))
             }
-                .onSuccess { recordHistory(text, routed.route.name, null, "SENT"); state = state.copy(lastRequestId = it.toString(), message = "Command sent"); publish() }
-                .onFailure { recordHistory(text, routed.route.name, null, "AI_UNAVAILABLE"); update("SEND_FAILED", "Khó quá, không làm được") }
         }
     }
 
@@ -512,84 +458,6 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         }
     }
 
-    override fun onState(state: String) = onMain {
-        if (state in setOf("CONNECTING", "CONNECTED", "RECONNECTING")) connectionActive = true
-        if (state == "DISCONNECTED") connectionActive = false
-        update(state, state.lowercase().replace('_', ' '))
-    }
-
-    override fun onActions(actions: List<DeviceAction>) = Unit
-    override fun onCorrelatedActions(requestId: String, actions: List<DeviceAction>) = onMain {
-        if (pendingId != requestId || !backendDispatch) return@onMain
-        latencyPath = "remote"
-        val planId = actions.firstOrNull()?.planId ?: return@onMain
-        if (receivedPlans.isNotEmpty() || !receivedPlans.add(planId)) return@onMain
-        if (actions.size > 8 || actions.map { it.actionId }.distinct().size != actions.size || actions.any { it.planId != planId }) {
-            finish("INVALID_MESSAGE", "Kế hoạch chưa hợp lệ"); return@onMain
-        }
-        pendingProgress?.invoke(requestId, "EXECUTING")
-        executeActions(requestId, actions, 0)
-    }
-    private fun executeActions(requestId: String, actions: List<DeviceAction>, index: Int) {
-        if (pendingId != requestId) return
-        if (index >= actions.size) { main.postDelayed(watchdog, 30_000); return }
-        val action = actions[index]
-        if (!executedActions.add(action.actionId)) { finish("INVALID_MESSAGE", "Kế hoạch có thao tác trùng"); return }
-        val typed = runCatching { DeviceCommandProtocol.decode(action, commandRegistry, actionRouter.supportedActions()) }.getOrNull()
-        if (typed == null) {
-            webSocket.sendActionResult(action.planId, action.actionId, "REJECTED", "POLICY_DENIED")
-            main.postDelayed(watchdog, 30_000)
-            return
-        }
-        main.removeCallbacks(watchdog)
-        onMetric("action.start", action.actionId, SystemClock.elapsedRealtimeNanos())
-        if (typed.action.name == "CLICK_TARGET") latencyPath = "semantic"
-        latency?.start("executionLatency", SystemClock.elapsedRealtimeNanos())
-        pendingRemoteAction = action
-        actionRouter.execute(requestId, typed, pendingInteractionPrompt, action.actionId, metric = ::actionMetric) { result -> onMain {
-            if (pendingId != requestId || pendingRemoteAction?.actionId != action.actionId) return@onMain
-            pendingRemoteAction = null
-            val success = result.outcome.name in setOf("DISPATCHED", "VERIFIED")
-            if (result.outcome.name == "DISPATCHED") remoteDispatch = true
-            remoteResultCode = result.errorCode
-            webSocket.sendActionResult(action.planId, action.actionId,
-                if (success) "SUCCESS" else if (result.outcome.name == "REJECTED") "REJECTED" else "FAILED", result.errorCode)
-            onMetric("action.result", action.actionId, SystemClock.elapsedRealtimeNanos())
-            latency?.end("executionLatency", SystemClock.elapsedRealtimeNanos())
-            if (success) executeActions(requestId, actions, index + 1) else main.postDelayed(watchdog, 30_000)
-        } }
-    }
-
-    override fun onError(message: String) = onMain { update("ERROR", message) }
-    override fun onCommandCompleted(requestId: String, status: String) = onMain {
-        if (pendingId == requestId && backendDispatch) finish(
-            if (status == "EXECUTED") remoteResultCode ?: if (remoteDispatch) "DISPATCHED" else "VERIFIED" else remoteResultCode ?: status,
-            when (status) {
-                "EXECUTED" -> if (remoteDispatch) "Đã gửi yêu cầu thực hiện" else "Đã thực hiện"
-                "PLANNED" -> "Đã lập kế hoạch, chưa thực hiện trên máy"
-                else -> "Không thực hiện được lệnh"
-            })
-    }
-    override fun onCommandError(requestId: String, code: String, message: String) = onMain {
-        if (pendingId == requestId && backendDispatch) finish(code, message)
-    }
-
-    override fun onAuthenticationFailure() = onMain {
-        connectionActive = false
-        credentials.clear()
-        update("AUTHENTICATION_FAILED", "Credential rejected and removed; provision again")
-    }
-
-    override fun onQuotaSnapshot(snapshot: ProtocolParser.QuotaSnapshot) = onMain {
-        state = state.copy(quota = snapshot, quotaStale = QuotaFreshness.isStale(snapshot.staleAfter)); publish()
-    }
-    override fun onQuotaUnsupported() = onMain { state = state.copy(quota = null, quotaStale = true); publish() }
-    override fun onDisconnected() = onMain {
-        state = state.copy(quotaStale = true); publish()
-        if (backendDispatch) finish("DISCONNECTED", "Mất kết nối máy chủ")
-        chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(null, UUID.randomUUID(), "CHAT_INVALID_SESSION", "Chat connection ended", true))
-    }
-
     fun clearHistory() {
         val ticket = historyPublication.next()
         state = state.copy(history = emptyList(), historyError = null, historyClearing = true); publish()
@@ -617,14 +485,6 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         }
     }
 
-    override fun onMetric(event: String, correlationId: String, elapsedNanos: Long) {
-        if (correlationId != pendingId) return
-        when (event) {
-            "action_start" -> markActionStart()
-            "ws.send" -> latency?.start("backendLatency", elapsedNanos)
-            "ws.plan_received" -> latency?.end("backendLatency", elapsedNanos)
-        }
-    }
     private fun actionMetric(event: String, atNanos: Long) {
         when (event) {
             "path_semantic" -> latencyPath = "semantic"
@@ -644,7 +504,6 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
             }
         }
     }
-    override fun onChatEvent(event: com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) { onMain { chatObserver?.invoke(event) } }
 
     private fun update(status: String, message: String) {
         state = state.copy(status = status, message = message)
