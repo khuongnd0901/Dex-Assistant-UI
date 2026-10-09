@@ -1,255 +1,113 @@
-# Dex Assistant UI
+# DeX Assistant — Android
 
-Android client for DeX Assistant. The project contains a Kotlin/Jetpack Compose
-client plus a separate Device Policy Controller. Both target Android 15 (API
-35), with API 30 as the minimum supported version for the Galaxy Z Fold3.
+**English** · [Tiếng Việt](README.vi.md)
 
-The Spring Boot backend and canonical protocol are maintained in the private
-[`DeX-Assistant`](https://github.com/khuongnd0901/DeX-Assistant) repository.
+Single-user, voice-first Android assistant designed for the **Samsung Galaxy Z Fold3 using Samsung DeX on an external display**. The current app is **local-first**, with direct AI provider calls for requests that need language understanding. **Spring Boot, a custom WebSocket proxy, Firebase and an EC2 instance are not required by the current Android Command/Chat runtime.**
 
-## Prerequisites
+> **Project status — October 9, 2026:** Backend-free Android Command and Chat **source is implemented**. [Android CI passed](https://github.com/khuongnd0901/Dex-Assistant-UI/actions/runs/37878690108) on commit \`3715b36\` (unit tests, lint and debug APK build). **Real AI-key/model calls and the final end-to-end physical Fold3/DeX acceptance are still open**. A successful build is not proof of live device behavior. No deployed cloud resources have been decommissioned by this source migration.
 
-- JDK 17
-- Android SDK Platform 35
-- Android SDK Build Tools
-- Python 3.10+ for checksum-pinned build-time voice asset preparation
+## What it does
 
-## Build and test
+- **Offline wake word:** "Hey Hey" with locally packaged sherpa-onnx / KWS assets. Vietnamese speech-to-text uses Android's \`SpeechRecognizer\` and can require network access or send audio to the configured recognition service. Offline wake detection does **not** mean fully offline speech recognition.
+- **Local commands first:** A config-based Vietnamese command catalog matches commands for apps, volume, media, YouTube, Maps/navigation, screen actions and other supported device operations. Recognized local commands do not call an AI provider.
+- **Direct AI Command:** Unmatched/complex commands go from Android to a configured eligible AI provider via \`MobileAiProxy\`. Provider function calls are decoded and validated into typed commands before reaching the **same Android \`ActionRouter\`**. Unsupported actions, bad parameters and unsafe requests are rejected; the model cannot bypass device permissions or confirmation.
+- **Direct AI Chat:** Say **"bắt đầu trò chuyện"** to enter conversation mode, and **"kết thúc trò chuyện"** to leave it. Android owns the isolated in-memory session; \`DirectAiChat\` sends only text/context, **without device action tools**. The session retains up to 20 prior turn pairs, uses bounded input/output and expires after 15 minutes of inactivity.
+- **DeX-oriented interaction:** Accessibility-assisted controls and a numbered 6 × 4 screen grid for cases where app UI nodes are unavailable. The design operates on the external DeX display, not as a dual-screen phone-controller workflow.
+- **Device Policy Controller (DPC):** A separate Android module for narrowly guarded device operations, subject to actual Android permissions and Device Owner setup.
 
-```bash
+## Runtime architecture
+
+\`\`\`text
+Voice / mic → local KWS ("Hey Hey") → Vietnamese STT → Command Router
+                                                    │
+                ┌───────────────────────────────────┼───────────────────┐
+                │                                   │                   │
+             LOCAL                              AI required          Rejected
+                │                                   │
+       LocalCommandEngine                  MobileAiProxy (Android)
+                │                                   │
+                │                         Gemini REST / Groq API
+                │                                   │
+                │                       strict function-call parsing
+                │                                   │
+                └──────────────→ ActionRouter ←─────┘
+                                   │
+                      capability / confirmation / DPC
+                                   │
+                               Android action
+
+Chat start → Android-owned chat session → DirectAiChat → Gemini / Groq
+                       │
+                  text + bounded context only
+                  NO device tools / backend WebSocket
+\`\`\`
+
+\`BACKEND_REQUIRED\` remains the **name of a legacy routing enum value** for non-local commands; it no longer means an actual backend network call. Some WebSocket/protocol files remain in the repository as **inactive legacy/reference code**.
+
+## AI providers — configuration and runtime support
+
+| Provider | Configure key / enable / default model | List account-visible models | Direct Command | Direct Chat |
+|---|---|---|---|---|
+| **Gemini** (Google) | Yes | Yes | Implemented | Implemented |
+| **Groq** (GroqCloud) | Yes | Yes | Implemented | Implemented |
+| **OpenAI** (ChatGPT API) | Yes | Yes | Not yet wired | Not yet wired |
+| **Grok** (xAI) | Yes | Yes | Not yet wired | Not yet wired |
+| **DeepSeek** | Yes | Yes | Not yet wired | Not yet wired |
+
+**Grok (xAI) and Groq (GroqCloud) are different providers.** A model appearing in the API's model list **does not imply free access, tool-calling support or zero billing**. The current direct adapters are limited to Gemini and Groq, and sending requests requires a configured key, enabled provider, selected model and **explicit confirmation that the model is eligible for a free tier on your account**. If the selected preferred provider has no implemented adapter, the app fails closed instead of silently using another or paid provider. Provider quotas, price plans and free-model availability can change.
+
+### Configure API keys in the Android UI
+
+Open **More (⋮) → Settings → AI Providers**:
+
+1. Choose **Gemini / Groq / OpenAI / Grok / DeepSeek**.
+2. Enter the provider's key in the masked **API key** field and tap **Save / Update**. You can **Test API key** (an authenticated model-list request with no AI inference) or **Delete key**.
+3. Use **Load models from API**, select or enter a **default Model ID for that provider**, then **Save model**.
+4. Enable the provider and, only after verifying account-specific pricing, tick the **Free Tier confirmation** for the saved model.
+5. Choose **Set as preferred provider**. For live Command and Chat, choose **Gemini or Groq** until the other adapters are implemented.
+
+Keys are **entered at runtime** and stored in separate provider-scoped **Android Keystore AES-GCM** entries. They are **not hardcoded into source, the APK, BuildConfig, CI or Git**; changing a key/model does not require rebuilding the app. Like any client-side credential, a key may still be extracted from a compromised/running device; the project owner explicitly accepts this risk. Keep provider billing disabled or restricted if zero cost is essential.
+
+If a key/model is absent, the provider is disabled, a quota is reached or a network call fails, AI features can return a visible error. **Local commands remain independent of the AI API** (but STT may still need network). No Spring Boot fallback is provided in the current runtime.
+
+## Repository layout
+
+| Location | Responsibility |
+|---|---|
+| \`app/\` | Android Kotlin + Jetpack Compose app; voice, Settings, routing, AI and guarded actions |
+| \`dpc/\` | Companion Device Policy Controller, separately installed/signed APK |
+| \`app/src/main/java/com/khuongnd/dexassistant/ui/ai/\` | \`MobileAiProxy\`, \`DirectAiChat\`, \`AiKeyProbe\`, tool schemas |
+| \`app/src/main/java/com/khuongnd/dexassistant/ui/security/AiCredentialStore.kt\` | Per-provider credential and preference storage |
+| \`app/src/main/java/com/khuongnd/dexassistant/ui/routing/\` | Local command matching and privacy restrictions |
+| \`app/src/main/java/com/khuongnd/dexassistant/ui/execution/ActionRouter.kt\` | Device execution and confirmation authority |
+| \`scripts/prepare-voice-assets.py\` | Pinned/hash-verified build-time voice assets |
+| \`scripts/android/check-direct-ai-fold3.sh\` | **Read-only** physical Fold3/API35 ADB preflight |
+| \`.agent/STATUS.md\` | Development history and outstanding acceptance tasks |
+
+## Requirements, build and CI
+
+- **JDK 17**, **Android SDK Platform 35 / Build Tools 35**, Python 3.10+ and Gradle wrapper.
+- Android \`minSdk 30\`, \`targetSdk 35\` (Android 15 for the dedicated Fold3).
+- One-time checksum-verified voice assets, staged in ignored \`.cache/voice\`; no runtime model download for wake-word recognition.
+
+\`\`\`bash
 python3 scripts/prepare-voice-assets.py
-./gradlew test lint assembleDebug
-```
+./gradlew --no-daemon --build-cache testDebugUnitTest lint assembleDebug
+\`\`\`
 
-The preparation step downloads official sherpa-onnx1.13.8 and English
-GigaSpeech3.3M int8 KWS archives, verifies pinned SHA-256 hashes, and extracts
-only production model files to ignored `.cache/voice`. APKs include arm64-v8a
-for Fold3 and x86_64 for the retained AVD; unused32-bit ABIs are excluded. CI performs this step
-before Gradle. Use `--offline` to require existing verified archives. `clean`
-does not remove this cache; no runtime download or vendor key is used.
-License/provenance files are packaged in APK assets. The tracked keyword file
-encodes “Hey Hey” using the original model BPE (`▁HE Y ▁HE Y`).
+On Windows, use \`gradlew.bat\` in place of \`./gradlew\`. Build outputs:
 
-On Windows, use `gradlew.bat` instead. Open the repository root in Android
-Studio if the SDK path needs to be configured through `local.properties`.
+- \`app/build/outputs/apk/debug/app-debug.apk\`
+- \`dpc/build/outputs/apk/debug/dpc-debug.apk\`
 
-Debug APKs are produced at `app/build/outputs/apk/debug/app-debug.apk` and
-`dpc/build/outputs/apk/debug/dpc-debug.apk`.
+[Android CI](.github/workflows/android-ci.yml) performs the build, unit tests, lint and uploads debug artifacts. The separate [Device-test release workflow](.github/workflows/device-test-release.yml) uses a **verified existing matching signing identity** for dedicated Fold3 upgrades. **Do not install an arbitrary CI/debug-signed APK over a provisioned Device Owner device.** Do not uninstall, clear app data, reset Device Owner or toggle Accessibility to make a test pass.
 
-## CI and device-test releases
+## Real-device acceptance — not completed
 
-`Android CI` runs `test lint assembleDebug` for pull requests and pushes to
-`main`, then retains both debug APKs as short-lived workflow artifacts.
+A final **single controlled Samsung Z Fold3 / DeX acceptance run** remains open. It must verify the existing signing certificate and retained device state, local/offline routing, actual direct Gemini/Groq Command, three-turn Vietnamese Chat and cancellation, provider failures, wake/STT/TTS, Device Owner/Accessibility, privacy and p50/p95 timing. No physical PASS or zero-cost usage result is claimed by repository CI.
 
-Maintainers can run `Device-test release` from the GitHub Actions page against
-`main`. Supply a new tag matching `device-test-*`; the
-workflow tests and builds both APKs, verifies their shared certificate, creates
-`SHA256SUMS`, and publishes a GitHub prerelease tied to that commit.
+- [T-018 physical acceptance plan (canonical repository)](https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/plans/active/T-018-direct-ai-final-fold3-acceptance.md)
+- [Migration evidence](https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/evidence/mobile-direct-M4-command-chat-backendless-2026-10-09.md)
+- [Prior device/voice setup notes](docs/README_legacy_2026-10-09.md) — **historical; includes obsolete backend instructions**
 
-The manual release requires the repository Actions secret
-`DEVICE_TEST_KEYSTORE_BASE64`. It contains the base64-encoded existing test
-keystore so device-test releases remain upgrade-compatible and retain
-signature-protected app/DPC IPC. The workflow rejects any certificate other
-than SHA-256
-`9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`.
-This is a test-only debug identity, not a production signing design. Never add
-the keystore or its encoded value to Git, logs, artifacts, or release assets.
-
-## Dedicated-device setup
-
-Device Owner provisioning can reset or constrain a device. Use only the
-dedicated Fold3 and back it up first. For a clean development device with no
-accounts, install the DPC before the main app and provision it through ADB:
-
-```bash
-adb install dpc/build/outputs/apk/debug/dpc-debug.apk
-adb shell dpm set-device-owner \
-  com.khuongnd.dexassistant.dpc/.DexDeviceAdminReceiver
-adb install app/build/outputs/apk/debug/app-debug.apk
-adb shell getprop ro.build.version.sdk
-adb shell getprop ro.build.version.release
-adb shell dpm list-owners
-```
-
-Start the backend with a generated token digest and remote fake execution:
-
-```bash
-DEX_DEVICE_TOKEN_SHA256=<sha256> DEX_FAKE_REMOTE_EXECUTION=true ./mvnw spring-boot:run
-adb reverse tcp:8080 tcp:8080
-```
-
-Provision `ws://127.0.0.1:8080/ws/v1/assistant` and the corresponding raw token
-in the app. Cleartext WebSocket is restricted to loopback; other endpoints must
-use WSS.
-
-## Security
-
-Do not commit backend bearer tokens, signing keys, `local.properties`, or
-environment-specific server URLs. The main app wraps its bearer token with an
-AndroidKeyStore AES-GCM key and excludes app data from backup. The DPC has no
-backend credential or network permission; its exported service requires a
-signature-level permission, so both APKs must retain the same signing identity.
-
-## Hybrid voice (T-006 / D-016)
-
-Provision the default assistant and DPC as documented in canonical backend
-`scripts/android/README.md`; no reset is authorized for the retained devices.
-Start voice from administration or its assistant lifecycle, say “Hey Hey”,
-wait for the rising two-note media readiness cue and “Sẵn sàng — nói lệnh”, then say the Vietnamese command. The cue plays once after the STT provider reports ready, without requesting audio focus or changing system volume, and stops on cancellation. Wake is offline;
-Android SpeechRecognizer vi-VN may send command audio, including sensitive
-speech, to its recognition service. There is no per-command online consent.
-Network loss can prevent recognition even when execution would be local.
-
-Supported whole-input local commands execute on-device; complex/multi-clause
-final text routes to the backend's current tools. Credentials/provisioning
-remain guarded from backend/Gemini and are redacted from history; Wi-Fi
-password association is not introduced by this voice milestone. Recognition
-partial results never dispatch. Pause/Stop in the persistent notification
-cancel recording/recognition; timeout/reconnect never automatically replay.
-
-Vietnamese TTS prefers an installed offline voice and may use a network voice.
-If no usable voice exists, health reports that limitation. App/YouTube/media
-intents remain dispatch evidence, not proof of playback or visible completion.
-Actual Fold3 audio, false activation, CPU/RAM, battery and thermal acceptance
-must be recorded separately from AVD instrumentation and builds.
-
-### Numbered DeX screen control (T-010)
-
-Open **Mở cài đặt Trợ năng DeX** in the app and explicitly enable the DeX
-accessibility service. Connect Samsung DeX to an external display, start voice,
-and say “Hey Hey”. The app prepares numbered clickable controls before the STT
-ready cue. Repeated content notifications preserve the mapping when fresh node/window identity and bounds stay unchanged; changed targets invalidate it, and image targets are checked again before a tap. Say “bấm vào số một”, “bấm ô mười một”, “chia ô 11”, “hiện lưới”,
-or “hủy”. Grid mode has 6 columns × 4 rows (1–24); subdivision is bounded to
-three levels. A grid switch or subdivision starts another listening turn without
-another wake phrase. Other commands continue through the existing local/backend
-router after removing the numbered overlay.
-
-The screen sub-router reserves malformed, negated and compound numeric commands
-locally; it never sends them as `command.request`. It folds Vietnamese accents
-only for this finite grammar, accepts digits and spoken numbers through 999, and
-reports dispatch rather than claiming the clicked popup actually closed. No tap
-is retried after timeout. The Samsung desktop category must identify exactly one
-valid non-default display; missing/ambiguous desktop selection never falls back
-to the phone.
-
-Accessibility nodes with click actions are filtered by visibility, enabled state,
-window occlusion and bounds. Node traversal is capped at 4,096 visits/40 levels,
-256 node targets. Screenshot analysis is capped at 640×400 and 64 image targets;
-it recognizes a finite set of isolated high-contrast X templates and small
-axis-aligned outlined buttons, not arbitrary visual UI. Uncertain images return
-no target and grid remains available. Images stay in RAM, are recycled after
-analysis, and never enter logs, history, storage or the backend. Only bounded
-selected-target fingerprints survive until session cleanup; an image target
-requires a fresh matching patch before a gesture. STT retains the existing
-online-permitted Vietnamese configuration.
-
-Window/content/scroll changes, display resize/disconnection, expiry, cancellation,
-STT errors, pause and stop invalidate mappings and remove the overlay. A tap
-consumes its mapping before dispatch, preventing duplicate commands. External
-screen behavior remains **unverified** until physical DeX tests pass.
-
-The debug-only `ScreenControlFixtureActivity` has an accessible popup and a canvas
-X/outline without clickable Accessibility nodes. After owner-mediated service
-activation, run the opt-in instrumentation class
-`com.khuongnd.dexassistant.ui.NumberedScreenDeviceTest`; its secondary-display
-case skips if no desktop/service is available. A skip is not acceptance evidence.
-The suite also checks numeric and malformed commands remain local with the
-backend disconnected. Physical wake/STT, popup/YouTube, resize/disconnection,
-permission revocation and 100-session CPU/RAM/latency acceptance remain necessary.
-
-On 2026-10-03, matching-signed app/test updates were installed successfully on the
-Fold3/API35 with external DeX, preserving the DPC. The focused numeric/malformed
-routing case passes `OK (1 test)`/0.494s and restores the original encrypted
-history without key rotation. This is disconnected local-routing evidence;
-overlay, gesture, image-target and wake/STT acceptance still require manual
-accessibility activation and the remaining physical tests.
-
-Instrumentation obtains UiAutomation with
-[`FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`](https://developer.android.com/reference/android/app/UiAutomation#FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
-so the owner's real Accessibility service can continue running. Desktop tests
-wait up to ten seconds for an enabled service to bind and fail if it does not;
-only missing desktop or missing owner activation is a prerequisite skip. The
-initial Fold3 desktop runner's three skipped cases are not hardware acceptance.
-
-Run this suite against the already-running app with `--no-restart`; ordinary
-instrumentation force-stops its target and can leave an enabled Accessibility
-service marked crashed. Confirm the expected service is bound and the app PID is
-alive before the command. Do not use `-S` or force-stop as setup.
-
-```bash
-DEX_TEST_SERIAL='<connected-Fold3-serial>'
-adb -s "$DEX_TEST_SERIAL" shell pidof com.khuongnd.dexassistant.ui
-adb -s "$DEX_TEST_SERIAL" shell dumpsys accessibility
-adb -s "$DEX_TEST_SERIAL" shell am instrument --no-restart -w \
-  -e class com.khuongnd.dexassistant.ui.NumberedScreenDeviceTest \
-  com.khuongnd.dexassistant.ui.test/androidx.test.runner.AndroidJUnitRunner
-```
-
-The revised Fold3 runner produced three binding assertion failures and one local
-routing pass; no desktop gesture ran. These are harness/lifecycle failures, not
-yet product gesture evidence. A matching-signed app replacement can clear the
-package crash marker and rebind the existing owner-enabled service without
-rewriting the grant, replacing DPC or clearing data. See AOSP Android 15
-[`Am` option parsing](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/cmds/am/src/com/android/commands/am/Am.java#192),
-[`ActivityManagerService` instrumentation lifecycle](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/am/ActivityManagerService.java#16588), and
-[`AccessibilityManagerService` package-update rebinding](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/accessibility/java/com/android/server/accessibility/AccessibilityManagerService.java#6257).
-
-The desktop fixture tests request display-sized launch bounds and wait for actual
-window bounds to settle before preparing numbers. Before any grid tap, the test
-checks the fixture's actual display and that its visible screen bounds contain
-the selected cell center; floating DeX windows outside that center cause failure
-without dispatch. Canvas-X taps are similarly checked against the visible fixture.
-
-Latest normal Fold3/API35 guarded suite passes all four cases without skips
-(8.817s, `/tmp/t010-fold3-center-selector-normal.log`): visible raw overlay,
-focused/unoccluded secondary-display gesture, fresh canvas-X image target,
-subdivision/cancel and local routing. The owner also verified spoken wake →
-grid → subdivision → cancel with continued listening. Real popup/YouTube,
-spoken target taps and 100 spoken sessions remain open.
-
-Additional lifecycle tests exercise same-turn changed/replaced nodes, window
-changes and real 35-second expiry. The resource smoke is explicitly opt-in;
-select only its method and pass `-e screenResourceSmoke true` with the same
-`--no-restart` runner. It performs 100 preparation/clear cycles with no taps and
-logs elapsed/process CPU time and initial/final PSS. This synthetic test is
-separate from 100 spoken-session acceptance. Tests never grant Accessibility,
-change DPC, clear owner history or export screenshot images.
-
-## Voice handoff and compact dashboard (D-020)
-
-The dashboard keeps voice controls and masked recognition text on one page.
-Configuration, quota, history, manual commands and full text open dialogs. It
-supports 320×480dp narrow windows and uses two columns from 700dp width.
-“Tiếp tục” resumes an actual paused voice session. “Nghe thử” recognizes and
-shows text without executing commands or sending a backend command; it restores
-prior listening/paused/stopped state. This diagnostic still uses the configured
-online-permitted system recognizer. Transcript is held only in RAM, masked for
-credential cues, and cleared on explicit stop/new command. No audio is retained.
-
-The app requests audio focus only for its own feedback, yielding STT focus to its
-provider. App capture reports route, level and silenced status; system STT manages
-its own route. Run `VoiceHandoffDeviceTest` and `DashboardLayoutTest` using the
-existing matching-signed instrumentation workflow. These three checks pass on Fold3 (5.081s,
-`/tmp/t006-dashboard-fold3-renderer-tests.log`), and the owner confirms real
-Hey Hey recognition, visible text and the full dashboard. Uninterrupted repeated
-wake-to-command and popup/YouTube acceptance remain open.
-
-## Automatic listening (D-021)
-
-Opening the app starts Hey Hey listening automatically when microphone permission
-and automatic-listening policy allow it. The default-assistant lifecycle checks
-unintentional absence/errors with four-attempt bursts and five-minute cooldown; active command turns are
-left alone. Default-assistant recovery requires held role and completed permission
-reconciliation; foreground app opening uses its foreground eligibility with
-unlock/microphone/policy checks. Tạm dừng and Dừng deliberately suppress automatic starts across
-reopen/boot. Tiếp tục or Bắt đầu explicitly restores listening. External audio
-interruptions can recover once call/communication mode ends.
-
-The app displays actual Accessibility state and links to Settings; it cannot
-promise to force-enable the service. Its main switch enables control; an optional
-Accessibility shortcut can also toggle it off. `AutomaticListeningDeviceTest`
-checks auto-open/recovery/manual controls and restores the original voice policy.
-Current source passes55unit tests, lint and assemblies; physical D-021 auto-open,
-recovery and manual pause/stop controls pass. Integrated desktop/automatic run
-has6passes/1expiry timing failure: a real content event correctly invalidated the
-session at7s, so quiet35s-expiry proof remains open. Safety invalidation is retained. Use the matching-signed preserved-process workflow without reset.
+The former [Java/Spring Boot backend repository](https://github.com/khuongnd0901/DeX-Assistant) is retained for source history, contracts and offline regression/rollback research. **Do not assume the deployed EC2/EBS/DNS resources have already been shut down.**
