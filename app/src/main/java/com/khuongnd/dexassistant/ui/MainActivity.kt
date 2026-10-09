@@ -30,7 +30,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.khuongnd.dexassistant.ui.theme.DexAssistantTheme
-import com.khuongnd.dexassistant.ui.protocol.QuotaFreshness
 import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 
 class MainActivity : ComponentActivity() {
@@ -189,7 +188,7 @@ fun AssistantScreen(
                     androidx.compose.foundation.layout.Box {
                         androidx.compose.material3.TextButton(onClick = { advancedExpanded = true }, Modifier.testTag("advancedMenu")) { Text("Thêm ⋮") }
                         androidx.compose.material3.DropdownMenu(expanded = advancedExpanded, onDismissRequest = { advancedExpanded = false }) {
-                            listOf("Cài đặt" to "settings", "Quota" to "quota", "Lịch sử" to "history", "Chẩn đoán" to "diagnostic").forEach { (label, key) ->
+                            listOf("Cài đặt" to "settings", "Lịch sử" to "history", "Chẩn đoán" to "diagnostic").forEach { (label, key) ->
                                 androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { dialog = key; advancedExpanded = false }, modifier = Modifier.testTag(key))
                             }
                         }
@@ -213,13 +212,12 @@ fun AssistantScreen(
     if (dialog.isNotBlank()) androidx.compose.material3.AlertDialog(
         onDismissRequest = { dialog = "" },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { dialog = "" }) { Text("Đóng") } },
-        title = { Text(when (dialog) { "settings" -> "Cài đặt"; "quota" -> "AI quota"; "history" -> "Lịch sử"; "diagnostic" -> "Chẩn đoán"; else -> "Chi tiết" }) },
+        title = { Text(when (dialog) { "settings" -> "Cài đặt"; "history" -> "Lịch sử"; "diagnostic" -> "Chẩn đoán"; else -> "Chi tiết" }) },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (dialog) {
                     "settings" -> {
                         AiProvidersSettings()
-                        Text("Kết nối backend hiện tại (giữ để rollback)", style = MaterialTheme.typography.titleSmall)
                         Text("Local Command và Chat/AI hoạt động trực tiếp trên Android, không cần backend.")
                         Button(onClick = onRefresh) { Text("Refresh health") }
                         Button(onClick = onApplyPermissions) { Text("Apply permission profile") }
@@ -237,13 +235,6 @@ fun AssistantScreen(
                         if (aliasFeedback.isNotBlank()) Text(aliasFeedback)
                         Text("Device Owner: ${state.deviceOwner}\n${state.assistantReadiness}\n${state.voiceDetail}")
                         state.capabilities.forEach { (key, value) -> Text("$key: $value") }
-                    }
-                    "quota" -> {
-                        val quota = state.quota
-                        if (quota == null) Text("Quota: unknown") else {
-                            Text(if (state.quotaStale || QuotaFreshness.isStale(quota.staleAfter)) "Stale" else "Fresh")
-                            quota.providers.forEach { provider -> Text("${provider.providerAlias}/${provider.modelAlias}: ${provider.state}"); provider.budgets.forEach { Text("${it.unit}: ${it.used}/${it.limit}, remaining ${it.remaining}") } }
-                        }
                     }
                     "history" -> { if (state.historyClearing) Text("Đang xóa lịch sử lệnh…"); state.historyError?.let { Text(it) }; state.history.forEach { Text("${it.route}: ${it.originalText} — ${it.outcome}") }; Button(onClick = onClearHistory, enabled = !state.historyClearing && (state.history.isNotEmpty() || state.historyError != null)) { Text("Clear command history") } }
                     "diagnostic" -> { Text(live.microphone); Button(onClick = onDiagnostic, Modifier.testTag("diagnosticListen")) { Text("Nghe thử · không thực hiện lệnh") }; Button(onClick = onRefresh) { Text("Làm mới trạng thái") } }
