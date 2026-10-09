@@ -92,6 +92,8 @@ class MobileAiProxy(
         if (com.khuongnd.dexassistant.ui.routing.CommandPrivacy.requiresLocalHandling(text))
             throw MobileAiException("POLICY_DENIED")
         val preferred = settings.defaultProvider()
+        // Do not silently use a different AI when the selected provider has no validated adapter.
+        if (!preferred.supportsDirectCommands) throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
         val candidates = (listOf(preferred) + AiProvider.entries.filter { it != preferred })
             .distinct().filter {
                 it.supportsDirectCommands && settings.enabled(it) && settings.freeTierConfirmed(it) &&
