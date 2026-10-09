@@ -25,12 +25,12 @@ class MobileAiException(val code: String, val canFallback: Boolean = false) : Ru
 /** Parse function calls exclusively. No provider-generated text ever becomes an executable gesture. */
 object AiToolCallParser {
     fun parse(provider: AiProvider, response: JSONObject, registry: CommandRegistry, supported: Set<ActionId>): List<TypedAction> {
-        val calls = when (provider) {
+        val calls: List<JSONObject> = when (provider) {
             AiProvider.GEMINI -> {
                 val candidates = response.getJSONArray("candidates")
                 require(candidates.length() == 1)
                 val parts = candidates.getJSONObject(0).getJSONObject("content").getJSONArray("parts")
-                buildList {
+                buildList<JSONObject> {
                     for (i in 0 until parts.length()) {
                         val part = parts.getJSONObject(i)
                         if (part.has("functionCall")) add(part.getJSONObject("functionCall"))
@@ -42,7 +42,7 @@ object AiToolCallParser {
                 require(choices.length() == 1)
                 val message = choices.getJSONObject(0).getJSONObject("message")
                 val tools = message.getJSONArray("tool_calls")
-                buildList {
+                buildList<JSONObject> {
                     for (i in 0 until tools.length()) {
                         val item = tools.getJSONObject(i)
                         require(item.getString("type") == "function")
