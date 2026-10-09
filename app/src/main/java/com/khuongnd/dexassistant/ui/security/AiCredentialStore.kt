@@ -11,9 +11,12 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** User-entered AI provider credentials. Separate from the legacy backend bearer token. */
-enum class AiProvider(val displayName: String) {
-    GEMINI("Gemini"),
-    GROQ("Groq"),
+enum class AiProvider(val displayName: String, val supportsDirectCommands: Boolean) {
+    GEMINI("Gemini", true),
+    GROQ("Groq", true),
+    OPENAI("OpenAI (ChatGPT API)", false),
+    GROK("Grok (xAI)", false),
+    DEEPSEEK("DeepSeek", false),
 }
 
 class AiCredentialStore(context: Context) {
@@ -107,6 +110,15 @@ class AiProviderSettings(context: Context) {
 
     fun setFreeTierConfirmed(provider: AiProvider, confirmed: Boolean) {
         check(prefs.edit().putBoolean(provider.name + "_free_confirmed", confirmed).commit())
+    }
+
+    /** Default provider is independent of each provider's default model and key. */
+    fun defaultProvider(): AiProvider = AiProvider.entries.firstOrNull {
+        it.name == prefs.getString("default_provider", AiProvider.GEMINI.name)
+    } ?: AiProvider.GEMINI
+
+    fun setDefaultProvider(provider: AiProvider) {
+        check(prefs.edit().putString("default_provider", provider.name).commit())
     }
 
     /** Explicit user opt-in; defaults to the tested legacy WebSocket transport. */
