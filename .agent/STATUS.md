@@ -2,7 +2,7 @@
 
 Owner requested API keys configured exclusively in the Android app UI (never committed to Git/source). Published provider-separated AES/GCM Android Keystore storage, model/enable preferences, Compose Settings controls for Gemini/Groq (masked key, save/update/delete, test connection), Gemini/Groq authentication-only REST probes and pure unit checks.
 
-Android commits: d453c127, 936a0e2, 44948db, 05692e0, c03108f. Existing backend WebSocket Command/Chat routing, Device Owner, Accessibility, wake/STT/TTS, signing identity, and stored device data have **not** been intentionally changed. CI workflow for final code: https://github.com/khuongnd0901/Dex-Assistant-UI/actions/runs/37874784801 (verify result before PASS claim).
+Android commits: d453c127, 936a0e2, 44948db, 05692e0, c03108f. Existing backend WebSocket Command/Chat routing, Device Owner, Accessibility, wake/STT/TTS, signing identity, and stored device data have **not** been intentionally changed. **CI PASS** for implementation commit c03108f: https://github.com/khuongnd0901/Dex-Assistant-UI/actions/runs/37874784801 — `testDebugUnitTest lint assembleDebug`, APK artifact upload. Host validation only; physical/key tests remain OPEN.
 
 **NOT ACCEPTED / NOT TESTED:** real free-tier account/model compatibility, live Gemini/Groq call, real signed Fold3 provider Settings and persistence test, physical voice/command regressions. Model-list probe verifies only authorization, not inference or free pricing. Do not label M0/M1/M2 DONE. Canonical evidence: https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/evidence/mobile-direct-M2-settings-2026-10-09.md .
 
