@@ -10,7 +10,6 @@ import androidx.core.content.ContextCompat
 import com.khuongnd.dexassistant.ui.device.DpcClient
 import com.khuongnd.dexassistant.ui.actions.LocalActionExecutor
 import com.khuongnd.dexassistant.ui.history.CommandHistoryStore
-import com.khuongnd.dexassistant.ui.protocol.ProtocolParser
 import com.khuongnd.dexassistant.ui.routing.CommandPrivacy
 import com.khuongnd.dexassistant.ui.routing.LocalCommandParser
 import com.khuongnd.dexassistant.ui.routing.CapabilityRegistry
@@ -518,7 +517,6 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
 }
 
 data class UiState(
-    val endpoint: String = "",
     val status: String = "DISCONNECTED",
     val message: String = "Not configured",
     val lastRequestId: String? = null,
@@ -529,8 +527,6 @@ data class UiState(
     val assistantReadiness: String = "NOT_BOUND",
     val deviceOwner: Boolean = false,
     val capabilities: Map<String, String> = emptyMap(),
-    val quota: ProtocolParser.QuotaSnapshot? = null,
-    val quotaStale: Boolean = true,
     val history: List<com.khuongnd.dexassistant.ui.history.HistoryEntry> = emptyList(),
     val historyError: String? = null,
     val historyClearing: Boolean = false,
