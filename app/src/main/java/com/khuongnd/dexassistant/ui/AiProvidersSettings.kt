@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,7 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Only provisions cloud credentials. Direct AI Command and Chat routing are not enabled here. */
+/** Per-provider configuration; direct Command supports only implemented, free-confirmed adapters. */
 @Composable
 fun AiProvidersSettings() {
     val context = LocalContext.current.applicationContext
@@ -43,6 +45,8 @@ fun AiProvidersSettings() {
     var directMode by remember { mutableStateOf(providerSettings.directMode()) }
     var transportStatus by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(AiProvider.GEMINI) }
+    var providerMenu by remember { mutableStateOf(false) }
+    var preferred by remember { mutableStateOf(providerSettings.defaultProvider()) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("AI Providers", style = MaterialTheme.typography.titleMedium)
         Text("Key chỉ lưu trên điện thoại. Direct API chỉ áp dụng cho Command; Chat vẫn dùng backend.",
@@ -56,20 +60,25 @@ fun AiProvidersSettings() {
             }, modifier = Modifier.testTag("directAiCommand"))
         }
         if (transportStatus.isNotBlank()) Text(transportStatus, style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Provider ưu tiên: " + preferred.displayName, style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.testTag("aiProviderPicker")) {
+            Text("Chọn provider: " + selected.displayName)
+        }
+        DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
             AiProvider.entries.forEach { provider ->
-                OutlinedButton(onClick = { selected = provider },
-                    modifier = Modifier.testTag("provider_" + provider.name.lowercase())) {
-                    Text(if (provider == selected) provider.displayName + " ✓" else provider.displayName)
-                }
+                DropdownMenuItem(
+                    text = { Text(provider.displayName + if (provider == preferred) " (ưu tiên)" else "") },
+                    onClick = { selected = provider; providerMenu = false },
+                    modifier = Modifier.testTag("provider_" + provider.name.lowercase()),
+                )
             }
         }
-        key(selected) { AiProviderEditor(selected) }
+        key(selected) { AiProviderEditor(selected) { preferred = selected } }
     }
 }
 
 @Composable
-private fun AiProviderEditor(provider: AiProvider) {
+private fun AiProviderEditor(provider: AiProvider, onPreferred: () -> Unit) {
     val context = LocalContext.current.applicationContext
     val secrets = remember(context) { AiCredentialStore(context) }
     val settings = remember(context) { AiProviderSettings(context) }
@@ -80,6 +89,9 @@ private fun AiProviderEditor(provider: AiProvider) {
     var enabled by remember { mutableStateOf(settings.enabled(provider)) }
     var model by remember { mutableStateOf(settings.model(provider)) }
     var confirmedFree by remember { mutableStateOf(settings.freeTierConfirmed(provider)) }
+    var preferred by remember { mutableStateOf(settings.defaultProvider() == provider) }
+    var models by remember { mutableStateOf(emptyList<String>()) }
+    var modelsMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
     var status by remember {
@@ -101,6 +113,16 @@ private fun AiProviderEditor(provider: AiProvider) {
             )
         }
         Text(if (configured) "API key: Đã cấu hình" else "API key: Chưa cấu hình")
+        Text(if (provider.supportsDirectCommands) "Direct Command adapter: khả dụng (thử nghiệm)"
+            else "Chỉ lưu cấu hình: adapter Direct Command chưa kích hoạt",
+            style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = {
+            runCatching { settings.setDefaultProvider(provider) }
+                .onSuccess { preferred = true; onPreferred(); status = "Đã đặt provider ưu tiên" }
+                .onFailure { status = "Không thể lưu provider ưu tiên" }
+        }, enabled = !preferred && !busy, modifier = Modifier.testTag("setDefaultAiProvider")) {
+            Text(if (preferred) "Provider ưu tiên hiện tại" else "Đặt làm provider ưu tiên")
+        }
         OutlinedTextField(
             value = input,
             onValueChange = { if (it.length <= 1024) input = it },
@@ -162,11 +184,35 @@ private fun AiProviderEditor(provider: AiProvider) {
         OutlinedTextField(
             value = model,
             onValueChange = { if (it.length <= 128) model = it },
-            label = { Text("Model ID (Free Tier)") },
+            label = { Text("Model mặc định của provider (Model ID)") },
             supportingText = { Text("Chỉ nhập model đã xác minh miễn phí trong tài khoản của bạn.") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("aiProviderModel"),
         )
+        OutlinedButton(
+            enabled = !busy && configured,
+            onClick = {
+                busy = true
+                status = "Đang tải danh sách model..."
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        secrets.load(provider)?.let { probe.listModels(provider, it) }
+                    }
+                    busy = false
+                    if (result?.status == ProbeStatus.AUTHENTICATED) {
+                        models = result.models
+                        modelsMenu = models.isNotEmpty()
+                        status = if (models.isEmpty()) "Không có model trong tài khoản" else
+                            "Chọn model từ danh sách; chưa xác nhận Free Tier"
+                    } else status = "Không tải được model: " + (result?.status?.name ?: "KEY_MISSING")
+                }
+            }, modifier = Modifier.testTag("loadAiModels")
+        ) { Text("Tải model từ API") }
+        DropdownMenu(expanded = modelsMenu, onDismissRequest = { modelsMenu = false }) {
+            models.forEach { id ->
+                DropdownMenuItem(text = { Text(id) }, onClick = { model = id; modelsMenu = false })
+            }
+        }
         OutlinedButton(
             enabled = !busy,
             onClick = {
