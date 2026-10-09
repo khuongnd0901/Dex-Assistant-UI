@@ -1,3 +1,9 @@
+## 2026-10-09 — Five-provider Settings + Direct AI Command pilot (SOURCE PUBLISHED, ACCEPTANCE OPEN)
+
+User requirement extended to independent Enable/API key/default model for **Gemini, Groq, OpenAI (ChatGPT API), Grok (xAI), DeepSeek**, with selectable preferred provider and model list discovered from each provider's own models endpoint. Per-provider secrets stay on-device via Android Keystore, never in source/Git/build. Source includes \`MobileAiProxy\` Gemini/Groq tool-call adapters and same strict \`DeviceCommandProtocol.decode\` + \`ActionRouter\` execution path as backend. Direct Command opt-in defaults **OFF**; local command unchanged, Chat remains legacy WebSocket. OpenAI/Grok/DeepSeek are **configuration-only**, never silently routed to a paid API; model list does not certify Free Tier. Unimplemented chosen default fails closed.
+
+Source commits include e6369fa, 2aaee47, 6471a32, 094172c, 1374048, 7be7bda, 8de7eee, a7b0cf3, 77eb221, e536f39, ddf4369, 9015444, 61e4c90, de5ba00. CI/physical/provider account acceptance must be verified independently, and source completion is not milestone completion. Canonical evidence: https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/evidence/mobile-direct-M3-proxy-multiprovider-2026-10-09.md
+
 ## 2026-10-09 — Direct AI API provider Settings slice (SOURCE PUBLISHED; acceptance OPEN)
 
 Owner requested API keys configured exclusively in the Android app UI (never committed to Git/source). Published provider-separated AES/GCM Android Keystore storage, model/enable preferences, Compose Settings controls for Gemini/Groq (masked key, save/update/delete, test connection), Gemini/Groq authentication-only REST probes and pure unit checks.
