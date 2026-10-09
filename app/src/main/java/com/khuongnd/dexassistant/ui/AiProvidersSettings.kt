@@ -42,24 +42,13 @@ import kotlinx.coroutines.withContext
 fun AiProvidersSettings() {
     val context = LocalContext.current.applicationContext
     val providerSettings = remember(context) { AiProviderSettings(context) }
-    var directMode by remember { mutableStateOf(providerSettings.directMode()) }
-    var transportStatus by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(AiProvider.GEMINI) }
     var providerMenu by remember { mutableStateOf(false) }
     var preferred by remember { mutableStateOf(providerSettings.defaultProvider()) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("AI Providers", style = MaterialTheme.typography.titleMedium)
-        Text("Key chỉ lưu trên điện thoại. Direct API chỉ áp dụng cho Command; Chat vẫn dùng backend.",
+        Text("Local Command chạy trên máy; AI Command và Chat gọi API trực tiếp, không dùng backend.",
             style = MaterialTheme.typography.bodySmall)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Direct AI Command (thử nghiệm)")
-            Switch(checked = directMode, onCheckedChange = { next ->
-                runCatching { providerSettings.setDirectMode(next) }
-                    .onSuccess { directMode = next; transportStatus = if (next) "Command phức tạp gọi AI trực tiếp." else "Command phức tạp dùng backend." }
-                    .onFailure { transportStatus = "Không thể lưu chế độ AI" }
-            }, modifier = Modifier.testTag("directAiCommand"))
-        }
-        if (transportStatus.isNotBlank()) Text(transportStatus, style = MaterialTheme.typography.bodySmall)
         Text("Provider ưu tiên: " + preferred.displayName, style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.testTag("aiProviderPicker")) {
             Text("Chọn provider: " + selected.displayName)
