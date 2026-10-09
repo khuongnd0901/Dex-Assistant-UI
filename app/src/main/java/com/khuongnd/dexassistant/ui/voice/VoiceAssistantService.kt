@@ -104,7 +104,6 @@ class VoiceAssistantService : Service() {
             report(lastDetail)
         }
         coordinator.start()
-        coordinator.connect()
         coordinator.observeChat { event -> onChatEvent(event) }
     }
 
