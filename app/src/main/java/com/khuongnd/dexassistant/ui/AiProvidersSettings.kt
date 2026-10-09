@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -37,11 +38,24 @@ import kotlinx.coroutines.withContext
 /** Only provisions cloud credentials. Direct AI Command and Chat routing are not enabled here. */
 @Composable
 fun AiProvidersSettings() {
+    val context = LocalContext.current.applicationContext
+    val providerSettings = remember(context) { AiProviderSettings(context) }
+    var directMode by remember { mutableStateOf(providerSettings.directMode()) }
+    var transportStatus by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(AiProvider.GEMINI) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("AI Providers", style = MaterialTheme.typography.titleMedium)
-        Text("Key chỉ lưu trên điện thoại. Hiện chưa chuyển Command/Chat sang API trực tiếp.",
+        Text("Key chỉ lưu trên điện thoại. Direct API chỉ áp dụng cho Command; Chat vẫn dùng backend.",
             style = MaterialTheme.typography.bodySmall)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Direct AI Command (thử nghiệm)")
+            Switch(checked = directMode, onCheckedChange = { next ->
+                runCatching { providerSettings.setDirectMode(next) }
+                    .onSuccess { directMode = next; transportStatus = if (next) "Command phức tạp gọi AI trực tiếp." else "Command phức tạp dùng backend." }
+                    .onFailure { transportStatus = "Không thể lưu chế độ AI" }
+            }, modifier = Modifier.testTag("directAiCommand"))
+        }
+        if (transportStatus.isNotBlank()) Text(transportStatus, style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AiProvider.entries.forEach { provider ->
                 OutlinedButton(onClick = { selected = provider },
@@ -65,6 +79,7 @@ private fun AiProviderEditor(provider: AiProvider) {
     var configured by remember { mutableStateOf(secrets.hasKey(provider)) }
     var enabled by remember { mutableStateOf(settings.enabled(provider)) }
     var model by remember { mutableStateOf(settings.model(provider)) }
+    var confirmedFree by remember { mutableStateOf(settings.freeTierConfirmed(provider)) }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
     var status by remember {
@@ -156,10 +171,20 @@ private fun AiProviderEditor(provider: AiProvider) {
             enabled = !busy,
             onClick = {
                 runCatching { settings.setModel(provider, model) }
-                    .onSuccess { status = "Đã lưu model ID; chưa xác minh Free Tier" }
+                    .onSuccess { confirmedFree = false; status = "Đã lưu model ID; cần xác nhận Free Tier" }
                     .onFailure { status = "Model ID không hợp lệ" }
             },
         ) { Text("Lưu model") }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Checkbox(checked = confirmedFree, enabled = !busy && model.isNotBlank(),
+                onCheckedChange = { next ->
+                    runCatching { settings.setFreeTierConfirmed(provider, next) }
+                        .onSuccess { confirmedFree = next }
+                        .onFailure { status = "Không thể lưu xác nhận Free Tier" }
+                }, modifier = Modifier.testTag("confirmFreeTier"))
+            Text("Tôi đã xác minh model này thuộc Free Tier của tài khoản. Test key không chứng minh miễn phí.",
+                style = MaterialTheme.typography.bodySmall)
+        }
         OutlinedButton(
             enabled = !busy && configured,
             onClick = {
