@@ -43,8 +43,7 @@ class MainActivity : ComponentActivity() {
         controller.start()
         setContent {
             DexAssistantTheme {
-                AssistantScreen(uiState, controller::provision, controller::connect,
-                    controller::refreshHealth, controller::applyPermissions,
+                AssistantScreen(uiState, controller::refreshHealth, controller::applyPermissions,
                     controller::startVoice, controller::stopVoice, controller::send, controller::clearHistory,
                     onPauseVoice = controller::pauseVoice, onResumeVoice = controller::resumeVoice, onDiagnostic = controller::diagnosticListen,
                     onEndChat = { if (VoiceAssistantService.active != null) startService(android.content.Intent(this, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_END_CHAT)) })
@@ -72,8 +71,7 @@ class MainActivity : ComponentActivity() {
 
 @androidx.compose.runtime.Composable
 fun AssistantScreen(
-    state: UiState, onProvision: (String, String) -> Unit, onConnect: () -> Unit,
-    onRefresh: () -> Unit, onApplyPermissions: () -> Unit, onStartVoice: () -> Unit,
+    state: UiState, onRefresh: () -> Unit, onApplyPermissions: () -> Unit, onStartVoice: () -> Unit,
     onStopVoice: () -> Unit, onSend: (String) -> Unit, onClearHistory: () -> Unit,
     modifier: Modifier = Modifier, onPauseVoice: () -> Unit = {}, onResumeVoice: () -> Unit = {}, onDiagnostic: () -> Unit = {}, onEndChat: () -> Unit = {},
 ) {
@@ -81,9 +79,7 @@ fun AssistantScreen(
     val live by com.khuongnd.dexassistant.ui.voice.VoiceLiveState.state.collectAsState()
     var dialog by androidx.compose.runtime.remember { mutableStateOf("") }
     var detail by androidx.compose.runtime.remember { mutableStateOf("") }
-    var endpoint by rememberSaveable(state.endpoint) { mutableStateOf(state.endpoint) }
     // Credentials, typed commands and transcripts are never saved in the instance-state bundle.
-    var token by androidx.compose.runtime.remember { mutableStateOf("") }
     var command by androidx.compose.runtime.remember { mutableStateOf("") }
     val localAliases = androidx.compose.runtime.remember(context) { com.khuongnd.dexassistant.ui.localdata.LocalAliases(context) }
     var homeAddress by androidx.compose.runtime.remember { mutableStateOf(localAliases.savedPlace("home")) }
@@ -215,8 +211,8 @@ fun AssistantScreen(
         }
     }
     if (dialog.isNotBlank()) androidx.compose.material3.AlertDialog(
-        onDismissRequest = { dialog = ""; token = "" },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = { dialog = ""; token = "" }) { Text("Đóng") } },
+        onDismissRequest = { dialog = "" },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { dialog = "" }) { Text("Đóng") } },
         title = { Text(when (dialog) { "settings" -> "Cài đặt"; "quota" -> "AI quota"; "history" -> "Lịch sử"; "diagnostic" -> "Chẩn đoán"; else -> "Chi tiết" }) },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -224,10 +220,7 @@ fun AssistantScreen(
                     "settings" -> {
                         AiProvidersSettings()
                         Text("Kết nối backend hiện tại (giữ để rollback)", style = MaterialTheme.typography.titleSmall)
-                        OutlinedTextField(endpoint, { endpoint = it }, label = { Text("WebSocket endpoint") }, singleLine = true)
-                        OutlinedTextField(token, { token = it }, label = { Text("Bearer token") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true)
-                        Button(onClick = { onProvision(endpoint.trim(), token); token = "" }, enabled = endpoint.isNotBlank() && token.isNotBlank()) { Text("Provision and connect") }
-                        Button(onClick = onConnect, enabled = state.endpoint.isNotBlank()) { Text("Connect") }
+                        Text("Local Command và Chat/AI hoạt động trực tiếp trên Android, không cần backend.")
                         Button(onClick = onRefresh) { Text("Refresh health") }
                         Button(onClick = onApplyPermissions) { Text("Apply permission profile") }
                         Button(onClick = { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Trợ năng DeX") }
