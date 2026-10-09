@@ -10,7 +10,7 @@ import org.junit.Test
 class AiKeyProbeTest {
     @Test
     fun everyProviderUsesFixedTlsEndpointWithoutCredentialsInUrl() {
-        val urls = AiProvider.entries.map(AiKeyProbe::modelsEndpoint)
+        val urls = AiProvider.entries.map { AiKeyProbe.modelsEndpoint(it) }
         assertEquals(5, urls.distinct().size)
         assertTrue(urls.all { it.startsWith("https://") })
         assertTrue(urls.none { it.contains("?") || it.contains("generateContent") || it.contains("chat/completions") })
