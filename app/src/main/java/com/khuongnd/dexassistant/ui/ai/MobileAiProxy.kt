@@ -52,6 +52,7 @@ object AiToolCallParser {
                     }
                 }
             }
+            else -> throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
         }
         require(calls.size in 1..8) { "No safe bounded AI action plan" }
         return calls.map { call ->
@@ -90,10 +91,12 @@ class MobileAiProxy(
         // Sensitive commands must never leave the phone, even with direct BYOK access.
         if (com.khuongnd.dexassistant.ui.routing.CommandPrivacy.requiresLocalHandling(text))
             throw MobileAiException("POLICY_DENIED")
-        val candidates = AiProvider.entries.filter {
-            settings.enabled(it) && settings.freeTierConfirmed(it) &&
-                settings.model(it).isNotBlank() && credentials.hasKey(it)
-        }
+        val preferred = settings.defaultProvider()
+        val candidates = (listOf(preferred) + AiProvider.entries.filter { it != preferred })
+            .distinct().filter {
+                it.supportsDirectCommands && settings.enabled(it) && settings.freeTierConfirmed(it) &&
+                    settings.model(it).isNotBlank() && credentials.hasKey(it)
+            }
         if (candidates.isEmpty()) throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
         val tools = candidates.associateWith { AiToolSchema.schemas(supported, registry.appIds, it == AiProvider.GEMINI) }
         var failure = MobileAiException("AI_UNAVAILABLE")
@@ -127,7 +130,7 @@ class MobileAiProxy(
         when (provider) {
             AiProvider.GEMINI -> {
                 if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw MobileAiException("INVALID_MODEL")
-                val functions = JSONArray().apply { tools.forEach(::put) }
+                val functions = JSONArray().apply { tools.forEach { entry -> put(entry) } }
                 body = JSONObject()
                     .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                     .put("contents", JSONArray().put(JSONObject().put("role", "user")
@@ -143,7 +146,7 @@ class MobileAiProxy(
                     .put("messages", JSONArray()
                         .put(JSONObject().put("role", "system").put("content", system))
                         .put(JSONObject().put("role", "user").put("content", input)))
-                    .put("tools", JSONArray().apply { tools.forEach(::put) })
+                    .put("tools", JSONArray().apply { tools.forEach { entry -> put(entry) } })
                     .put("tool_choice", "auto")
                     .put("parallel_tool_calls", true)
                     .put("temperature", 0)
@@ -151,6 +154,7 @@ class MobileAiProxy(
                 request = Request.Builder().url("https://api.groq.com/openai/v1/chat/completions")
                     .header("Authorization", "Bearer " + key)
             }
+            else -> throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
         }
         val httpRequest = request.header("Content-Type", "application/json")
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
