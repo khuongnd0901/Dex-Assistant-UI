@@ -4,20 +4,20 @@
 
 Single-user, voice-first Android assistant designed for the **Samsung Galaxy Z Fold3 using Samsung DeX on an external display**. The current app is **local-first**, with direct AI provider calls for requests that need language understanding. **Spring Boot, a custom WebSocket proxy, Firebase and an EC2 instance are not required by the current Android Command/Chat runtime.**
 
-> **Project status — October 9, 2026:** Backend-free Android Command and Chat **source is implemented**. [Android CI passed](https://github.com/khuongnd0901/Dex-Assistant-UI/actions/runs/37878690108) on commit \`3715b36\` (unit tests, lint and debug APK build). **Real AI-key/model calls and the final end-to-end physical Fold3/DeX acceptance are still open**. A successful build is not proof of live device behavior. No deployed cloud resources have been decommissioned by this source migration.
+> **Project status — October 9, 2026:** Backend-free Android Command and Chat **source is implemented**. [Android CI passed](https://github.com/khuongnd0901/Dex-Assistant-UI/actions/runs/37878690108) on commit `3715b36` (unit tests, lint and debug APK build). **Real AI-key/model calls and the final end-to-end physical Fold3/DeX acceptance are still open**. A successful build is not proof of live device behavior. No deployed cloud resources have been decommissioned by this source migration.
 
 ## What it does
 
-- **Offline wake word:** "Hey Hey" with locally packaged sherpa-onnx / KWS assets. Vietnamese speech-to-text uses Android's \`SpeechRecognizer\` and can require network access or send audio to the configured recognition service. Offline wake detection does **not** mean fully offline speech recognition.
+- **Offline wake word:** "Hey Hey" with locally packaged sherpa-onnx / KWS assets. Vietnamese speech-to-text uses Android's `SpeechRecognizer` and can require network access or send audio to the configured recognition service. Offline wake detection does **not** mean fully offline speech recognition.
 - **Local commands first:** A config-based Vietnamese command catalog matches commands for apps, volume, media, YouTube, Maps/navigation, screen actions and other supported device operations. Recognized local commands do not call an AI provider.
-- **Direct AI Command:** Unmatched/complex commands go from Android to a configured eligible AI provider via \`MobileAiProxy\`. Provider function calls are decoded and validated into typed commands before reaching the **same Android \`ActionRouter\`**. Unsupported actions, bad parameters and unsafe requests are rejected; the model cannot bypass device permissions or confirmation.
-- **Direct AI Chat:** Say **"bắt đầu trò chuyện"** to enter conversation mode, and **"kết thúc trò chuyện"** to leave it. Android owns the isolated in-memory session; \`DirectAiChat\` sends only text/context, **without device action tools**. The session retains up to 20 prior turn pairs, uses bounded input/output and expires after 15 minutes of inactivity.
+- **Direct AI Command:** Unmatched/complex commands go from Android to a configured eligible AI provider via `MobileAiProxy`. Provider function calls are decoded and validated into typed commands before reaching the **same Android `ActionRouter`**. Unsupported actions, bad parameters and unsafe requests are rejected; the model cannot bypass device permissions or confirmation.
+- **Direct AI Chat:** Say **"bắt đầu trò chuyện"** to enter conversation mode, and **"kết thúc trò chuyện"** to leave it. Android owns the isolated in-memory session; `DirectAiChat` sends only text/context, **without device action tools**. The session retains up to 20 prior turn pairs, uses bounded input/output and expires after 15 minutes of inactivity.
 - **DeX-oriented interaction:** Accessibility-assisted controls and a numbered 6 × 4 screen grid for cases where app UI nodes are unavailable. The design operates on the external DeX display, not as a dual-screen phone-controller workflow.
 - **Device Policy Controller (DPC):** A separate Android module for narrowly guarded device operations, subject to actual Android permissions and Device Owner setup.
 
 ## Runtime architecture
 
-\`\`\`text
+```text
 Voice / mic → local KWS ("Hey Hey") → Vietnamese STT → Command Router
                                                     │
                 ┌───────────────────────────────────┼───────────────────┐
@@ -40,9 +40,9 @@ Chat start → Android-owned chat session → DirectAiChat → Gemini / Groq
                        │
                   text + bounded context only
                   NO device tools / backend WebSocket
-\`\`\`
+```
 
-\`BACKEND_REQUIRED\` remains the **name of a legacy routing enum value** for non-local commands; it no longer means an actual backend network call. Some WebSocket/protocol files remain in the repository as **inactive legacy/reference code**.
+`BACKEND_REQUIRED` remains the **name of a legacy routing enum value** for non-local commands; it no longer means an actual backend network call. Some WebSocket/protocol files remain in the repository as **inactive legacy/reference code**.
 
 ## AI providers — configuration and runtime support
 
@@ -74,31 +74,31 @@ If a key/model is absent, the provider is disabled, a quota is reached or a netw
 
 | Location | Responsibility |
 |---|---|
-| \`app/\` | Android Kotlin + Jetpack Compose app; voice, Settings, routing, AI and guarded actions |
-| \`dpc/\` | Companion Device Policy Controller, separately installed/signed APK |
-| \`app/src/main/java/com/khuongnd/dexassistant/ui/ai/\` | \`MobileAiProxy\`, \`DirectAiChat\`, \`AiKeyProbe\`, tool schemas |
-| \`app/src/main/java/com/khuongnd/dexassistant/ui/security/AiCredentialStore.kt\` | Per-provider credential and preference storage |
-| \`app/src/main/java/com/khuongnd/dexassistant/ui/routing/\` | Local command matching and privacy restrictions |
-| \`app/src/main/java/com/khuongnd/dexassistant/ui/execution/ActionRouter.kt\` | Device execution and confirmation authority |
-| \`scripts/prepare-voice-assets.py\` | Pinned/hash-verified build-time voice assets |
-| \`scripts/android/check-direct-ai-fold3.sh\` | **Read-only** physical Fold3/API35 ADB preflight |
-| \`.agent/STATUS.md\` | Development history and outstanding acceptance tasks |
+| `app/` | Android Kotlin + Jetpack Compose app; voice, Settings, routing, AI and guarded actions |
+| `dpc/` | Companion Device Policy Controller, separately installed/signed APK |
+| `app/src/main/java/com/khuongnd/dexassistant/ui/ai/` | `MobileAiProxy`, `DirectAiChat`, `AiKeyProbe`, tool schemas |
+| `app/src/main/java/com/khuongnd/dexassistant/ui/security/AiCredentialStore.kt` | Per-provider credential and preference storage |
+| `app/src/main/java/com/khuongnd/dexassistant/ui/routing/` | Local command matching and privacy restrictions |
+| `app/src/main/java/com/khuongnd/dexassistant/ui/execution/ActionRouter.kt` | Device execution and confirmation authority |
+| `scripts/prepare-voice-assets.py` | Pinned/hash-verified build-time voice assets |
+| `scripts/android/check-direct-ai-fold3.sh` | **Read-only** physical Fold3/API35 ADB preflight |
+| `.agent/STATUS.md` | Development history and outstanding acceptance tasks |
 
 ## Requirements, build and CI
 
 - **JDK 17**, **Android SDK Platform 35 / Build Tools 35**, Python 3.10+ and Gradle wrapper.
-- Android \`minSdk 30\`, \`targetSdk 35\` (Android 15 for the dedicated Fold3).
-- One-time checksum-verified voice assets, staged in ignored \`.cache/voice\`; no runtime model download for wake-word recognition.
+- Android `minSdk 30`, `targetSdk 35` (Android 15 for the dedicated Fold3).
+- One-time checksum-verified voice assets, staged in ignored `.cache/voice`; no runtime model download for wake-word recognition.
 
-\`\`\`bash
+```bash
 python3 scripts/prepare-voice-assets.py
 ./gradlew --no-daemon --build-cache testDebugUnitTest lint assembleDebug
-\`\`\`
+```
 
-On Windows, use \`gradlew.bat\` in place of \`./gradlew\`. Build outputs:
+On Windows, use `gradlew.bat` in place of `./gradlew`. Build outputs:
 
-- \`app/build/outputs/apk/debug/app-debug.apk\`
-- \`dpc/build/outputs/apk/debug/dpc-debug.apk\`
+- `app/build/outputs/apk/debug/app-debug.apk`
+- `dpc/build/outputs/apk/debug/dpc-debug.apk`
 
 [Android CI](.github/workflows/android-ci.yml) performs the build, unit tests, lint and uploads debug artifacts. The separate [Device-test release workflow](.github/workflows/device-test-release.yml) uses a **verified existing matching signing identity** for dedicated Fold3 upgrades. **Do not install an arbitrary CI/debug-signed APK over a provisioned Device Owner device.** Do not uninstall, clear app data, reset Device Owner or toggle Accessibility to make a test pass.
 
