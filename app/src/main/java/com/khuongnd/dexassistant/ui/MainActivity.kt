@@ -222,6 +222,8 @@ fun AssistantScreen(
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (dialog) {
                     "settings" -> {
+                        AiProvidersSettings()
+                        Text("Kết nối backend hiện tại (giữ để rollback)", style = MaterialTheme.typography.titleSmall)
                         OutlinedTextField(endpoint, { endpoint = it }, label = { Text("WebSocket endpoint") }, singleLine = true)
                         OutlinedTextField(token, { token = it }, label = { Text("Bearer token") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true)
                         Button(onClick = { onProvision(endpoint.trim(), token); token = "" }, enabled = endpoint.isNotBlank() && token.isNotBlank()) { Text("Provision and connect") }
