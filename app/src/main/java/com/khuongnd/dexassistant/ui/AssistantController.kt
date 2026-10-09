@@ -225,7 +225,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     }
 
     fun connect() {
-        if (aiSettings.directMode()) return // Direct Command requires no custom backend.
+        // Chat still uses WebSocket during migration; direct Command does not depend on connection.
         if (connectionActive) return
         val token = credentials.load()
         if (token == null || state.endpoint.isBlank()) {
