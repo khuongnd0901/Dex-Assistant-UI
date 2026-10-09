@@ -80,7 +80,7 @@ class AiCredentialStore(context: Context) {
     }
 }
 
-/** Non-secret local preferences for a provider. These settings do not enable cloud routing yet. */
+/** Non-secret provider preferences and opt-in direct Command routing. */
 class AiProviderSettings(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("ai_provider_settings_v1", Context.MODE_PRIVATE)
 
@@ -97,6 +97,22 @@ class AiProviderSettings(context: Context) {
         require(normalized.length <= 128 && normalized.all {
             it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' || it == '/'
         }) { "Invalid model ID" }
-        check(prefs.edit().putString(provider.name + "_model", normalized).commit())
+        // Confirm free-tier eligibility again whenever model changes.
+        check(prefs.edit().putString(provider.name + "_model", normalized)
+            .putBoolean(provider.name + "_free_confirmed", false).commit())
+    }
+
+    fun freeTierConfirmed(provider: AiProvider): Boolean =
+        prefs.getBoolean(provider.name + "_free_confirmed", false)
+
+    fun setFreeTierConfirmed(provider: AiProvider, confirmed: Boolean) {
+        check(prefs.edit().putBoolean(provider.name + "_free_confirmed", confirmed).commit())
+    }
+
+    /** Explicit user opt-in; defaults to the tested legacy WebSocket transport. */
+    fun directMode(): Boolean = prefs.getBoolean("direct_command_enabled", false)
+
+    fun setDirectMode(enabled: Boolean) {
+        check(prefs.edit().putBoolean("direct_command_enabled", enabled).commit())
     }
 }
