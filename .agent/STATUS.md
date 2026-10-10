@@ -1,3 +1,45 @@
+## 2026-10-10 — T-018 automatic Fold3 acceptance (IN_PROGRESS)
+
+Main-agent physical results: Gemini Settings UI save/update/delete/readd, model
+API discovery, auth probe, encrypted key equality and Activity recreation
+persistence PASS1/1 (12.246s) at owner-requested providerTestRpm15. Text Chat
+three context turns plus immediate-end event suppression PASS; invalid-credential
+single error/no2s replay/session restart PASS. Local volume with implemented
+cloud providers disabled and restored, direct30%, and distinct compound20%→60%
+PASS1/1 (12.349s); compound emitted two executionLatency metrics for one request
+and verified final60%. Volume restored. Already-enabled Wi-Fi idempotent local
+enable VERIFIED/LOCAL PASS; no off/on cycle. Seven safe configuration guards PASS.
+These are automatic typed/text tests, not natural speech or audible TTS evidence.
+
+Postflight (main agent): voice policy byte-identical; permissions/data inodes,
+Device Owner descriptors, Assistant role retained; Accessibility bound; private
+provider-input file deleted. Owner history retained with reencrypted25308 bytes;
+plaintext history equality was not measured. Key stayed encrypted on-device,
+never in test arguments/source/logs. Owner approved private ADB input for this run.
+
+Android changes are test/preflight/memory only. Retired obsolete backend WebSocket
+acceptance fixtures explicitly with @Ignore; preserved local tests and fixed
+current dashboard signature. Added DirectChatState deterministic15-minute expiry
+boundary/clear test, guarded live Settings/Chat/Command fixtures and validated
+providerTestRpm1..15 (default2;15→4100ms). Settings uses actual renderer semantics
+without coroutine TestScope for --no-restart compatibility. Test history uses
+unique prefs/key aliases; provider enable flags and test-invalid credential are
+restored in finally. Production code and production quota policy were not changed.
+
+Host JDK17 + Linux SDK offline ./gradlew test lint assembleDebug
+assembleDebugAndroidTest --max-workers=1 PASS201 tasks (19s),
+/tmp/t018-rpm15-build.log; final affected lint + assembleDebugAndroidTest PASS108
+tasks (16s), /tmp/t018-local-cloud-disabled-build.log. App debug/release176 tests
+each,0failures/errors,1skip; DirectAiChatTest9/9 PASS. Script bash -n and
+git diff --check PASS. Main owns physical evidence and final task status.
+
+T-018 remains IN_PROGRESS under owner automatic-only scope. Next: natural
+Command/Chat/microphone/TTS acceptance when owner participates; Groq/live429
+fallback, exact401/403 no-fallback, timeout, genuine in-flight voice cancellation,
+latency samples and resource/soak gates remain OPEN. Immediate-end event suppression
+does not establish a completed remote reply after cancel or voice-service rearm.
+Retired backend fixtures are skipped, never accepted. No push in this session.
+
 ## 2026-10-09 — Android-only Command + Chat migration (source committed; physical acceptance OPEN)
 
 Owner requested all AI Chat moved off backend and no backend runtime dependency before one final real Fold3 test. Source now includes `ai/DirectAiChat.kt` (Gemini/Groq text-only API, bounded 20-pair context, local time and privacy guards) and Android `AssistantCoordinator`-owned Chat session + async cancellation/late-result epoch gates. Voice start/end TTS flow retained. Existing Local Command and direct `MobileAiProxy` Command use guarded ActionRouter. `AssistantController` removed WebSocket listener/construction, backend provisioning/connection and external quotas; `VoiceAssistantService` no longer connects WebSocket; `MainActivity` has no backend URL/token/remote quota settings. Retained unused protocol fixture code is not an active backend call path.

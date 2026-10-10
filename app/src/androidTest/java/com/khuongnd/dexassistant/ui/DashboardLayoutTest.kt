@@ -44,8 +44,9 @@ class DashboardLayoutTest {
         try { ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java), options.toBundle()).use { scenario ->
             scenario.onActivity { activity ->
                 view = ComposeView(activity).apply {
-                    setContent { DexAssistantTheme { AssistantScreen(UiState(voiceState="PAUSED"), { _, _ -> }, {}, {}, {}, {}, {}, { sends++ }, {},
-                        Modifier.requiredSize(dimensions.value.first.dp, dimensions.value.second.dp), onResumeVoice={resumes++}, onDiagnostic={diagnostics++}) } }
+                    setContent { DexAssistantTheme { AssistantScreen(state=UiState(voiceState="PAUSED"), onRefresh={}, onApplyPermissions={}, onStartVoice={},
+                        onStopVoice={}, onSend={ sends++ }, onClearHistory={},
+                        modifier=Modifier.requiredSize(dimensions.value.first.dp, dimensions.value.second.dp), onResumeVoice={resumes++}, onDiagnostic={diagnostics++}) } }
                 }
                 activity.setContentView(view)
             }

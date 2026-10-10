@@ -357,7 +357,7 @@ class NumberedScreenDeviceTest {
         val historyPreferences = context.getSharedPreferences("command_history_v1", android.content.Context.MODE_PRIVATE)
         CommandHistoryStore(context).flush() // Snapshot only after prior writes have drained.
         val originalRecords = historyPreferences.getString("records", null)
-        instrumentation.runOnMainSync { core.disconnect(); DexAccessibilityService.active?.clear() }
+        instrumentation.runOnMainSync { DexAccessibilityService.active?.clear() }
         try {
             for (text in listOf("bấm ô mười một", "bấm ô 11 rồi mở youtube", "hủy rồi mở youtube", "không hiện lưới")) {
                 val status = command(core, text)

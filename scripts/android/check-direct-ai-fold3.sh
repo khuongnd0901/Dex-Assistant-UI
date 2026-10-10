@@ -15,7 +15,7 @@ umask 077
 {
  echo "Physical model: $MODEL / API: $API"
  echo 'Assistant role:'
- "$ADB" -s "$SERIAL" shell cmd role holders android.app.role.ASSISTANT || true
+ "$ADB" -s "$SERIAL" shell cmd role get-role-holders --user 0 android.app.role.ASSISTANT || true
  echo 'App package path:'
  "$ADB" -s "$SERIAL" shell pm path com.khuongnd.dexassistant.ui || true
  echo 'Display descriptors:'

@@ -22,6 +22,21 @@ class DirectAiChatTest {
         assertTrue(chat.begin("Bắt đầu lại").previous.isEmpty())
     }
 
+    @Test fun idleExpiryOccursExactlyAtFifteenMinutesAndClearResetsActivity() {
+        val chat = DirectChatState()
+        assertFalse(chat.expired(Long.MAX_VALUE))
+        val turn = chat.begin("Xin chào")
+        chat.complete(turn, "Chào bạn")
+        val activity = chat.lastActivityMillis
+        val timeout = 15 * 60 * 1000L
+        assertFalse(chat.expired(activity + timeout - 1))
+        assertTrue(chat.expired(activity + timeout))
+        assertTrue(chat.expired(activity + timeout + 1))
+        chat.clear()
+        assertFalse(chat.expired(activity + timeout))
+        assertTrue(chat.begin("Phiên mới").previous.isEmpty())
+    }
+
     @Test fun retainedTurnsStayBounded() {
         val chat = DirectChatState()
         repeat(35) {
