@@ -60,7 +60,46 @@ class NumberedScreenDeviceTest {
         assertNotNull("Bound service instance lost its framework Accessibility connection", service!!.serviceInfo)
         return service to requireNotNull(display)
     }
-    /** Uses the production voice preparation/coordinator boundaries; history is a disposable store. */
+    /** Safe target for owner speech; tap observations alone never establish natural acceptance. */
+    @Test fun optInNaturalHundredSessionInteractiveFixture() {
+        assumeTrue("Owner-assisted natural fixture opt-in required",
+            InstrumentationRegistry.getArguments().getString("naturalHundredFixture") == "true")
+        val arguments = InstrumentationRegistry.getArguments()
+        val target = arguments.getString("naturalFixtureTapTarget", "10")!!.toIntOrNull()
+        val durationSeconds = arguments.getString("naturalFixtureDurationSeconds", "900")!!.toLongOrNull()
+        assertTrue("naturalFixtureTapTarget must be 1..100", target != null && target in 1..100)
+        assertTrue("naturalFixtureDurationSeconds must be 60..3600", durationSeconds != null && durationSeconds in 60L..3600L)
+        val (service, display) = desktopPrerequisites()
+        launchFixture(display)
+        instrumentation.runOnMainSync {
+            ScreenControlFixtureActivity.active!!.findViewById<android.view.ViewGroup>(android.R.id.content)
+                .getChildAt(0).isClickable = true
+        }
+        ScreenControlFixtureActivity.lastTap = null
+        instrumentation.sendStatus(0, android.os.Bundle().apply {
+            putString("naturalFixture", "READY_FOR_OWNER_SPEECH")
+            putInt("displayId", display.displayId)
+        })
+        var observed = 0
+        val deadline = SystemClock.uptimeMillis() + TimeUnit.SECONDS.toMillis(requireNotNull(durationSeconds))
+        try {
+            while (observed < requireNotNull(target) && SystemClock.uptimeMillis() < deadline) {
+                ScreenControlFixtureActivity.lastTap?.let { tap ->
+                    ScreenControlFixtureActivity.lastTap = null
+                    observed++
+                    android.util.Log.i("DexNaturalTap", "count=$observed displayId=${tap.displayId} x=${tap.x} y=${tap.y}")
+                    assertEquals(display.displayId, tap.displayId)
+                }
+                Thread.sleep(50)
+            }
+            instrumentation.sendStatus(0, android.os.Bundle().apply {
+                putInt("fixtureTapObservations", observed)
+                putString("naturalAcceptance", "NOT_CERTIFIED_BY_FIXTURE")
+            })
+        } finally { instrumentation.runOnMainSync { service.clear(); ScreenControlFixtureActivity.active?.finish() } }
+    }
+
+    /** Uses the production coordinator boundaries with disposable test history. */
     @Test fun voiceCoordinatorGridSubdivisionSurvivesFreshPreparationAndCompactFinals() {
         assumeTrue("Explicit isolated voice grid fixture opt-in required",
             InstrumentationRegistry.getArguments().getString("runVoiceGridFixture") == "true")
@@ -652,6 +691,40 @@ class NumberedScreenDeviceTest {
             instrumentation.runOnMainSync { service.execute(ScreenCommand(ScreenVerb.CLICK_CELL, 11)) { status = it } }
             assertEquals("SCREEN_SESSION_EXPIRED", status); assertOverlayReleased(service)
             assertNull(ScreenControlFixtureActivity.lastTap)
+        } finally { instrumentation.runOnMainSync { service.clear(); ScreenControlFixtureActivity.active?.finish() } }
+    }
+    /** Real service callbacks against simulated stale snapshots; never changes/disconnects the display. */
+    @Test fun displayCallbacksPreserveValidGridAndRejectStaleGeometryOrIdentityWithoutTap() {
+        val (service, display) = desktopPrerequisites()
+        launchFixture(display)
+        try {
+            val sessionField = service.javaClass.getDeclaredField("session").apply { isAccessible = true }
+            listOf("geometry", "identity").forEach { mismatch ->
+                var status = ""
+                ScreenControlFixtureActivity.lastTap = null
+                instrumentation.runOnMainSync {
+                    service.execute(ScreenCommand(ScreenVerb.GRID)) { status = it }
+                    assertEquals("SCREEN_CONTINUE", status)
+                    val session = requireNotNull(sessionField.get(service))
+                    // Unrelated phone callbacks must preserve the current unique desktop.
+                    service.onDisplayChanged(Display.DEFAULT_DISPLAY)
+                    service.onDisplayAdded(Display.DEFAULT_DISPLAY)
+                    service.onDisplayRemoved(Display.DEFAULT_DISPLAY)
+                    assertSame(session, sessionField.get(service))
+                    val snapshotField = session.javaClass.getDeclaredField("snapshot").apply { isAccessible = true }
+                    val frozen = snapshotField.get(session) as ScreenSnapshot
+                    snapshotField.set(session, if (mismatch == "geometry")
+                        frozen.copy(bounds = frozen.bounds.copy(right = frozen.bounds.right - 1))
+                    else frozen.copy(displayId = Int.MAX_VALUE))
+                    if (mismatch == "geometry") service.onDisplayChanged(display.displayId)
+                    else service.onDisplayRemoved(display.displayId)
+                    assertNull("Stale $mismatch must invalidate on callback", sessionField.get(service))
+                    service.execute(ScreenCommand(ScreenVerb.CLICK_CELL, 11)) { status = it }
+                }
+                assertEquals("SCREEN_SESSION_EXPIRED", status)
+                assertOverlayReleased(service)
+                assertNull("Rejected $mismatch must dispatch no gesture", ScreenControlFixtureActivity.lastTap)
+            }
         } finally { instrumentation.runOnMainSync { service.clear(); ScreenControlFixtureActivity.active?.finish() } }
     }
     @Test fun optInHundredPrepareClearResourceSmoke() {

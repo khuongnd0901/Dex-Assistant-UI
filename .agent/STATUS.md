@@ -1,3 +1,81 @@
+## 2026-10-10 — T-019 cancelled; source publication requested
+
+Owner explicitly cancelled T-019. Stop further microphone-selection implementation
+and physical acceptance. Existing sequential wake-routing prototype and diagnostic
+tests are retained for owner-requested source publication; they are not physically
+accepted. Snapshot includes version-gated command PCM injection for one recognition
+provider; host compilation cannot prove selected-input STT handoff on hardware. T-010 remains unfinished and takes priority.
+Older running-session descriptions below are historical; rediscover device state
+before any future run. No APK install or device changes in this publication.
+
+## 2026-10-10 — T-010 first natural10 batch READY (running)
+
+Owner now READY for natural10 and actual external-display resize/disconnect with
+Wi-Fi ADB retained. Collector is main-owned; do not start a second collector.
+Matching original-cert testAPK installed only (instrumentation package absent
+before this run), no production APK update. SHA256 test artifact
+9c758023f0bbd9639cb66d63140e48a61d213779168feb4b27ad08bf37ea5951;
+production installed APK hash0d9e529013a1654852f223453b9658803043822d31719e1963e60894c99b7fb4.
+Both original certificate9ddb7f47…abd83d03 verified from APKs.
+
+Natural fixture --no-restart READY_FOR_OWNER_SPEECH on dynamically selected
+Samsung display2, full1920×1080frame. Log `/tmp/t010-natural10-fixture.log`;
+exec session54164. Target10touch observations/900s; these never certify10natural
+speech sessions. No injected speech/gesture. Main handles owner observation,
+canonical acceptance and eventual real-display trial coordination. Production
+voice follows normal owner history policy, with no history clearing/override.
+
+Collector current battery fields now anchored to avoid Samsung history extras;
+intentional Ctrl-C/-SIGINT exit handled without false ADB-failure reporting.
+Six Python tests PASS before this minor shutdown correction; rerun below.
+Prior prepare-only state below is historical, superseded by owner readiness.
+
+## 2026-10-10 — T-010 natural acceptance tooling prepared (not executed)
+
+Prepared privacy-allowlisted `scripts/android/collect-t010-natural.py` with separate
+capture run directories and resumable per-run summary, correlated terminal
+candidates, wake→recognizer-ready and final/recognizer-end→dispatch measurements.
+No summary certifies natural acceptance. Recognizer speech_end is not an
+independently measured acoustic endpoint. Six collector privacy/aggregation/resume
+unit tests PASS; git diff --check PASS. JDK17/Linux SDK offline scoped
+`:app:lintDebug assembleDebugAndroidTest --max-workers=1` PASS99tasks/1m58s
+(`/tmp/t010-natural-tooling-build.log`). No install or device test executed.
+
+Opt-in debug natural fixture dynamically resolves the unique Samsung desktop,
+uses configurable1..100touch target (default10) and60..3600s bounded duration
+(default900); injects no speech/gesture and reports only raw touch observations.
+Touches alone cannot establish100natural sessions. Owner observation ledger is
+required. Production voice follows normal history policy; history equality is
+not claimed for a later natural trial. Production source unchanged.
+
+Runnable owner flow and resource/baseline limitations:
+`scripts/android/T010-NATURAL-ACCEPTANCE.md`. Owner asked preparation only; no
+interactive fixture, mic session, actual resize/disconnect or APK install run.
+No commit/push. Main owns canonical task/plan/acceptance updates.
+
+## 2026-10-10 — T-010 resumed; T-008 cancelled by owner
+
+Current priority is T-010; T-018 remains IN_PROGRESS independently. Owner
+cancelled T-008 (release automation follow-up); existing workflows are retained.
+Owner now authorizes hands-on natural100 and actual DeX output resize/disconnect,
+while preserving Wi-Fi ADB. Latest owner direction is prepare collector only;
+interactive speech/display changes have not started. Added one test-only physical
+callback regression: unrelated/default-display callbacks preserve a valid grid;
+simulated stale frozen geometry/identity invalidates the real service session,
+releases its overlay and rejects the following tap. The actual display is never
+resized or disconnected. Production code unchanged.
+
+Host JDK17/Linux SDK offline `./gradlew test lint assembleDebug
+assembleDebugAndroidTest --max-workers=1` PASS201 tasks/21s. App176 debug and176
+release tests each:0failures/errors,1skip. Original device-test cert verified
+SHA2569ddb7f47…abd83d03; only matching-signed testAPK replaced in place. Corrected raw-status Fold3 run PASS4/54.089s,0failures/skips: callback
+guards, actual content/window grid dispatch, coordinator subdivision/reset/
+consume-once, and real35.5s expiry. The first prematurely selected run used the
+old fixture and executed only3existing cases PASS52.526s; never count it as
+validation of the new case. Main records canonical T-010 evidence. No commit/push requested. Real resize/disconnect, natural100
+sessions, latency/resources and soak remain open; synthetic callback tests do
+not close these gates. Owner voice policy, role/DPC and secrets were not edited.
+
 ## 2026-10-10 — T-018 automatic Fold3 acceptance (IN_PROGRESS)
 
 Main-agent physical results: Gemini Settings UI save/update/delete/readd, model

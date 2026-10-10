@@ -45,7 +45,9 @@ class VoiceAssistantService : Service() {
     @Volatile private var wakeEngine: SherpaWakeEngine? = null
     private val microphoneLock = Any()
     private var recorder: AudioRecord? = null
+    @Volatile private var lastWakeMicrophoneId: Int? = null
     private var recognizer: SpeechRecognizer? = null
+    private var commandMicrophone: CommandMicrophoneSource? = null
     private var recognizerEpoch: Long? = null
     private var latestPartial = ""
     private var measuredEpoch: Long? = null
@@ -135,6 +137,7 @@ class VoiceAssistantService : Service() {
             startInForeground(notification(VoiceState.STOPPED, "Tự nghe bị tạm dừng theo lựa chọn của người dùng"))
             stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY
         }
+        if (action == ACTION_START) lastWakeMicrophoneId = null // Fresh session defaults to phone.
         if (action == ACTION_START || action == ACTION_RESUME) VoiceAutoStart.userResume(this)
         if (intent?.action == ACTION_DIAGNOSTIC) {
             val previous = stateMachine.state
@@ -272,7 +275,9 @@ class VoiceAssistantService : Service() {
                     check(input.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone start failed" }
                     stage("audio_recording")
                     main.post { if (sessions.isCurrent(id)) report("Listening for Hey Hey offline") }
+                    val router = WakeMicrophoneRouter(audioManager, input).also { it.start(SystemClock.elapsedRealtime(), lastWakeMicrophoneId) }
                     val samples = ShortArray(320)
+                    var resetForRoute = false
                     var firstCapture = true
                     while (sessions.isCurrent(id)) {
                         val count = input.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
@@ -294,7 +299,12 @@ class VoiceAssistantService : Service() {
                             val blocked = when (input.activeRecordingConfiguration?.isClientSilenced) { true -> "âm thanh bị hệ thống chặn"; false -> "đang nhận âm thanh"; null -> "chưa xác minh âm thanh" }
                             VoiceLiveState.microphone("$route · $blocked · RMS %.3f".format(java.util.Locale.ROOT, rms))
                         }
-                        if (engine.accept(samples, count)) { detectedAtNanos = SystemClock.elapsedRealtimeNanos(); stage("wake_detected"); detected = true; break }
+                        if (router.observe(samples, count, now)) {
+                            if (!resetForRoute) { engine.resetSession(); resetForRoute = true }
+                            continue
+                        }
+                        resetForRoute = false
+                        if (engine.accept(samples, count)) { lastWakeMicrophoneId = router.selectedDeviceId; detectedAtNanos = SystemClock.elapsedRealtimeNanos(); stage("wake_detected"); detected = true; break }
                     }
                 }
             }
@@ -363,7 +373,41 @@ class VoiceAssistantService : Service() {
                     finishWithFeedback(id, "Hết thời gian nghe. Hãy gọi lại.", "STT_TIMEOUT")
                 }
             }.also { main.postDelayed(it, 30_000) }
-            recognizer!!.startListening(CommandRecognizer.intent(commandEndpointHints = !chatActive && !diagnosticOnly))
+            val intent = CommandRecognizer.intent(commandEndpointHints = !chatActive && !diagnosticOnly)
+            val version = packageManager.getPackageInfo(component.packageName, 0).longVersionCode
+            if (MicrophonePcmCapability.supports(Build.VERSION.SDK_INT, component.packageName, component.className, version)) {
+                commandMicrophone = CommandMicrophoneSource(this, lastWakeMicrophoneId, main, wakeWorker,
+                    ready = { descriptor, type ->
+                        if (isRecognizing(id)) {
+                            val route = when (type) {
+                                android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Micro điện thoại"
+                                android.media.AudioDeviceInfo.TYPE_USB_DEVICE, android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "Micro USB"
+                                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET -> "Micro Bluetooth"
+                                else -> "Micro ngoài"
+                            }
+                            VoiceLiveState.microphone("STT: $route · nguồn đã xác minh")
+                            runCatching {
+                                recognizer!!.startListening(intent
+                                    .putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE, descriptor)
+                                    .putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, 16_000)
+                                    .putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
+                                    .putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
+                                    .putExtra(android.speech.RecognizerIntent.EXTRA_SEGMENTED_SESSION, android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE))
+                            }.onFailure {
+                                destroyRecognizer()
+                                finishWithFeedback(id, "Không thể nhận giọng nói. Hãy gọi lại.", "STT_START_FAILED")
+                            }
+                        }
+                    }, failed = { status ->
+                        if (isRecognizing(id)) {
+                            destroyRecognizer()
+                            finishWithFeedback(id, "Micro đã ngắt hoặc không sẵn sàng. Hãy gọi lại.", status)
+                        }
+                    }).also { it.start() }
+            } else {
+                VoiceLiveState.microphone("STT: hệ thống chọn micro · chưa giữ được nguồn đánh thức")
+                recognizer!!.startListening(intent)
+            }
         }.onFailure {
             destroyRecognizer()
             finishWithFeedback(id, "Không thể nhận giọng nói. Hãy gọi lại.", "STT_START_FAILED")
@@ -377,6 +421,7 @@ class VoiceAssistantService : Service() {
         override fun onReadyForSpeech(params: Bundle?) {
             if (isRecognizing(id) && !announcedReady) {
                 announcedReady = true
+                commandMicrophone?.recognizerReady()
                 timing(id, "stt_ready")
                 voiceEnd(id, "wakeLatency")
                 voiceMark(id, "sttLatency")
@@ -385,6 +430,13 @@ class VoiceAssistantService : Service() {
                 feedback.readyTone()
                 report("Ready for Vietnamese command; ${feedback.readyCueDescription}")
             }
+        }
+        override fun onSegmentResults(segmentResults: Bundle) {
+            if (isRecognizing(id) && !segmentResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).isNullOrEmpty())
+                onResults(segmentResults)
+        }
+        override fun onEndOfSegmentedSession() {
+            if (isRecognizing(id)) onError(SpeechRecognizer.ERROR_NO_MATCH)
         }
         override fun onBeginningOfSpeech() { if (isRecognizing(id)) timing(id, "speech_begin") }
         override fun onRmsChanged(rmsdB: Float) {
@@ -656,6 +708,8 @@ class VoiceAssistantService : Service() {
     }
 
     private fun destroyRecognizer() {
+        commandMicrophone?.close()
+        commandMicrophone = null
         VoiceLiveState.ready(false)
         feedback.cancelReadyTone()
         watchdog?.let(main::removeCallbacks)
