@@ -17,13 +17,21 @@ import java.util.concurrent.atomic.AtomicInteger
 class DirectAiFaultDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val fixtureScope = "offline-ai-fixture-${java.util.UUID.randomUUID()}-"
+    private val encryptedReads = java.util.concurrent.ConcurrentHashMap<String, AtomicInteger>()
     private val fixturePreferences = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val context by lazy {
         object : android.content.ContextWrapper(instrumentation.targetContext) {
             override fun getApplicationContext(): android.content.Context = this
             override fun getSharedPreferences(name: String, mode: Int): android.content.SharedPreferences {
                 fixturePreferences.add(name)
-                return instrumentation.targetContext.getSharedPreferences(fixtureScope + name, mode)
+                val preferences = instrumentation.targetContext.getSharedPreferences(fixtureScope + name, mode)
+                return object : android.content.SharedPreferences by preferences {
+                    override fun getString(key: String?, defValue: String?): String? {
+                        if (name == "ai_provider_keys_v1" && key?.endsWith("_encrypted") == true)
+                            encryptedReads.computeIfAbsent(key) { AtomicInteger() }.incrementAndGet()
+                        return preferences.getString(key, defValue)
+                    }
+                }
             }
         }
     }
@@ -273,6 +281,174 @@ class DirectAiFaultDeviceTest {
             instrumentation.runOnMainSync { core.endChat(); core.observeChat(null); core.observeChatIdleExpiry(null) }
             history.flush(); history.clear()
         }
+    }
+
+    @Test fun commandCancellationStopsUnderlyingCallWithoutFallbackAndFreshPlanWorks() = configured { secrets, settings ->
+        settings.setModel(AiProvider.GROQ, "offline-secondary-model")
+        settings.setFreeTierConfirmed(AiProvider.GROQ, true); settings.setEnabled(AiProvider.GROQ, true)
+        secrets.save(AiProvider.GROQ, "offline-secondary-placeholder")
+        val entered = CountDownLatch(1)
+        val cancelled = CountDownLatch(1)
+        val calls = AtomicInteger()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            if (calls.incrementAndGet() == 1) {
+                entered.countDown()
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                while (!chain.call().isCanceled() && System.nanoTime() < deadline) Thread.sleep(10)
+                if (chain.call().isCanceled()) cancelled.countDown()
+                throw IOException("cancelled fixture")
+            }
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture")
+                .body("""{"candidates":[{"content":{"parts":[{"functionCall":{"name":"deviceCommand_VOLUME_SET","args":{"operation":"SET","percent":30}}}]}}]}""".toResponseBody()).build()
+        }.build()
+        val proxy = MobileAiProxy(secrets, settings, client)
+        val registry = com.khuongnd.dexassistant.ui.routing.CommandRegistry.load(context)
+        val supported = setOf(com.khuongnd.dexassistant.ui.routing.ActionId.VOLUME_SET)
+        val error = java.util.concurrent.atomic.AtomicReference<MobileAiException?>()
+        val metrics = java.util.concurrent.CopyOnWriteArrayList<Pair<String, Long>>()
+        val worker = Thread {
+            try { proxy.plan("Đặt âm lượng 30 phần trăm", registry, supported) { name, micros -> metrics += name to micros } }
+            catch (failure: MobileAiException) { error.set(failure) }
+        }
+        try {
+            worker.start(); assertTrue(entered.await(2, TimeUnit.SECONDS))
+            proxy.cancelPendingRequest(); assertTrue(cancelled.await(1, TimeUnit.SECONDS)); worker.join(2000)
+            assertFalse(worker.isAlive); assertEquals("AI_TIMEOUT", error.get()?.code)
+            assertEquals(false, error.get()?.canFallback); assertEquals(1, calls.get())
+            assertEquals(1, metrics.count { it.first == "providerRequestLatency" })
+            assertFalse(metrics.any { it.first == "providerFirstByteLatency" })
+            assertEquals(1, proxy.plan("Đặt âm lượng 30 phần trăm", registry, supported).size)
+            assertEquals(2, calls.get())
+        } finally {
+            proxy.cancelPendingRequest(); worker.join(6000)
+            secrets.delete(AiProvider.GROQ); settings.setEnabled(AiProvider.GROQ, false)
+        }
+    }
+
+    @Test fun commandMetricsCoverSuccessMalformedOversizeEmptyAndTransportError() = configured { secrets, settings ->
+        val valid = """{"candidates":[{"content":{"parts":[{"functionCall":{"name":"deviceCommand_VOLUME_SET","args":{"operation":"SET","percent":30}}}]}}]}"""
+        val cases = listOf(valid to "PLANNED", "{" to "INVALID_LLM_OUTPUT", "" to "INVALID_LLM_OUTPUT",
+            (valid + " ".repeat(65_536)) to "INVALID_LLM_OUTPUT", null to "AI_TIMEOUT")
+        val registry = com.khuongnd.dexassistant.ui.routing.CommandRegistry.load(context)
+        val supported = setOf(com.khuongnd.dexassistant.ui.routing.ActionId.VOLUME_SET)
+        cases.forEach { (body, expected) ->
+            val names = mutableListOf<String>()
+            val trace = com.khuongnd.dexassistant.ui.latency.RequestLatency(java.util.UUID.randomUUID().toString()) { android.util.Log.i("DexLatency", it) }
+            trace.path = "direct"; trace.resolveOrigin("direct"); trace.stage("admitted")
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                if (body == null) throw IOException("offline fixture")
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture")
+                    .body(body.toResponseBody()).build()
+            }.build()
+            try {
+                assertEquals(1, MobileAiProxy(secrets, settings, client).plan("Đặt âm lượng 30 phần trăm", registry, supported) { name, micros ->
+                    names += name; trace.metric(name, micros)
+                }.size)
+                assertEquals("PLANNED", expected); trace.terminal("PLANNED")
+            } catch (error: MobileAiException) {
+                assertEquals(expected, error.code); trace.terminal(error.code)
+            }
+            assertEquals(1, names.count { it == "providerRequestLatency" })
+            assertEquals(if (body == null || body.isEmpty()) 0 else 1, names.count { it == "providerFirstByteLatency" })
+            assertEquals(if (body == null) 0 else 1, names.count { it == "providerBodyLatency" })
+        }
+    }
+
+    @Test fun chatMetricsAndExactErrorMappingUseAndroidJsonForMalformedMissingAndOversizeBody() = configured { secrets, settings ->
+        val valid = """{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"Xin chào"}]}}]}"""
+        listOf(valid to "REPLIED", "{" to "CHAT_INVALID_OUTPUT", "{}" to "CHAT_INVALID_OUTPUT",
+            "" to "CHAT_INVALID_OUTPUT", "x".repeat(65_537) to "CHAT_INVALID_OUTPUT").forEach { (body, expected) ->
+            val trace = com.khuongnd.dexassistant.ui.latency.RequestLatency(java.util.UUID.randomUUID().toString()) { android.util.Log.i("DexLatency", it) }
+            trace.path = "chat"; trace.resolveOrigin("chat"); trace.stage("admitted")
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture")
+                    .body(body.toResponseBody()).build()
+            }.build()
+            try {
+                assertEquals("Xin chào", DirectAiChat(secrets, settings, client).reply(DirectChatState().begin("Xin chào"), trace::metric))
+                assertEquals("REPLIED", expected); trace.terminal("REPLIED")
+            } catch (error: MobileAiException) {
+                assertEquals(expected, error.code); trace.terminal(error.code)
+            }
+        }
+    }
+
+    @Test fun requestLocalKeyReuseDecryptsOnceAndRereadsRotationDeletionAndFallbackKeys() = configured { secrets, settings ->
+        val registry = com.khuongnd.dexassistant.ui.routing.CommandRegistry.load(context)
+        val supported = setOf(com.khuongnd.dexassistant.ui.routing.ActionId.VOLUME_SET)
+        val commandResponse = """{"candidates":[{"content":{"parts":[{"functionCall":{"name":"deviceCommand_VOLUME_SET","args":{"operation":"SET","percent":30}}}]}}]}"""
+        val chatResponse = """{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"Xin chào"}]}}]}"""
+        listOf(false, true).forEach { chat ->
+            val headers = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                headers += chain.request().header("x-goog-api-key")!!
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture")
+                    .body((if (chat) chatResponse else commandResponse).toResponseBody()).build()
+            }.build()
+            val proxy = MobileAiProxy(secrets, settings, client)
+            val conversation = DirectAiChat(secrets, settings, client)
+            fun request() {
+                if (chat) conversation.reply(DirectChatState().begin("Xin chào"))
+                else proxy.plan("Đặt âm lượng 30 phần trăm", registry, supported)
+            }
+            secrets.save(AiProvider.GEMINI, "first-fixture-key")
+            encryptedReads.clear(); request()
+            assertEquals(1, encryptedReads["GEMINI_encrypted"]?.get())
+            secrets.save(AiProvider.GEMINI, "rotated-fixture-key")
+            encryptedReads.clear(); request()
+            assertEquals(1, encryptedReads["GEMINI_encrypted"]?.get())
+            assertEquals(listOf("first-fixture-key", "rotated-fixture-key"), headers)
+            secrets.delete(AiProvider.GEMINI)
+            try { request(); fail("Deleted key must never be reused") }
+            catch (error: MobileAiException) { assertEquals("AI_PROVIDER_NOT_CONFIGURED", error.code) }
+            assertEquals(2, headers.size)
+        }
+        secrets.save(AiProvider.GEMINI, "primary-fixture-key")
+        settings.setModel(AiProvider.GROQ, "offline-secondary-model")
+        settings.setFreeTierConfirmed(AiProvider.GROQ, true); settings.setEnabled(AiProvider.GROQ, true)
+        try {
+            listOf(false, true).forEach { chat ->
+                secrets.save(AiProvider.GROQ, "stale-secondary-fixture-key")
+                val calls = AtomicInteger()
+                val client = OkHttpClient.Builder().addInterceptor { chain ->
+                    calls.incrementAndGet()
+                    if (chain.request().url.host == "generativelanguage.googleapis.com") {
+                        secrets.save(AiProvider.GROQ, "fresh-secondary-fixture-key")
+                        response(chain.request(), 429)
+                    } else {
+                        assertEquals("Bearer fresh-secondary-fixture-key", chain.request().header("Authorization"))
+                        val body = if (chat) """{"choices":[{"message":{"content":"Xin chào"}}]}"""
+                        else """{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"deviceCommand_VOLUME_SET","arguments":"{\"operation\":\"SET\",\"percent\":30}"}}]}}]}"""
+                        Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture")
+                            .body(body.toResponseBody()).build()
+                    }
+                }.build()
+                encryptedReads.clear()
+                if (chat) assertEquals("Xin chào", DirectAiChat(secrets, settings, client).reply(DirectChatState().begin("Xin chào")))
+                else assertEquals(1, MobileAiProxy(secrets, settings, client).plan("Đặt âm lượng 30 phần trăm", registry, supported).size)
+                assertEquals(2, calls.get())
+                assertEquals(1, encryptedReads["GEMINI_encrypted"]?.get())
+                assertEquals(2, encryptedReads["GROQ_encrypted"]?.get())
+            }
+        } finally { secrets.delete(AiProvider.GROQ); settings.setEnabled(AiProvider.GROQ, false) }
+    }
+
+    @Test fun serializedRequestsPreserveEscapedInputsAndProviderSchemasAcrossFreshScopes() = configured { secrets, settings ->
+        val input = "Tìm \"Sơn Tùng\" \\ nhạc\n😀"
+        val registry = com.khuongnd.dexassistant.ui.routing.CommandRegistry.load(context)
+        val supported = setOf(com.khuongnd.dexassistant.ui.routing.ActionId.VOLUME_SET)
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val buffer = okio.Buffer(); chain.request().body!!.writeTo(buffer)
+            val json = org.json.JSONObject(buffer.readUtf8())
+            assertEquals(input, json.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text"))
+            val declarations = json.getJSONArray("tools").getJSONObject(0).getJSONArray("functionDeclarations")
+            assertEquals(1, declarations.length())
+            assertEquals("deviceCommand_VOLUME_SET", declarations.getJSONObject(0).getString("name"))
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture")
+                .body("""{"candidates":[{"content":{"parts":[{"functionCall":{"name":"deviceCommand_VOLUME_SET","args":{"operation":"SET","percent":30}}}]}}]}""".toResponseBody()).build()
+        }.build()
+        val proxy = MobileAiProxy(secrets, settings, client)
+        repeat(3) { assertEquals(1, proxy.plan(input, registry, supported).size) }
     }
 
     @Test fun fixtureCredentialsAndPreferencesLeaveOwnerStoresUnchanged() {

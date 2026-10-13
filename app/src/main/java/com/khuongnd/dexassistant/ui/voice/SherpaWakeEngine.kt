@@ -21,15 +21,20 @@ class SherpaWakeEngine(assets: AssetManager) : AutoCloseable {
         ), keywordsFile = "kws/keywords.txt",
     ))
     private var stream = spotter.createStream()
+    private val pcm = WakePcmBuffer()
+    private var closed = false
     /** Worker-confined; no audio or decoder history survives between listening epochs. */
     fun resetSession() {
+        check(!closed)
+        pcm.clear()
         val fresh = spotter.createStream()
         stream.release()
         stream = fresh
     }
 
     fun accept(samples: ShortArray, count: Int): Boolean {
-        val normalized = FloatArray(count) { samples[it] / 32768f }
+        check(!closed)
+        val normalized = pcm.convert(samples, count)
         stream.acceptWaveform(normalized, 16_000)
         while (spotter.isReady(stream)) {
             spotter.decode(stream)
@@ -37,5 +42,10 @@ class SherpaWakeEngine(assets: AssetManager) : AutoCloseable {
         }
         return false
     }
-    override fun close() { stream.release(); spotter.release() }
+    /** Clear session audio on capture-loop exit while keeping the warm native model. */
+    internal fun clearCapturedFrame() { pcm.clear() }
+    override fun close() {
+        if (closed) return
+        closed = true; pcm.clear(); stream.release(); spotter.release()
+    }
 }

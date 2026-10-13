@@ -269,13 +269,15 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         removeOverlay()
         session = null; preparingDisplayId = null; preparingSnapshot = null; imageTargets = emptyList(); imageFingerprints = emptyMap()
     }
-    fun execute(command: ScreenCommand, complete: (String) -> Unit) {
+    fun execute(command: ScreenCommand, complete: (String) -> Unit) = execute(command, {}, complete)
+    /** Metric hook follows validation; rejected/cancelled commands never fabricate dispatch. */
+    fun execute(command: ScreenCommand, onActionStart: () -> Unit, complete: (String) -> Unit) {
         if (youtubePreview.hasHistory && command.verb == ScreenVerb.CLICK_TARGET) {
             clear(); complete("CONFIRMATION_REQUIRED"); return
         }
         if (command.verb == ScreenVerb.CANCEL) { clear(); complete("CANCELLED"); return }
         if (command.verb == ScreenVerb.INVALID) { clear(); complete("INVALID_SCREEN_COMMAND"); return }
-        if (command.verb == ScreenVerb.GRID) { freshGrid(complete); return }
+        if (command.verb == ScreenVerb.GRID) { freshGrid(complete, onActionStart); return }
         val current = session
         if (current == null) { complete("SCREEN_SESSION_EXPIRED"); return }
         if (!gestureGate.isCurrent(current.id) || !matches(current.snapshot, snapshot(current.grid != null), current.grid != null, "execute")) { clear(); complete("SCREEN_CHANGED"); return }
@@ -288,7 +290,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             session = current.copy(grid = cell, depth = current.depth + 1)
             android.util.Log.i("DexScreen", "subdivision depth=${current.depth + 1} grid=$cell")
             handler.removeCallbacks(expiry); handler.postDelayed(expiry, 35_000)
-            refreshOverlay(complete); return
+            refreshOverlay(complete, onActionStart); return
         }
         val target = when (command.verb) {
             ScreenVerb.CLICK_CELL -> current.grid?.cell(number)
@@ -329,15 +331,15 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
                             if (!same) { reject("patch_changed"); return }
                             if (token != epoch || !matches(current.snapshot, snapshot(), false, "image_revalidation")) { reject("session_changed"); return }
                             finished = true; releaseSubtitle(); handler.removeCallbacks(timeout)
-                            sendGesture(current.snapshot.displayId, target, complete)
+                            sendGesture(current.snapshot.displayId, target, complete, onActionStart)
                         }
                     }) }.onFailure { reject("capture_exception_${it.javaClass.simpleName}") }
                 }
             } }.onFailure { reject("detach_exception_${it.javaClass.simpleName}") } } }.onFailure { reject("detach_exception_${it.javaClass.simpleName}") }
-        } else sendGesture(current.snapshot.displayId, target, complete)
+        } else sendGesture(current.snapshot.displayId, target, complete, onActionStart)
     }
     /** Explicit presentation never executes a tap or reuses stale numbered target identities. */
-    private fun freshGrid(complete: (String) -> Unit) {
+    private fun freshGrid(complete: (String) -> Unit, onActionStart: () -> Unit) {
         val previous = session?.snapshot
         clear()
         val fresh = snapshot(true)
@@ -348,7 +350,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         }
         session = Session(UUID.randomUUID().toString(), fresh, fresh.bounds, 0)
         gestureGate.activate(session!!.id)
-        refreshOverlay(complete)
+        refreshOverlay(complete, onActionStart)
     }
     private fun matches(expected: ScreenSnapshot, fresh: ScreenSnapshot?, grid: Boolean, stage: String): Boolean {
         val mismatch = expected.mismatch(fresh, grid) ?: return true
@@ -375,7 +377,7 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
             for (x in rect.left until rect.right step maxOf(1, rect.width / 24)) hash = hash * 31 + bitmap.getPixel(x, y)
         return hash
     }
-    private fun sendGesture(displayId: Int, target: ScreenRect, complete: (String) -> Unit) {
+    private fun sendGesture(displayId: Int, target: ScreenRect, complete: (String) -> Unit, onActionStart: () -> Unit = {}) {
         android.util.Log.i("DexScreen", "gesture displayId=$displayId target=$target")
         val path = Path().apply { moveTo(target.x, target.y) }
         val gesture = GestureDescription.Builder().setDisplayId(displayId)
@@ -386,14 +388,15 @@ class DexAccessibilityService : AccessibilityService(), DisplayManager.DisplayLi
         fun finish(status: String) { if (!terminal) { terminal = true; complete(status) } }
         val timeout = Runnable { finish("SCREEN_GESTURE_TIMEOUT") }
         handler.postDelayed(timeout, 2000)
-        val accepted = runCatching { dispatchGesture(gesture, object : GestureResultCallback() {
+        val accepted = runCatching { onActionStart(); dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) { handler.removeCallbacks(timeout); finish("DISPATCHED") }
             override fun onCancelled(gestureDescription: GestureDescription?) { handler.removeCallbacks(timeout); finish("SCREEN_GESTURE_CANCELLED") }
         }, handler) }.getOrDefault(false)
         if (!accepted) { handler.removeCallbacks(timeout); finish("SCREEN_GESTURE_REJECTED") }
     }
-    private fun refreshOverlay(complete: (String) -> Unit) {
+    private fun refreshOverlay(complete: (String) -> Unit, onActionStart: () -> Unit) {
         runCatching { show() }.onSuccess {
+            onActionStart()
             handler.removeCallbacks(expiry); handler.postDelayed(expiry, 35_000)
             complete("SCREEN_CONTINUE")
         }

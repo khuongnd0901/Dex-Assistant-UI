@@ -77,31 +77,44 @@ class DirectAiChat(
         "Never claim to control the device, execute an action, or request credentials. " +
         "Do not produce device instructions as if they were executed. Answer in the user's language."
 
-    fun reply(turn: DirectChatState.Turn): String {
+    fun reply(turn: DirectChatState.Turn, metric: (String, Long) -> Unit = { _, _ -> }): String {
         if (Thread.currentThread().isInterrupted) throw MobileAiException("CHAT_PROVIDER_TIMEOUT")
         val preferred = settings.defaultProvider()
         // Do not silently switch away from an explicitly preferred unsupported provider.
         if (!preferred.supportsDirectCommands) throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
+        var firstEligibleKey: String? = null
         val providers = (listOf(preferred) + AiProvider.entries.filter { it != preferred })
             .distinct().filter { it.supportsDirectCommands && settings.enabled(it) &&
-                settings.freeTierConfirmed(it) && settings.model(it).isNotBlank() && credentials.hasKey(it) }
+                settings.freeTierConfirmed(it) && settings.model(it).isNotBlank() &&
+                if (firstEligibleKey == null) credentials.load(it)?.also { key -> firstEligibleKey = key } != null
+                else credentials.hasKey(it) }
         if (providers.isEmpty()) throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
         var failure = MobileAiException("CHAT_PROVIDER_UNAVAILABLE")
         for (provider in providers) {
+            var parseMicros = 0L
+            var parsed = false
+            val timingMetric: (String, Long) -> Unit = { name, micros ->
+                if (name == "providerParseLatency") { parsed = true; parseMicros += micros }
+                else metric(name, micros)
+            }
             if (Thread.currentThread().isInterrupted) throw MobileAiException("CHAT_PROVIDER_TIMEOUT")
             try {
-                val key = credentials.load(provider) ?: throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
-                val result = call(provider, key, settings.model(provider), turn)
-                return parse(provider, result)
+                // This key lives only in this reply; later turns always reread current credentials.
+                val key = (if (provider == providers.first()) firstEligibleKey.also { firstEligibleKey = null }
+                    else credentials.load(provider)) ?: throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
+                val result = call(provider, key, settings.model(provider), turn, timingMetric)
+                return ProviderTiming.parse(timingMetric) { parse(provider, result) }
             } catch (e: MobileAiException) {
                 failure = e
                 if (!e.canFallback) throw e
+            } finally {
+                if (parsed) metric("providerParseLatency", parseMicros)
             }
         }
         throw failure
     }
 
-    private fun call(provider: AiProvider, key: String, model: String, turn: DirectChatState.Turn): JSONObject {
+    private fun call(provider: AiProvider, key: String, model: String, turn: DirectChatState.Turn, metric: (String, Long) -> Unit): JSONObject {
         val input = turn.input
         val time = turn.time
         val systemText = system + " Current user local time: " + time.toOffsetDateTime() +
@@ -145,22 +158,28 @@ class DirectAiChat(
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
         val call = client.newCall(request)
         activeCall.set(call)
+        val timing = ProviderTiming(metric)
         try {
             if (Thread.currentThread().isInterrupted) call.cancel()
             call.execute().use { response ->
+                timing.headers()
                 if (!response.isSuccessful) throw when (response.code) {
                     429 -> MobileAiException("AI_QUOTA_EXHAUSTED", true)
                     408, 500, 502, 503, 504 -> MobileAiException("CHAT_PROVIDER_UNAVAILABLE", true)
                     401, 403 -> MobileAiException("AI_AUTH_FAILED")
                     else -> MobileAiException("CHAT_PROVIDER_UNAVAILABLE")
                 }
-                val text = response.body?.string() ?: throw MobileAiException("CHAT_INVALID_OUTPUT")
+                val responseBody = response.body ?: throw MobileAiException("CHAT_INVALID_OUTPUT")
+                val text = timing.body(responseBody) { BoundedProviderBody.chat(responseBody) }
                 if (text.length > 65536) throw MobileAiException("CHAT_INVALID_OUTPUT")
-                return try { JSONObject(text) } catch (_: RuntimeException) {
+                return try { ProviderTiming.parse(metric) { JSONObject(text) } } catch (_: org.json.JSONException) {
+                    throw MobileAiException("CHAT_INVALID_OUTPUT")
+                } catch (_: RuntimeException) {
                     throw MobileAiException("CHAT_INVALID_OUTPUT")
                 }
             }
         } catch (_: IOException) {
+            timing.headers()
             throw MobileAiException("CHAT_PROVIDER_TIMEOUT", !call.isCanceled())
         } finally {
             activeCall.compareAndSet(call, null)
@@ -194,6 +213,8 @@ class DirectAiChat(
                     }
                     else -> throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
                 }
+            } catch (_: org.json.JSONException) {
+                throw MobileAiException("CHAT_INVALID_OUTPUT")
             } catch (_: RuntimeException) {
                 throw MobileAiException("CHAT_INVALID_OUTPUT")
             }

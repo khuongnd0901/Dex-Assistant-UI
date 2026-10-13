@@ -10,21 +10,37 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 
 object CommandRecognizer {
-    /** Excludes our required assistant-contract stub; it is not a command STT engine. */
-    fun component(context: Context): ComponentName? {
-        val services = context.packageManager.queryIntentServices(
+    private data class Candidate(val component: ComponentName, val system: Boolean)
+    private var catalog: List<Candidate>? = null
+    private var receiverRegistered = false
+    /** Package enable/export/install changes invalidate discovery; Secure selection is read every time. */
+    @Synchronized internal fun invalidateCatalog() { catalog = null }
+
+    /** Excludes our assistant-contract stub; retains only a bounded package catalog, never a recognizer. */
+    @Synchronized fun component(context: Context): ComponentName? {
+        if (!receiverRegistered) {
+            val filter = android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED)
+                addAction(Intent.ACTION_PACKAGE_CHANGED); addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addDataScheme("package")
+            }
+            androidx.core.content.ContextCompat.registerReceiver(context.applicationContext,
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: Context, intent: Intent) = invalidateCatalog()
+                }, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+            receiverRegistered = true
+        }
+        val services = catalog ?: context.packageManager.queryIntentServices(
             Intent(RecognitionService.SERVICE_INTERFACE), 0,
         ).mapNotNull { it.serviceInfo }.filter { it.packageName != context.packageName && it.exported }
+            .map { Candidate(ComponentName(it.packageName, it.name),
+                it.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) }
+            .sortedWith(compareByDescending<Candidate> { it.system }
+                .thenBy { it.component.packageName }.thenBy { it.component.className })
+            .also { catalog = it }
         val configured = Settings.Secure.getString(context.contentResolver, "voice_recognition_service")
             ?.let(ComponentName::unflattenFromString)
-        services.firstOrNull { configured == ComponentName(it.packageName, it.name) }?.let {
-            return ComponentName(it.packageName, it.name)
-        }
-        return services.sortedWith(compareByDescending<android.content.pm.ServiceInfo> {
-            it.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0
-        }.thenBy { it.packageName }.thenBy { it.name }).firstOrNull()?.let {
-            ComponentName(it.packageName, it.name)
-        }
+        return services.firstOrNull { configured == it.component }?.component ?: services.firstOrNull()?.component
     }
 
     fun intent(commandEndpointHints: Boolean = true): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)

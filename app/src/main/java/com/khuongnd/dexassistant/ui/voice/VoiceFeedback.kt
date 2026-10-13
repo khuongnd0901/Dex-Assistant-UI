@@ -20,6 +20,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
     private var closed = false
     private var pending: (() -> Unit)? = null
     private var completion: ((Boolean) -> Unit)? = null
+    private var started: (() -> Unit)? = null
     private var utterance: String? = null
     var voiceDescription = "TTS_INITIALIZING"
         private set
@@ -55,7 +56,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
             pending?.also { pending = null; it() }
         } }
         engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) { main.post { if (utterance == utteranceId) timing("tts_started") } }
+            override fun onStart(utteranceId: String?) { main.post { if (utterance == utteranceId) { timing("tts_started"); started?.also { started = null; it() } } } }
             override fun onDone(utteranceId: String?) { finish(utteranceId, false) }
             @Deprecated("Android callback") override fun onError(utteranceId: String?) { finish(utteranceId, true) }
             override fun onError(utteranceId: String?, errorCode: Int) { finish(utteranceId, true) }
@@ -117,12 +118,12 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         val epoch = utterance?.removePrefix("voice-")?.toLongOrNull() ?: -1L
         android.util.Log.i("DexVoiceTiming", "epoch=$epoch stage=$stage atMs=${android.os.SystemClock.elapsedRealtime()}")
     }
-    fun speak(text: String, id: String, done: () -> Unit) = speakWithResult(text, id) { done() }
+    fun speak(text: String, id: String, done: () -> Unit) = speakWithResult(text, id, done = { done() })
     /** Interactive prompts only continue after successful synthesis; a tone cannot authorize an action. */
-    fun speakInteraction(text: String, id: String, done: (Boolean) -> Unit) = speakWithResult(text, id, done)
-    private fun speakWithResult(text: String, id: String, done: (Boolean) -> Unit) {
+    fun speakInteraction(text: String, id: String, done: (Boolean) -> Unit, onStarted: (() -> Unit)? = null) = speakWithResult(text, id, done, onStarted)
+    private fun speakWithResult(text: String, id: String, done: (Boolean) -> Unit, onStarted: (() -> Unit)? = null) {
         if (closed) { done(false); return }
-        if (!initialized) { pending = { speakWithResult(text, id, done) }; return }
+        if (!initialized) { pending = { speakWithResult(text, id, done, onStarted) }; return }
         if (!ready) {
             tone.startTone(ToneGenerator.TONE_PROP_NACK, 120)
             done(false)
@@ -130,6 +131,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         }
         utterance = id
         completion = done
+        started = onStarted
         timing("tts_queued")
         if (engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) {
             finish(id, true)
@@ -140,6 +142,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         if (id != null && utterance == id) {
             timing(if (failed) "tts_error" else "tts_done")
             utterance = null
+            started = null
             describe(if (failed) "TTS_PLAYBACK_FAILED" else if (selectedNetwork) "TTS_VI_NETWORK_SYNTHESIZED" else "TTS_VI_OFFLINE_SYNTHESIZED")
             if (failed) tone.startTone(ToneGenerator.TONE_PROP_NACK, 120)
             completion?.also { completion = null; it(!failed) }
@@ -152,6 +155,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         cancelReadyTone()
         pending = null
         completion = null
+        started = null
         utterance = null
         engine?.stop()
     }

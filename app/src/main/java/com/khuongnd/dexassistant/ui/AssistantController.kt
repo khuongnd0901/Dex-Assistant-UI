@@ -28,7 +28,7 @@ import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
 import com.khuongnd.dexassistant.ui.screen.DexAccessibilityService
 import com.khuongnd.dexassistant.ui.screen.ScreenCommandParser
-import com.khuongnd.dexassistant.ui.latency.CommandLatency
+import com.khuongnd.dexassistant.ui.latency.RequestLatency
 
 data class VoiceCommandResult(val requestId: String, val status: String, val message: String)
 
@@ -64,6 +64,7 @@ class AssistantCoordinator internal constructor(
     private val chatClient: okhttp3.OkHttpClient? = null,
     private val chatCredentials: AiCredentialStore = AiCredentialStore(context),
     private val chatIdleTimeoutMillis: Long = 15 * 60 * 1000L,
+    private val latencySink: (String) -> Unit = { android.util.Log.i("DexLatency", it) },
 ) {
     private val observers = linkedSetOf<(UiState) -> Unit>()
     private var started = false
@@ -76,23 +77,27 @@ class AssistantCoordinator internal constructor(
     private var pendingDispatched = false
     private var directDispatch = false
     private val aiSettings = AiProviderSettings(context)
-    private val aiProxy by lazy { MobileAiProxy(AiCredentialStore(context), aiSettings) }
+    private val aiProxyDelegate = lazy { MobileAiProxy(AiCredentialStore(context), aiSettings) }
+    private val aiProxy by aiProxyDelegate
     private val directExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "dex-direct-ai").apply { isDaemon = true }
     }
     private var directTask: java.util.concurrent.Future<*>? = null
     private var remoteDispatch = false
-    private var latency: CommandLatency? = null
-    private var latencyPath = "local"
+    private var latency: RequestLatency? = null
+    private var latencyPath: String
+        get() = latency?.path ?: "local"
+        set(value) { latency?.path = value }
     private var speechEndAtNanos: Long? = null
     private fun markActionStart() {
+        val now = SystemClock.elapsedRealtimeNanos()
+        latency?.end("finalToActionStartLatency", now)
         val start = speechEndAtNanos ?: return
         speechEndAtNanos = null
-        val now = SystemClock.elapsedRealtimeNanos()
         if (now >= start) latencyEvent("speechEndToActionStartLatency", (now - start) / 1_000)
     }
     private fun latencyEvent(name: String, micros: Long) {
-        pendingId?.let { android.util.Log.i("DexLatency", "requestId=$it path=$latencyPath metric=$name durationUs=$micros") }
+        latency?.metric(name, micros)
     }
     private fun safeReason(value: String): String = if (value.matches(Regex("[A-Z][A-Z0-9_]{0,63}"))) value else "OTHER"
     private val executedActions = mutableSetOf<String>()
@@ -110,6 +115,7 @@ class AssistantCoordinator internal constructor(
     private var chatTurn: UUID? = null
     private var chatTask: java.util.concurrent.Future<*>? = null
     private var chatEpoch = 0L
+    private var chatLatency: RequestLatency? = null
     private var chatIdleObserver: (() -> Unit)? = null
     internal fun observeChatIdleExpiry(observer: (() -> Unit)?) { chatIdleObserver = observer }
     private val chatIdleExpiry: Runnable = Runnable {
@@ -142,17 +148,25 @@ class AssistantCoordinator internal constructor(
         }
     }
 
-    fun sendChat(text: String) = onMain {
+    fun sendChat(text: String, voiceEpoch: Long? = null, finalAcceptedNanos: Long? = null) = onMain {
+        val acceptedAt = finalAcceptedNanos ?: SystemClock.elapsedRealtimeNanos()
+        val requestId = UUID.randomUUID()
+        val trace = RequestLatency(requestId.toString(), latencySink).also {
+            it.path = "chat"; it.resolveOrigin("chat"); it.stage("admitted", voiceEpoch)
+            it.start("chatReplyLatency", acceptedAt)
+        }
         val session = chatSession
         if (session == null || directChatState.expired()) {
             endChat("STOP")
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
-                session, UUID.randomUUID(), "CHAT_INVALID_SESSION", "Chat đã kết thúc", false))
+                session, requestId, "CHAT_INVALID_SESSION", "Chat đã kết thúc", false))
+            trace.terminal("CHAT_INVALID_SESSION")
             return@onMain
         }
         if (chatTurn != null) {
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
-                session, UUID.randomUUID(), "CHAT_TURN_IN_PROGRESS", "Đang trả lời", false))
+                session, requestId, "CHAT_TURN_IN_PROGRESS", "Đang trả lời", false))
+            trace.terminal("CHAT_TURN_IN_PROGRESS")
             return@onMain
         }
         val turn = runCatching { directChatState.begin(text) }.getOrElse {
@@ -163,25 +177,31 @@ class AssistantCoordinator internal constructor(
                 else -> "CHAT_INPUT_TOO_LARGE"
             }
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
-                session, UUID.randomUUID(), code, code, false))
+                session, requestId, code, code, false))
+            trace.terminal(code)
             return@onMain
         }
         rearmChatIdleExpiry()
-        val requestId = UUID.randomUUID()
         chatTurn = requestId
         val epoch = chatEpoch
+        trace.start("providerQueueLatency", SystemClock.elapsedRealtimeNanos())
+        chatLatency = trace
         chatTask = chatExecutor.submit {
-            val result = runCatching { directChat.reply(turn) }
+            trace.end("providerQueueLatency", SystemClock.elapsedRealtimeNanos())
+            val result = runCatching { directChat.reply(turn, trace::metric) }
             onMain {
                 if (chatSession != session || chatEpoch != epoch || chatTurn != requestId) return@onMain
-                chatTurn = null; chatTask = null
+                chatTurn = null; chatTask = null; chatLatency = null
                 result.fold(onSuccess = { reply ->
                     val count = runCatching { directChatState.complete(turn, reply) }.getOrElse {
                         chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
                             session, requestId, "CHAT_INVALID_OUTPUT", "Phản hồi không hợp lệ", false))
+                        trace.terminal("CHAT_INVALID_OUTPUT")
                         return@fold
                     }
                     rearmChatIdleExpiry()
+                    trace.end("chatReplyLatency", SystemClock.elapsedRealtimeNanos())
+                    trace.terminal("REPLIED")
                     chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Reply(
                         session, requestId, reply, count))
                 }, onFailure = { error ->
@@ -192,6 +212,7 @@ class AssistantCoordinator internal constructor(
                     }
                     chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
                         session, requestId, code, code, code == "CHAT_PROVIDER_TIMEOUT"))
+                    trace.terminal(code)
                 })
             }
         }
@@ -201,6 +222,7 @@ class AssistantCoordinator internal constructor(
         main.removeCallbacks(chatIdleExpiry)
         val session = chatSession ?: return@onMain
         chatEpoch++
+        chatLatency?.terminal("CANCELLED"); chatLatency = null
         chatTask?.cancel(true); chatTask = null
         directChat.cancelPendingRequest()
         chatTurn = null; chatSession = null; directChatState.clear()
@@ -210,20 +232,26 @@ class AssistantCoordinator internal constructor(
     private val commandDeadline = Runnable { finish("COMMAND_TIMEOUT", "Hết thời gian xử lý lệnh") }
     fun addObserver(observer: (UiState) -> Unit) { observers.add(observer); observer(state) }
     fun removeObserver(observer: (UiState) -> Unit) { observers.remove(observer) }
-    fun dispatchVoice(text: String, progress: ((String, String) -> Unit)? = null, interaction: ((ActionRouter.Prompt) -> Unit)? = null, speechEndNanos: Long? = null, completion: (VoiceCommandResult) -> Unit): String {
+    fun dispatchVoice(text: String, progress: ((String, String) -> Unit)? = null, interaction: ((ActionRouter.Prompt) -> Unit)? = null, speechEndNanos: Long? = null, finalAcceptedNanos: Long? = null, completion: (VoiceCommandResult) -> Unit): String {
         val id = UUID.randomUUID().toString()
+        val acceptedAt = finalAcceptedNanos ?: SystemClock.elapsedRealtimeNanos()
+        val trace = RequestLatency(id, latencySink)
+        trace.stage("admitted")
+        trace.start("firstStatusLatency", acceptedAt)
+        trace.start("finalToActionStartLatency", acceptedAt)
         commandGate.enqueue(id)
         // Always enqueue so callers can retain the returned correlation ID before completion.
         main.post {
             val admitted = commandGate.beginQueued(id)
-            if (admitted == null) completion(VoiceCommandResult(id, "CANCELLED", "Đã dừng"))
-            else if (!admitted) completion(VoiceCommandResult(id, "COMMAND_IN_PROGRESS", "Đang xử lý lệnh trước"))
+            if (admitted == null) { trace.terminal("CANCELLED"); completion(VoiceCommandResult(id, "CANCELLED", "Đã dừng")) }
+            else if (!admitted) { trace.terminal("COMMAND_IN_PROGRESS"); completion(VoiceCommandResult(id, "COMMAND_IN_PROGRESS", "Đang xử lý lệnh trước")) }
             else {
                 pendingCompletion = completion; pendingProgress = progress; pendingInteractionPrompt = interaction; pendingDispatched = false; activeText = text
                 directDispatch = false; remoteDispatch = false; executedActions.clear()
-                latencyPath = "local"; latency = CommandLatency(::latencyEvent)
+                latency = trace
                 speechEndAtNanos = speechEndNanos
                 progress?.invoke(id, "ROUTING")
+                if (progress != null) trace.end("firstStatusLatency", SystemClock.elapsedRealtimeNanos())
                 if (pendingId != id) return@post
                 main.postDelayed(watchdog, 30_000)
                 main.postDelayed(commandDeadline, 120_000)
@@ -256,10 +284,11 @@ class AssistantCoordinator internal constructor(
         val id = pendingId ?: return
         actionRouter.cancel()
         directTask?.cancel(true)
+        if (directDispatch && aiProxyDelegate.isInitialized()) aiProxy.cancelPendingRequest()
         directTask = null
         latency?.end("executionLatency", SystemClock.elapsedRealtimeNanos())
-        android.util.Log.i("DexLatency", "requestId=$id path=$latencyPath terminalReason=${safeReason(status)}")
-        latency?.clear(); latency = null
+        latency?.terminal(status)
+        latency = null
         speechEndAtNanos = null
         val callback = pendingCompletion
         commandGate.finish(id); pendingCompletion = null; pendingProgress = null; pendingInteractionPrompt = null; main.removeCallbacks(watchdog); main.removeCallbacks(commandDeadline)
@@ -311,6 +340,7 @@ class AssistantCoordinator internal constructor(
         latency?.start("routeLatency", SystemClock.elapsedRealtimeNanos())
         val screenCommand = router.screenCommand(text, actionRouter.foregroundAppId())
         if (screenCommand != null) {
+            latency?.resolveOrigin("local")
             latency?.end("routeLatency", SystemClock.elapsedRealtimeNanos())
             latency?.start("executionLatency", SystemClock.elapsedRealtimeNanos())
             val service = DexAccessibilityService.active
@@ -326,7 +356,7 @@ class AssistantCoordinator internal constructor(
             else if (service.hasYoutubePreviewHistory && router.youtubeIndexSelection(text)) complete("SCREEN_CHANGED")
             else if (service.hasYoutubePreviewHistory && screenCommand.verb == com.khuongnd.dexassistant.ui.screen.ScreenVerb.CLICK_TARGET)
                 service.execute(screenCommand, complete)
-            else { markActionStart(); service.execute(screenCommand, complete) }
+            else service.execute(screenCommand, { if (pendingId == screenRequestId) markActionStart() }, complete)
             return
         }
         if (CommandPrivacy.requiresLocalHandling(text)) {
@@ -341,6 +371,7 @@ class AssistantCoordinator internal constructor(
         if (routed.resolved?.typedAction?.let { it.action == com.khuongnd.dexassistant.ui.routing.ActionId.YOUTUBE_SELECT && it.params.containsKey("index") } != true)
             DexAccessibilityService.active?.clear()
         latency?.end("routeLatency", SystemClock.elapsedRealtimeNanos())
+        latency?.resolveOrigin(if (routed.route == Route.BACKEND_REQUIRED) "direct" else "local")
         when (routed.route) {
             Route.LOCAL -> if (decision.capability?.available == false) {
                 val error = decision.capability.unavailableReason ?: "POLICY_DENIED"
@@ -376,8 +407,11 @@ class AssistantCoordinator internal constructor(
                 val requestId = activeRequestId ?: return
                 pendingProgress?.invoke(requestId, "SENDING")
                 state = state.copy(lastRequestId = requestId, message = "Direct AI planning"); publish()
+                val trace = latency
+                trace?.start("providerQueueLatency", SystemClock.elapsedRealtimeNanos())
                 directTask = directExecutor.submit {
-                    val result = runCatching { aiProxy.plan(text, commandRegistry, actionRouter.supportedActions()) }
+                    trace?.end("providerQueueLatency", SystemClock.elapsedRealtimeNanos())
+                    val result = runCatching { aiProxy.plan(text, commandRegistry, actionRouter.supportedActions(), { name, micros -> trace?.metric(name, micros) }) }
                     onMain {
                         if (pendingId != requestId || !directDispatch) return@onMain
                         result.fold(
@@ -535,7 +569,10 @@ class AssistantCoordinator internal constructor(
         if (status in setOf("UNSUPPORTED", "FAILED", "SEND_FAILED", "AUTHENTICATION_FAILED")) finish(status, message)
     }
 
-    private fun publish() { observers.toList().forEach { it(state) } }
+    private fun publish() {
+        observers.toList().forEach { it(state) }
+        if (observers.isNotEmpty()) latency?.end("firstStatusLatency", SystemClock.elapsedRealtimeNanos())
+    }
     private fun onMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
     }

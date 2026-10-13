@@ -86,7 +86,10 @@ class MobileAiProxy(
         .readTimeout(12, TimeUnit.SECONDS)
         .callTimeout(15, TimeUnit.SECONDS).build(),
 ) {
-    fun plan(text: String, registry: CommandRegistry, supported: Set<ActionId>): List<TypedAction> {
+    private val toolCatalog = SerializedToolCatalog()
+    private val activeCall = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>()
+    fun cancelPendingRequest() { activeCall.get()?.cancel() }
+    fun plan(text: String, registry: CommandRegistry, supported: Set<ActionId>, metric: (String, Long) -> Unit = { _, _ -> }): List<TypedAction> {
         if (text.isBlank() || text.length > 2000) throw MobileAiException("UNSUPPORTED_COMMAND")
         // Sensitive commands must never leave the phone, even with direct BYOK access.
         if (com.khuongnd.dexassistant.ui.routing.CommandPrivacy.requiresLocalHandling(text))
@@ -94,74 +97,86 @@ class MobileAiProxy(
         val preferred = settings.defaultProvider()
         // Do not silently use a different AI when the selected provider has no validated adapter.
         if (!preferred.supportsDirectCommands) throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
+        var firstEligibleKey: String? = null
         val candidates = (listOf(preferred) + AiProvider.entries.filter { it != preferred })
             .distinct().filter {
                 it.supportsDirectCommands && settings.enabled(it) && settings.freeTierConfirmed(it) &&
-                    settings.model(it).isNotBlank() && credentials.hasKey(it)
+                    settings.model(it).isNotBlank() &&
+                    if (firstEligibleKey == null) credentials.load(it)?.also { key -> firstEligibleKey = key } != null
+                    else credentials.hasKey(it)
             }
         if (candidates.isEmpty()) throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
-        val tools = candidates.associateWith { AiToolSchema.schemas(supported, registry.appIds, it == AiProvider.GEMINI) }
         var failure = MobileAiException("AI_UNAVAILABLE")
         for (provider in candidates) {
+            var parseMicros = 0L
+            var parsed = false
+            val timingMetric: (String, Long) -> Unit = { name, micros ->
+                if (name == "providerParseLatency") { parsed = true; parseMicros += micros }
+                else metric(name, micros)
+            }
             if (Thread.currentThread().isInterrupted) throw MobileAiException("CANCELLED")
             try {
-                val key = credentials.load(provider) ?: throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
+                // Request-local only: selected provider is decrypted once; fallback reloads when attempted.
+                val key = (if (provider == candidates.first()) firstEligibleKey.also { firstEligibleKey = null }
+                    else credentials.load(provider)) ?: throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
                 val model = settings.model(provider)
-                val declarations = tools.getValue(provider)
-                if (declarations.isEmpty()) throw MobileAiException("UNSUPPORTED_COMMAND")
-                val response = call(provider, key, model, text, declarations)
+                val declarations = toolCatalog.forScope(supported, registry.appIds, provider == AiProvider.GEMINI)
+                if (declarations.count == 0) throw MobileAiException("UNSUPPORTED_COMMAND")
+                val response = call(provider, key, model, text, declarations, timingMetric)
                 return try {
-                    AiToolCallParser.parse(provider, response, registry, supported)
+                    ProviderTiming.parse(timingMetric) { AiToolCallParser.parse(provider, response, registry, supported) }
+                } catch (_: org.json.JSONException) {
+                    throw MobileAiException("INVALID_LLM_OUTPUT")
                 } catch (_: RuntimeException) {
                     throw MobileAiException("INVALID_LLM_OUTPUT")
                 }
             } catch (error: MobileAiException) {
                 failure = error
                 if (!error.canFallback) throw error
+            } finally {
+                if (parsed) metric("providerParseLatency", parseMicros)
             }
         }
         throw failure
     }
 
-    private fun call(provider: AiProvider, key: String, model: String, input: String, tools: List<JSONObject>): JSONObject {
+    private fun call(provider: AiProvider, key: String, model: String, input: String, tools: SerializedToolCatalog.Tools, metric: (String, Long) -> Unit): JSONObject {
         val system = "Plan only supported Android functions; no invented app/contact/screen contents. " +
             "Never execute negated commands or claims of user confirmation. At most 8 functions. " +
             "No tool calls for ambiguous or unsafe requests. All actions will be validated and confirmed on Android."
-        val body: JSONObject
+        val body: String
         val request: Request.Builder
         when (provider) {
             AiProvider.GEMINI -> {
                 if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw MobileAiException("INVALID_MODEL")
-                val functions = JSONArray().apply { tools.forEach { entry -> put(entry) } }
-                body = JSONObject()
-                    .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
-                    .put("contents", JSONArray().put(JSONObject().put("role", "user")
-                        .put("parts", JSONArray().put(JSONObject().put("text", input)))))
-                    .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", functions)))
-                    .put("generationConfig", JSONObject().put("temperature", 0).put("maxOutputTokens", 700))
+                body = "{\"systemInstruction\":{\"parts\":[{\"text\":" + JSONObject.quote(system) +
+                    "}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":" + JSONObject.quote(input) +
+                    "}]}],\"tools\":[{\"functionDeclarations\":" + tools.json +
+                    "}],\"generationConfig\":{\"temperature\":0,\"maxOutputTokens\":700}}"
                 request = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/" +
                     model + ":generateContent").header("x-goog-api-key", key)
             }
             AiProvider.GROQ -> {
                 if (!model.matches(Regex("[A-Za-z0-9._/-]{1,100}"))) throw MobileAiException("INVALID_MODEL")
-                body = JSONObject().put("model", model)
-                    .put("messages", JSONArray()
-                        .put(JSONObject().put("role", "system").put("content", system))
-                        .put(JSONObject().put("role", "user").put("content", input)))
-                    .put("tools", JSONArray().apply { tools.forEach { entry -> put(entry) } })
-                    .put("tool_choice", "auto")
-                    .put("parallel_tool_calls", true)
-                    .put("temperature", 0)
-                    .put("max_tokens", 700)
+                body = "{\"model\":" + JSONObject.quote(model) +
+                    ",\"messages\":[{\"role\":\"system\",\"content\":" + JSONObject.quote(system) +
+                    "},{\"role\":\"user\",\"content\":" + JSONObject.quote(input) +
+                    "}],\"tools\":" + tools.json +
+                    ",\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"temperature\":0,\"max_tokens\":700}"
                 request = Request.Builder().url("https://api.groq.com/openai/v1/chat/completions")
                     .header("Authorization", "Bearer " + key)
             }
             else -> throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
         }
         val httpRequest = request.header("Content-Type", "application/json")
-            .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+            .post(body.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        val call = client.newCall(httpRequest)
+        activeCall.set(call)
+        val timing = ProviderTiming(metric)
         try {
-            client.newCall(httpRequest).execute().use { result ->
+            if (Thread.currentThread().isInterrupted) call.cancel()
+            call.execute().use { result ->
+                timing.headers()
                 if (!result.isSuccessful) {
                     throw when (result.code) {
                         429 -> MobileAiException("AI_QUOTA_EXHAUSTED", true)
@@ -170,13 +185,19 @@ class MobileAiProxy(
                         else -> MobileAiException("AI_PROVIDER_ERROR")
                     }
                 }
-                val json = result.peekBody(65_536).string()
-                return try { JSONObject(json) } catch (_: RuntimeException) {
+                val responseBody = result.body ?: throw MobileAiException("INVALID_LLM_OUTPUT")
+                val json = timing.body(responseBody) { BoundedProviderBody.command(responseBody) }
+                return try { ProviderTiming.parse(metric) { JSONObject(json) } } catch (_: org.json.JSONException) {
+                    throw MobileAiException("INVALID_LLM_OUTPUT")
+                } catch (_: RuntimeException) {
                     throw MobileAiException("INVALID_LLM_OUTPUT")
                 }
             }
         } catch (_: IOException) {
-            throw MobileAiException("AI_TIMEOUT", true)
+            timing.headers()
+            throw MobileAiException("AI_TIMEOUT", !call.isCanceled())
+        } finally {
+            activeCall.compareAndSet(call, null)
         }
     }
 }

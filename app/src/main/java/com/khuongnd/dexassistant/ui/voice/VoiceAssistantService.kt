@@ -52,6 +52,9 @@ class VoiceAssistantService : Service() {
     private var latestPartial = ""
     private var measuredEpoch: Long? = null
     private var speechEndAtNanos: Long? = null
+    private var finalAcceptedAtNanos: Long? = null
+    @Volatile private var rearmAtNanos: Long? = null
+    @Volatile private var rearmRequestId: String? = null
     private val voiceLatency = CommandLatency { name, micros ->
         android.util.Log.i("DexLatency", "epoch=$measuredEpoch metric=$name durationUs=$micros")
     }
@@ -225,6 +228,7 @@ class VoiceAssistantService : Service() {
             stateMachine.state != VoiceState.TRANSCRIBING) return false
         val id = recognizerEpoch ?: return false
         if (!isRecognizing(id) || !sessions.consumeFinal(id)) return false
+        finalAcceptedAtNanos = SystemClock.elapsedRealtimeNanos()
         val text = latestPartial.trim()
         timing(id, "stt_manual_submit", if (text.isBlank()) "EMPTY" else "PARTIAL")
         voiceEnd(id, "sttLatency")
@@ -294,7 +298,16 @@ class VoiceAssistantService : Service() {
                         val count = input.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
                         if (!sessions.isCurrent(id)) break
                         check(count > 0) { "Microphone read failed" }
-                        if (firstCapture) { firstCapture = false; stage("capture_active") }
+                        if (firstCapture) {
+                            firstCapture = false; stage("capture_active")
+                            val started = rearmAtNanos
+                            val request = rearmRequestId
+                            if (started != null) {
+                                rearmAtNanos = null; rearmRequestId = null
+                                val micros = (SystemClock.elapsedRealtimeNanos() - started) / 1_000
+                                android.util.Log.i("DexLatency", "epoch=$id" + (request?.let { " requestId=$it" } ?: "") + " metric=rearmLatency durationUs=$micros")
+                            }
+                        }
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastMicUpdate >= 1000) {
                             lastMicUpdate = now
@@ -319,6 +332,8 @@ class VoiceAssistantService : Service() {
                     }
                 }
             }
+            // Worker owns the buffer: scrub on detected, cancelled, early-return and failed captures.
+            wakeEngine?.clearCapturedFrame()
             if (result.isFailure) { runCatching { wakeEngine?.close() }; wakeEngine = null }
             // No STT callback is posted until microphone stop AND release have completed.
             synchronized(microphoneLock) {
@@ -484,6 +499,7 @@ class VoiceAssistantService : Service() {
         }
         override fun onResults(results: Bundle?) {
             if (!isRecognizing(id) || !sessions.consumeFinal(id)) return
+            finalAcceptedAtNanos = SystemClock.elapsedRealtimeNanos()
             timing(id, "stt_final")
             voiceEnd(id, "sttLatency")
             voiceEnd(id, "speechEndToFinalLatency")
@@ -511,7 +527,7 @@ class VoiceAssistantService : Service() {
             if (chatActive) {
                 when (ChatVoiceRouting.route(text)) {
                     ChatVoiceRouting.Route.END -> endChatAndReturnToWake(id)
-                    ChatVoiceRouting.Route.START, ChatVoiceRouting.Route.TURN -> coordinator.sendChat(text)
+                    ChatVoiceRouting.Route.START, ChatVoiceRouting.Route.TURN -> coordinator.sendChat(text, voiceEpoch = id, finalAcceptedNanos = finalAcceptedAtNanos)
                 }
                 return
             }
@@ -549,10 +565,11 @@ class VoiceAssistantService : Service() {
                 }
             }, interaction = { prompt ->
                 if (commandId == prompt.parentId && commandVoiceEpoch?.let(sessions::isCurrent) == true) speakInteractionPrompt(prompt)
-            }, speechEndNanos = if (measuredEpoch == id) speechEndAtNanos else null) { result ->
+            }, speechEndNanos = if (measuredEpoch == id) speechEndAtNanos else null, finalAcceptedNanos = finalAcceptedAtNanos) { result ->
                 val activeEpoch = commandVoiceEpoch ?: return@dispatchVoice
                 if (!sessions.isCurrent(activeEpoch) || (commandId != result.requestId && returnedId != null)) return@dispatchVoice
                 timing(activeEpoch, "command_terminal", result.status)
+                rearmAtNanos = SystemClock.elapsedRealtimeNanos(); rearmRequestId = result.requestId
                 completedSynchronously = true
                 if (commandId == result.requestId || returnedId == null) commandId = null
                 if (result.status == "SCREEN_CONTINUE") {
@@ -627,6 +644,7 @@ class VoiceAssistantService : Service() {
             is com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Reply -> {
                 if (stateMachine.state != VoiceState.ROUTING) return
                 val generation = chatGeneration
+                val queuedAt = SystemClock.elapsedRealtimeNanos()
                 val playback = beginFeedback()
                 transitionSafely(VoiceEvent.SPEAK)
                 val completed: (Boolean) -> Unit = { spokenSuccessfully ->
@@ -648,7 +666,12 @@ class VoiceAssistantService : Service() {
                 val request = newFocusRequest(++focusGeneration)
                 focusRequest = request
                 focusHeld = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-                if (focusHeld) feedback.speakInteraction(event.text, "chat-$generation-${event.turn}", completed) else completed(false)
+                if (focusHeld) feedback.speakInteraction(event.text, "chat-$generation-${event.turn}", completed, onStarted = {
+                    if (chatActive && generation == chatGeneration) {
+                        val micros = (SystemClock.elapsedRealtimeNanos() - queuedAt) / 1_000
+                        android.util.Log.i("DexLatency", "requestId=${event.requestId} path=chat origin=chat metric=chatTtsStartLatency durationUs=$micros")
+                    }
+                }) else completed(false)
             }
             is com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error -> {
                 if (!chatActive) return
@@ -733,6 +756,7 @@ class VoiceAssistantService : Service() {
     }
 
     private fun cancelSession(clearScreen: Boolean = true) {
+        rearmAtNanos = null; rearmRequestId = null; finalAcceptedAtNanos = null
         if (chatActive) coordinator.endChat("STOP")
         chatActive = false; chatGeneration++; pendingChatGeneration = null
         VoiceSubtitles.store.clear()
