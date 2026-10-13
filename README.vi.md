@@ -4,7 +4,7 @@
 
 DeX Assistant là trợ lý Android **ưu tiên điều khiển bằng giọng nói**, phục vụ một người dùng trên **Samsung Galaxy Z Fold3 xuất hình qua Samsung DeX ra màn hình ngoài**. Kiến trúc hiện tại là **local-first**: lệnh đơn giản xử lý ngay trên máy; lệnh phức tạp và AI Chat gọi trực tiếp API của nhà cung cấp AI. **Không cần vận hành Spring Boot, WebSocket proxy riêng, Firebase hoặc EC2 để chạy Command/Chat trên Android.**
 
-> **Trạng thái ngày 09/10/2026:** Đã triển khai **source Android không phụ thuộc backend** cho Command và Chat. [Android CI đã PASS](https://github.com/khuongnd0901/Dex-Assistant-UI/actions/runs/37878690108) ở commit `3715b36` (unit test, lint, build debug APK). **Chưa nghiệm thu lượt gọi AI thực tế bằng API key/model của người dùng và chưa hoàn tất kiểm thử tổng thể trên Z Fold3/DeX thật.** CI PASS không đồng nghĩa thiết bị thật đã PASS. Việc sửa source cũng không có nghĩa hạ tầng cloud đang chạy đã được tắt.
+> **2026-10-13:** This Android repository is the canonical development/test workspace. Backend development is retired. Start with [AGENTS](AGENTS.md) and [current status](.agent/STATUS.md); open [Android workspace](Dex-Assistant.code-workspace). T-021 Windows simulator validation passed; actual Fold3/DeX gates remain IN_PROGRESS in T-020. No cloud resources were deleted.
 
 ## Các chức năng chính
 
@@ -108,8 +108,10 @@ Nếu dùng Windows, thay `./gradlew` bằng `gradlew.bat`. APK sau build:
 
 Cần thực hiện **một lượt nghiệm thu cuối cùng trên Samsung Z Fold3 + DeX thật**, gồm: xác minh signing/giữ dữ liệu, Local Command khi AI offline, AI Command Gemini/Groq bằng key thật, Chat tiếng Việt liên tiếp 3 lượt, hủy/tắt Chat và phản hồi trễ, lỗi 401/429/timeout, Wake/STT/TTS, quyền Device Owner/Accessibility và p50/p95 latency. Các kết quả từ CI hoặc AVD **không được thay thế** bằng chứng trên thiết bị thật.
 
-- [Kế hoạch T-018 — Fold3 acceptance](https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/plans/active/T-018-direct-ai-final-fold3-acceptance.md)
-- [Evidence chuyển Command và Chat khỏi backend](https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/evidence/mobile-direct-M4-command-chat-backendless-2026-10-09.md)
+- [Kế hoạch T-018 — Fold3 acceptance](.agent/plans/active/T-018-direct-ai-final-fold3-acceptance.md)
+- [Evidence chuyển Command và Chat khỏi backend](.agent/evidence/mobile-direct-M4-command-chat-backendless-2026-10-09.md)
 - [README cũ: thiết lập và lịch sử test](docs/README_legacy_2026-10-09.md) — **tài liệu lưu trữ, chứa hướng dẫn backend không còn phù hợp**
 
 Repo [DeX-Assistant (Java/Spring Boot)](https://github.com/khuongnd0901/DeX-Assistant) vẫn được giữ làm lịch sử source/contract và tài liệu rollback. **Không mặc định rằng EC2, EBS hay DNS đang sử dụng đã được dừng hoặc xóa.**
+
+Development/test entry point: [.agent/STATUS.md](.agent/STATUS.md). Windows simulator selection from this root: `bash scripts/android/select-test-target.sh dex --emulator-only`. [Local test tooling](scripts/android/README.md), [T-021 evidence](.agent/evidence/T-021-windows-response-performance-2026-10-13.md) and [T-020 physical campaign](.agent/plans/active/T-020-consolidated-fold3-acceptance.md) are canonical here.

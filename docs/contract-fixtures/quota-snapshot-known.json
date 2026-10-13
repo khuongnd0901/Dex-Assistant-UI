@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "type": "quota.snapshot",
+  "messageId": "39238a3a-3a29-45b5-b194-c459ed73b015",
+  "correlationId": "b6ea9785-b06c-4ab4-9f49-98bc760ff165",
+  "sentAt": "2026-10-02T00:00:01Z",
+  "payload": {
+    "schemaVersion": 1,
+    "snapshotAt": "2026-10-02T00:00:01Z",
+    "staleAfter": "2026-10-02T00:05:01Z",
+    "providers": [
+      {
+        "providerAlias": "gemini-primary",
+        "modelAlias": "flash",
+        "state": "AVAILABLE",
+        "budgets": [
+          {
+            "unit": "REQUEST",
+            "used": 4,
+            "reserved": 1,
+            "limit": 100,
+            "remaining": 95,
+            "windowStart": "2026-10-02T07:00:00Z",
+            "resetAt": "2026-10-03T07:00:00Z",
+            "source": "ESTIMATED",
+            "observedAt": "2026-10-02T00:00:01Z"
+          }
+        ]
+      }
+    ]
+  }
+}

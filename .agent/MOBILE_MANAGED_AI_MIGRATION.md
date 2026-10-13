@@ -1,8 +1,10 @@
+> Historical 2026-10-09 migration handoff, superseded by [D-036/D-037](DECISIONS.md) and [current status](STATUS.md). Direct Android Command/Chat source is implemented; remaining physical acceptance is [T-020](plans/active/T-020-consolidated-fold3-acceptance.md). Backend development is retired; no backend-first coordination or checkout is required.
+
 # Direct Free-Tier AI migration — Android handoff
 
 - Owner direction: **CONFIRMED 2026-10-09**. Android app calls **Gemini Free Tier REST directly**, with **Groq Free Plan API as conditional fallback**.
 - Implementation: **NOT_STARTED**. Only this documentation changed; app, device, signing, runtime voice/DPC, backend and provider credentials untouched.
-- Canonical M0–M7 plan: https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/plans/proposed/RFC-2026-10-09-mobile-managed-ai.md
+- Canonical M0–M7 plan: plans/proposed/RFC-2026-10-09-mobile-managed-ai.md
 - Do **not** integrate Firebase AI Logic, App Check, EC2, Cloud Run, serverless or new Spring Boot proxy. No API paid fallback.
 
 ## Key choice
@@ -33,6 +35,6 @@ Owner explicitly accepts extractability of on-device API keys. No backend/Fireba
 
 M0 actual free-account/model/tool-use probe → M1 fixture/parity tests → M2 Settings key provisioning + direct Gemini signed Fold3 PoC → M3 Groq tool-calling/free check → M4 command transport flag → M5 Chat & settings/quota → M6 thorough physical Fold3/regression/latency/secret scan → M7 only then remove backend default after owner's go-ahead.
 
-Use `./gradlew test lint assembleDebug` and real Galaxy Z Fold3 installation with original signing cert/data preserved. Treat physical natural voice, actual Google/Groq quota and timeout evidence separately from host tests; never mark a gate DONE without its required evidence. Cross-repo contract changes and task status require main-agent coordination.
+Use `./gradlew test lint assembleDebug` and real Galaxy Z Fold3 installation with original signing cert/data preserved. Treat physical natural voice, actual Google/Groq quota and timeout evidence separately from host tests; never mark a gate DONE without its required evidence. Current action contracts and task state are owned and coordinated in this Android repository.
 
 This instruction supersedes the earlier Firebase AI Logic proposal in the Android repo, not the current shipped code.

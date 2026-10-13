@@ -72,7 +72,7 @@ Accessibility global actions hiện không bảo đảm không tác động màn
 giới hạn nội dung và bảo đảm văn bản không vào backend hoặc lịch sử. Không đọc tự
 động khi vừa nhận thông báo.
 
-`DEVICE_COMMAND` dùng schema action 1 chung với backend; Android validate lại và
+`DEVICE_COMMAND` dùng typed action schema do Android sở hữu (xem [schema 1](DEVICE_COMMANDS_V1.md) và [schema 2](DEVICE_COMMANDS_V2.md)); backend đã ngừng phát triển; Android validate lại và
 đưa qua cùng ActionRouter. Descriptor chỉ quảng cáo action/ID app có trong APK;
 config không thay permission/confirmation policy. Success `DISPATCHED` chỉ cho
 biết Intent/key/gesture đã gửi; chỉ báo `VERIFIED` khi có readback trạng thái.
@@ -90,4 +90,4 @@ không gửi AI để đoán số. Xác nhận/chọn ngoài pending cũng từ 
 Settings dùng launchDisplayId của desktop được chọn; Back/Home/Notifications
 hiện unavailable vì chưa có global action bảo đảm đúng display. Desktop AOSP
 1920×1080/160 dpi chỉ dùng regression/layout, không có category Samsung DeX.
-Xem hướng dẫn AVD và evidence T-011 trong repo backend.
+Xem [hướng dẫn AVD](../scripts/android/README.md) và [evidence T-011](../.agent/evidence/T-011-host-avd-2026-10-05.md) trong repo Android này.

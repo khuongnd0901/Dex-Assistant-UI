@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "limits": {
+    "maxFrameUtf8Bytes": 16384,
+    "maxInputCodePoints": 2000,
+    "maxPromptTokens": 8000,
+    "maxOutputTokens": 1024,
+    "maxOutputCodePoints": 4000,
+    "maxContextPairs": 20,
+    "maxTurns": 200,
+    "maxInflightTurns": 1,
+    "idleTimeoutSeconds": 900
+  },
+  "valid": [
+    {
+      "version": 1,
+      "type": "chat.session.start",
+      "messageId": "b6ea9785-b06c-4ab4-9f49-98bc760ff165",
+      "correlationId": null,
+      "sentAt": "2026-10-06T00:00:00Z",
+      "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "locale": "vi-VN" }
+    },
+    {
+      "version": 1,
+      "type": "chat.session.started",
+      "messageId": "39238a3a-3a29-45b5-b194-c459ed73b015",
+      "correlationId": "b6ea9785-b06c-4ab4-9f49-98bc760ff165",
+      "sentAt": "2026-10-06T00:00:01Z",
+      "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "idleTimeoutSeconds": 900 }
+    },
+    {
+      "version": 1,
+      "type": "chat.turn.request",
+      "messageId": "ec2a9191-5a9d-4e6a-a5d9-e83215c08131",
+      "correlationId": null,
+      "sentAt": "2026-10-06T00:00:02Z",
+      "payload": {
+        "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0",
+        "text": "Bây giờ là mấy giờ?",
+        "localTime": { "timestamp": "2026-10-06T07:00:02+07:00", "timeZone": "Asia/Saigon" }
+      }
+    },
+    {
+      "version": 1,
+      "type": "chat.turn.response",
+      "messageId": "0fd9f00c-b205-49d8-8c88-9d426dba47ad",
+      "correlationId": "ec2a9191-5a9d-4e6a-a5d9-e83215c08131",
+      "sentAt": "2026-10-06T00:00:03Z",
+      "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "text": "Bây giờ khoảng 7 giờ sáng.", "turn": 1 }
+    },
+    {
+      "version": 1,
+      "type": "chat.session.end",
+      "messageId": "a066b5a0-4d61-41a5-9a18-9cdd13e39e7b",
+      "correlationId": null,
+      "sentAt": "2026-10-06T00:01:00Z",
+      "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "reason": "USER" }
+    },
+    {
+      "version": 1,
+      "type": "chat.session.ended",
+      "messageId": "52a6f94d-0c5f-43f4-a1d4-d51a603f8941",
+      "correlationId": "a066b5a0-4d61-41a5-9a18-9cdd13e39e7b",
+      "sentAt": "2026-10-06T00:01:01Z",
+      "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0" }
+    },
+    {
+      "version": 1,
+      "type": "chat.error",
+      "messageId": "11ab5387-923a-4174-83a4-96edee212665",
+      "correlationId": "ec2a9191-5a9d-4e6a-a5d9-e83215c08131",
+      "sentAt": "2026-10-06T00:00:04Z",
+      "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "code": "CHAT_PROVIDER_TIMEOUT", "message": "The reply took too long.", "retryable": true }
+    }
+  ],
+  "invalid": [
+    { "case": "unsupported version", "message": { "version": 2, "type": "chat.session.start" } },
+    { "case": "invalid session UUID", "message": { "version": 1, "type": "chat.turn.request", "payload": { "sessionId": "primary", "text": "hi" } } },
+    { "case": "missing local time", "message": { "version": 1, "type": "chat.turn.request", "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "text": "hi" } } },
+    { "case": "invalid time zone", "message": { "version": 1, "type": "chat.turn.request", "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "text": "hi", "localTime": { "timestamp": "2026-10-06T00:00:00Z", "timeZone": "Mars/Olympus" } } } },
+    { "case": "invalid RFC3339 timestamp", "message": { "version": 1, "type": "chat.turn.request", "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "text": "hi", "localTime": { "timestamp": "not-a-time", "timeZone": "Asia/Saigon" } } } },
+    { "case": "unknown end reason", "message": { "version": 1, "type": "chat.session.end", "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "reason": "RESET" } } },
+    { "case": "action semantics forbidden", "message": { "version": 1, "type": "chat.turn.response", "payload": { "sessionId": "8148a31d-0929-49c0-b014-5233b1ddf8e0", "text": "Done", "actions": [{ "tool": "TOGGLE_WIFI" }] } } }
+  ],
+  "compatibility": {
+    "legacyCommandRequest": {
+      "version": 1,
+      "type": "command.request",
+      "messageId": "b6ea9785-b06c-4ab4-9f49-98bc760ff165",
+      "correlationId": null,
+      "sentAt": "2026-10-06T00:00:00Z",
+      "payload": { "conversationId": "primary", "text": "bật wifi", "locale": "vi-VN" }
+    },
+    "expectedLegacyServerBehavior": "unchanged"
+  },
+  "oversizedFrameTest": {
+    "method": "UTF-8 encode a valid envelope, append a text field until byte length is 16385, and assert rejection with MESSAGE_TOO_LARGE",
+    "mustCountUtf8BytesNotCodePoints": true
+  },
+  "unicodeInputLimitTest": {
+    "method": "Send final text containing 2001 Unicode code points and assert CHAT_INPUT_TOO_LARGE; supplementary characters count as one code point each",
+    "limit": 2000
+  },
+  "duplicateKeyTest": {
+    "rawJson": "{\"version\":1,\"version\":1,\"type\":\"chat.session.start\"}",
+    "expected": "reject before dispatch"
+  }
+}

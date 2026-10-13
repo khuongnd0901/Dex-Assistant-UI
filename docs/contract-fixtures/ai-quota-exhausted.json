@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "type": "error",
+  "messageId": "39238a3a-3a29-45b5-b194-c459ed73b017",
+  "correlationId": "b6ea9785-b06c-4ab4-9f49-98bc760ff165",
+  "sentAt": "2026-10-02T00:00:01Z",
+  "payload": {
+    "code": "AI_QUOTA_EXHAUSTED",
+    "message": "No provider budget is available",
+    "retryable": true
+  }
+}

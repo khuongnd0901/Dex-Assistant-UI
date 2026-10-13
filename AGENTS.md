@@ -1,61 +1,79 @@
-# Dex Assistant UI agent guide
+# DeX Assistant Android agent guide
 
-Use `.agent/STATUS.md` as the entry point for every Android-agent session. The
-backend repository remains the canonical source for product-wide tasks,
-decisions, requirements, and protocol.
+Start every session with [.agent/STATUS.md](.agent/STATUS.md). This Android
+repository is the canonical source for project memory, requirements, action
+contracts, plans and evidence. Backend development is retired under
+[D-037](.agent/DECISIONS.md#d-037--android-canonical-workspace-backend-retired).
+No backend checkout or runtime is required for development or tests.
+Open [Dex-Assistant.code-workspace](Dex-Assistant.code-workspace) for this repository.
 
-This repository contains the Android client. The canonical backend and protocol
-repository is `https://github.com/khuongnd0901/DeX-Assistant` and is checked out locally at `/home/kunrg/DeX-Assistant` on the Fold3 test host.
+## Request triage and working protocol
 
-Before changing WebSocket messages, authentication, or action/result types,
-inspect the backend's `docs/PROTOCOL.md` and corresponding protocol tests. Keep
-tokens, signing material, local SDK paths, and environment-specific endpoints
-out of Git.
+Before editing, read the active task and acceptance criteria in
+[.agent/TASKS.md](.agent/TASKS.md). Questions, read-only reviews and trivial
+local corrections need no task. Source/config/test/contract/durable documentation
+changes and reproducible bugs need a stable T-### task; search for the same outcome
+before creating one. Extend an existing matching task. Distinct outcomes get
+separate tasks; record changed priority in STATUS without silently replacing
+unfinished work.
 
-Use JDK 17 and the Gradle wrapper. The baseline targets Android 15/API 35 and
-supports API 30+ in the current scaffold. The physical Fold3 has been verified as Android 15/API 35; use canonical
-D-011 and T-006 evidence for the accepted assistant test baseline.
+Create an ExecPlan when work spans modules/layers, changes architecture,
+security/authentication/protocol/persistence/deployment/public contracts,
+is a significant refactor/migration/end-to-end feature, has important uncertainty,
+needs multiple milestones, is high-risk/long-running, or explicitly requests a
+plan. Follow [.agent/PLANS.md](.agent/PLANS.md). State classification only when
+creating an artifact: “Direct change — no task needed”, “Task T-### — localized
+work”, or “Task T-### + ExecPlan — multi-step/high-risk work”.
 
-## Android test target on this host
+Use [BRD](docs/BRD.md), [SRS](docs/SRS.md), the relevant action contracts and
+[DECISIONS](.agent/DECISIONS.md) for product/technical choices. Record consequential
+choices in DECISIONS; routine implementation details belong in evidence/plan.
+[Original delivery plan](docs/PLAN.md) and backend-only historical notes are
+archival. They cannot override current Android decisions or restart cancelled
+T-003/T-008/T-009/T-019 scopes. Current source and repository memory govern
+handoff; do not use chat history to override them.
 
-The canonical test selector is `/mnt/d/DeX-Assistant/scripts/android/select-test-target.sh`.
-Run it with `dex` for desktop/freeform tests or `foldable` for hinge/layout tests.
-It prefers a connected Galaxy Z Fold3 `SM-F926*` on API 35 and otherwise starts
-the matching Windows AVD under `D:\Android\AVD`. Use the exact reported serial
-for every device command. `D:\Android\Sdk\cmdline-tools\latest\bin\sdkmanager.bat`
-manages SDK packages; ADB is `D:\Android\Sdk\platform-tools\adb.exe`. For WSL
-Gradle builds use JDK 17 and `/home/khuongnd/Android/Sdk`. The AVD approximates
-Android 15 foldable/DeX layout but cannot verify Samsung DeX or real mic/button
-behavior. Full setup and limitations: backend `scripts/android/README.md`.
-Use Linux `adb` for a Fold3 visible to WSL. The Windows AVD uses Windows ADB
-server port 5038 (`adb.exe -P 5038`); port 5037 may connect to the separate
-Linux ADB server. Follow the selector's `ADB` and `SERIAL` output.
+## Ownership and contracts
 
-## Agent ownership
+One Android agent owns end-to-end source, task/status/decision maintenance,
+contracts and validation. See [role](.agent/roles/main-agent.md). Delegate only
+with explicit, non-overlapping file ownership. Android action/result changes
+are decided and tested here against the Android executor and local contract
+fixtures. [WebSocket protocol](docs/PROTOCOL.md) is legacy history; no
+backend-first protocol workflow or server implementation is required.
 
-The Android agent owns UI, connection/reconnect behavior, WebSocket client
-serialization, local token provisioning and Keystore use, native actions,
-on-device policy and confirmation, wake word/STT/TTS, Accessibility execution,
-device measurements, and Android tests.
+## Build and test targets
 
-Do not edit the canonical backend repository from the Android-agent role. Do not redefine
-protocol envelopes, authentication, action/result types, error codes,
-deduplication, or reconnect semantics independently. Return shared changes to
-the main agent, who coordinates both repositories.
+Use JDK 17, the Gradle wrapper and Linux SDK `/home/khuongnd/Android/Sdk` in WSL.
+Current target is Android 15/API 35 with minSdk 30. Run applicable `./gradlew test`,
+`./gradlew lint`, `./gradlew assembleDebug` and `git diff --check`.
 
-## Context loading
+Windows simulator first; select from this repository:
 
-1. Read this file and `.agent/STATUS.md`.
-2. Read Gradle configuration and only the Android source/tests relevant to the
-   assigned task.
-3. For integration work, read backend `.agent/STATUS.md`, the relevant T-003 or
-   T-004 task/plan, decisions D-003/D-004/D-006/D-007, and
-   the canonical backend `docs/PROTOCOL.md`.
-4. Read BRD/SRS only when changing product or platform behavior claims.
+```bash
+bash scripts/android/select-test-target.sh dex --emulator-only
+```
 
-## Validation
+Use `foldable --emulator-only` for hinge/layout checks. Follow exact reported
+ADB/PORT/SERIAL; Windows ADB uses 5038, Linux uses 5037. Setup, commands and limits:
+[scripts/android/README.md](scripts/android/README.md). Actual Samsung DeX,
+natural wake/mic/STT/TTS, Fold3 PSS and soak remain coordinated under
+[T-020](.agent/plans/active/T-020-consolidated-fold3-acceptance.md), deferred by owner.
+Never mark physical gates complete from simulator/build evidence. Preserve owner
+history/settings/credentials, original signing, Device Owner/Assistant role,
+Accessibility/grants and sole wireless ADB. No broad destructive legacy device
+fixtures, resets, uninstall, permission/role changes or live provider calls
+without the relevant authorized task and reviewed flow.
 
-Run `./gradlew test`, `./gradlew lint`, and `./gradlew assembleDebug` as
-applicable, then `git diff --check`. Use JDK 17 and a configured Android SDK.
-Device-specific claims require device/ADB evidence; compilation is not proof of
-Galaxy Z Fold3 behavior.
+## Definition of Done and handoff
+
+DONE requires task-specific acceptance, applicable successful build/tests,
+meaningful tests for new behavior (or documented infeasibility), runnable demo
+or verification for user-visible behavior, updated contracts/config/docs,
+recorded validation and explicit limitations. Compilation alone is insufficient.
+Keep BLOCKED/IN_PROGRESS if required verification is missing. Add no secrets,
+generated artifacts or unrelated changes to commits.
+
+Before ending, replace STATUS with concise verified state, next action, blockers
+and validation; update TASKS and the active plan. Keep memory concise, preserving
+historical evidence separately instead of appending session logs.

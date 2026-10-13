@@ -4,7 +4,7 @@
 
 Single-user, voice-first Android assistant designed for the **Samsung Galaxy Z Fold3 using Samsung DeX on an external display**. The current app is **local-first**, with direct AI provider calls for requests that need language understanding. **Spring Boot, a custom WebSocket proxy, Firebase and an EC2 instance are not required by the current Android Command/Chat runtime.**
 
-> **Project status — October 9, 2026:** Backend-free Android Command and Chat **source is implemented**. [Android CI passed](https://github.com/khuongnd0901/Dex-Assistant-UI/actions/runs/37878690108) on commit `3715b36` (unit tests, lint and debug APK build). **Real AI-key/model calls and the final end-to-end physical Fold3/DeX acceptance are still open**. A successful build is not proof of live device behavior. No deployed cloud resources have been decommissioned by this source migration.
+> **2026-10-13:** This Android repository is the canonical development/test workspace. Backend development is retired. Start with [AGENTS](AGENTS.md) and [current status](.agent/STATUS.md); open [Android workspace](Dex-Assistant.code-workspace). T-021 Windows simulator validation passed; actual Fold3/DeX gates remain IN_PROGRESS in T-020. No cloud resources were deleted.
 
 ## What it does
 
@@ -106,8 +106,10 @@ On Windows, use `gradlew.bat` in place of `./gradlew`. Build outputs:
 
 A final **single controlled Samsung Z Fold3 / DeX acceptance run** remains open. It must verify the existing signing certificate and retained device state, local/offline routing, actual direct Gemini/Groq Command, three-turn Vietnamese Chat and cancellation, provider failures, wake/STT/TTS, Device Owner/Accessibility, privacy and p50/p95 timing. No physical PASS or zero-cost usage result is claimed by repository CI.
 
-- [T-018 physical acceptance plan (canonical repository)](https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/plans/active/T-018-direct-ai-final-fold3-acceptance.md)
-- [Migration evidence](https://github.com/khuongnd0901/DeX-Assistant/blob/main/.agent/evidence/mobile-direct-M4-command-chat-backendless-2026-10-09.md)
+- [T-018 physical acceptance plan (local canonical copy)](.agent/plans/active/T-018-direct-ai-final-fold3-acceptance.md)
+- [Migration evidence](.agent/evidence/mobile-direct-M4-command-chat-backendless-2026-10-09.md)
 - [Prior device/voice setup notes](docs/README_legacy_2026-10-09.md) — **historical; includes obsolete backend instructions**
 
-The former [Java/Spring Boot backend repository](https://github.com/khuongnd0901/DeX-Assistant) is retained for source history, contracts and offline regression/rollback research. **Do not assume the deployed EC2/EBS/DNS resources have already been shut down.**
+The former [Java/Spring Boot backend repository](https://github.com/khuongnd0901/DeX-Assistant) is retired and frozen for historical source provenance. **Do not assume the deployed EC2/EBS/DNS resources have already been shut down.**
+
+Development/test entry point: [.agent/STATUS.md](.agent/STATUS.md). Windows simulator selection from this root: `bash scripts/android/select-test-target.sh dex --emulator-only`. [Local test tooling](scripts/android/README.md), [T-021 evidence](.agent/evidence/T-021-windows-response-performance-2026-10-13.md) and [T-020 physical campaign](.agent/plans/active/T-020-consolidated-fold3-acceptance.md) are canonical here.
