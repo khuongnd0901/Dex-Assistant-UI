@@ -2,6 +2,13 @@
 
 # T-020 — Consolidated Z Fold3 acceptance
 
+> Current scheduling override 2026-10-13: owner resumed Fold3 acceptance and
+> authorized per-task commit/push in priority order. Owner subsequently skipped
+> speaking for now. Safe automated physical preparation may proceed; natural
+> voice/corpus/visual gates remain open. This overrides the older defer-only
+> scheduling text below, preserving all acceptance thresholds.
+
+
 ## Outcome and boundaries
 
 Owner instruction 2026-10-13: continue Android work using Windows simulators through WSL; consolidate all required physical Z Fold3 tests into one task and one scheduled campaign. T-020 owns execution and evidence for the physical gates of T-006/T-010/T-011/T-014/T-015/T-016/T-017/T-018 and the T-021 performance/RAM follow-up. Original tasks keep implementation responsibility and remain IN_PROGRESS until their applicable gates pass. No backend acceptance, cancelled T-008/T-019 work, cloud teardown, or live calls/SMS.
@@ -81,3 +88,5 @@ No physical test is performed in this continuation. Previous evidence remains hi
 ## Decision and requirement updates
 
 No product acceptance threshold or architecture changes. Update TASKS/STATUS and parent plan scheduling references; keep D-036 Android-only direction. A future accepted STT/runtime or mic/TTS architecture change requires its existing parent plan and decision record.
+
+Resumed automated preflight/source5472dff checkpoint: [T-021 evidence](../../evidence/T-021-fold3-automated-2026-10-13.md). Physical offline benchmark2/2 and safe metric/fault17/17 PASS. Natural/manual/soak gates remain open; expanded collector worktree found but recovery not yet validated.

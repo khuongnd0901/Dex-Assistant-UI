@@ -1,46 +1,42 @@
 # Android current status
 
-Updated 2026-10-13. This repository is the canonical development/test workspace
-([D-037](DECISIONS.md#d-037--android-canonical-workspace-backend-retired)); backend
-development is retired. Start at [AGENTS](../AGENTS.md), then [TASKS](TASKS.md).
-Open [Android workspace](../Dex-Assistant.code-workspace). No backend checkout required.
+Updated 2026-10-13. Android is canonical under [D-037](DECISIONS.md#d-037--android-canonical-workspace-backend-retired).
+Start at [AGENTS](../AGENTS.md), [TASKS](TASKS.md); use [workspace](../Dex-Assistant.code-workspace).
+Backend development is retired; T-022 DONE. No backend checkout/runtime needed.
 
-[T-022 migration](plans/completed/T-022-android-canonical-workspace.md) DONE.
-132files mapped and verified; canonical docs/memory plus local test tools moved;
-old backend entry points redirect here.43host tests PASS; local links/Android-only
-workspace checked, actual Windows API35 AVD selector PASS. T-02120frozen source
-hashes unchanged. [Migration evidence](evidence/T-022-android-canonical-workspace-2026-10-13.md)
-records snapshots/collision recovery and starter terminal-return retry limitation.
-No app/runtime/build/install/physical/provider/cloud changes or commit/push.
+Owner authorized execution and per-task commit/push in this order:
+T-021 → T-014 → T-017 → T-020 → T-018 → T-006 → T-010 → T-011 → T-015 → T-016.
+Fold3 acceptance resumed through T-020; subsequent instruction skips speaking
+for now. Safe automated work proceeds; natural/manual gates remain open.
+T-003/T-008/T-009/T-019 remain CANCELLED; no prototype acceptance/revival.
 
-Current planning priority: [T-021](plans/active/T-021-android-response-performance-ram.md) remains IN_PROGRESS.
-Windows M0–M3 source/test/lint/APKs passed; safe AVD31PASS/4SKIP/0FAIL. Three A/B
-rounds show synthetic Command p9543.66–52.93% lower and allocation~46% lower;
-wake allocation80–84% lower, native timing INCONCLUSIVE. No natural voice,
-Fold3/live-provider/PSS gains accepted. Exact hashes/commands/limits are in
-[T-021 evidence](evidence/T-021-windows-response-performance-2026-10-13.md).
+T-021 remains IN_PROGRESS. M0–M3 Windows implementation already verified:
+synthetic Command p95 43.66–52.93% lower, allocation about46% lower; wake
+allocation80–84% lower, native speed INCONCLUSIVE.
+[Windows evidence](evidence/T-021-windows-response-performance-2026-10-13.md).
+New physical SM-F926B/API35/DeXdisplay2 checkpoint: host201-task checks PASS,
+26perf-tool tests PASS, benchmark2/2 and safe metric/fault17/17 PASS.
+Offline candidate Command p95 12.174ms; no matching physical baseline or natural
+improvement claim. Read-only Fold3 resource collector added; PSS snapshots have
+different states and cannot prove savings.
+[Physical checkpoint](evidence/T-021-fold3-automated-2026-10-13.md).
 
-All actual Z Fold3 work remains deferred to [T-020](plans/active/T-020-consolidated-fold3-acceptance.md):
-natural mic/wake/USB/STT/TTS/rearm/Chat interruption, Samsung DeX/pixels/targets,
-real provider/radio,30natural samples per route,100sessions and8hsoak. T-006/
-T-010/T-011/T-014/T-015/T-016/T-017/T-018 stay IN_PROGRESS; T-003/T-008/T-009/T-019
-stay CANCELLED. Accepted thresholds and owner signing/data/settings/roles/grants remain.
+Physical candidate app source5472dff installed in place with original9ddb
+certificate; original app/test privately retained. Provider keys/settings,
+voice policy, roles/grants/UID/data inode unchanged. History ciphertext changed
+after startup; before/after plaintext equality unmeasured. No live provider
+calls, Wi-Fi toggle, data reset, permission or role changes.
 
-Next Android readiness: echo-safe spoken End Chat during TTS (currently unsupported),
-recover expanded200 ASR collector before resuming7/200 (restored12-prompt pilot
-cannot replace it). Production STT Google; Gemini-only physical scope; Sherpa
-rights/recommendation still open. Scoped window close/minimize/switch and
-notification reading remain unavailable where documented.
+Next: T-014 TTS chunk/lifecycle validation; echo-safe spoken exit remains
+unsupported and requires physical proof. Then T-017 expanded200 collector
+recovery: original dirty worktree `/home/kunrg/Dex-Assistant-UI-T017` found,
+not yet migrated/validated. Retained natural corpus remains7/200.
+Production STT Google, current provider acceptance Gemini-only; Sherpa rights
+and recommendation open. Preserve accepted thresholds/signing/data/settings.
 
-Local simulator entry: `bash scripts/android/select-test-target.sh dex --emulator-only`.
-[Tooling guide](../scripts/android/README.md). Detailed prior handoffs:
-[Android](archive/pre-T022/ANDROID_STATUS_2026-10-13.md),
-[former canonical](archive/pre-T022/backend-STATUS_2026-10-13.md).
-
-Local sync 2026-10-13: pulled Android `5d06ef4` and restored the four pre-existing
-T-019 source/test/guide changes. Historical local T-019 handoff is preserved in
-[Android archive](archive/pre-T022/ANDROID_STATUS_2026-10-13.md). No device work or
-new T-019 development. Merged-source JDK17/Linux SDK offline test, lint, debug
-app/test APK assembly PASS; app200tests per variant,0failures/errors,1skip.
-Validation log: `/tmp/dex-ui-pull-validation-20261013.log`. Owner authorized commit/push of this retained-source snapshot; pre-pull stash
-and patch backup retained. Physical acceptance remains open under T-020.
+T-020 and all ten active tasks remain IN_PROGRESS. Natural wake/mic/USB/STT/TTS,
+Chat interruption, Samsung targets/pixels,≥30samples per active route/candidate,
+100natural sessions and8hsoak cannot be closed from offline automation.
+Local Windows AVD selector: `bash scripts/android/select-test-target.sh dex --emulator-only`.
+This Linux host has no `/mnt/d`; physical ADB currently uses5037.
+[Tooling guide](../scripts/android/README.md), [physical plan](plans/active/T-020-consolidated-fold3-acceptance.md).

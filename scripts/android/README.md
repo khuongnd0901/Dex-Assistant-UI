@@ -15,7 +15,7 @@ Keep the exact reported `ADB`, `PORT` and `SERIAL` for all following commands.
 Windows ADB uses port5038; Linux ADB uses port5037. A loopback serial such as
 `127.0.0.1:5555` is valid only after the reported AVD-name/API checks.
 Without `--emulator-only`, the selector prefers a connected API35 SM-F926* Fold3;
-physical execution remains deferred under [T-020](../../.agent/plans/active/T-020-consolidated-fold3-acceptance.md).
+physical execution is coordinated under [T-020](../../.agent/plans/active/T-020-consolidated-fold3-acceptance.md).
 
 Windows SDK is `D:\Android\Sdk`, AVD home `D:\Android\AVD`; WSL paths are
 `/mnt/d/Android/...`. SDK Manager is `cmdline-tools/latest/bin/sdkmanager.bat`;
@@ -58,3 +58,15 @@ scoped AVD install. Preserve existing signatures, history, credentials and owner
 settings; broad legacy instrumentation can write owner policy/history. Original
 signing/Device Owner/Assistant role/Accessibility/grants and sole wireless ADB
 must stay intact. No physical or live provider actions are implied by this guide.
+
+Physical T-021 resource snapshots (owner resumed device testing on 2026-10-13):
+
+```bash
+python3 scripts/perf/snapshot-fold3-resources.py --port 5037 --serial '<confirmed-Fold3-serial>' --label preflight
+```
+
+Select the actual ADB server/serial, then verify SM-F926*/API35 before any
+process query. This separate read-only collector rejects other models/emulators,
+exports only numeric App Summary/proc fields, and keeps unavailable values null.
+Store reports outside Git. Single snapshots and offline instrumentation do not
+satisfy natural speech, matched A/B, 100-session or eight-hour soak gates.

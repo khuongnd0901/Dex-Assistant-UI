@@ -268,3 +268,17 @@ chốt target nội bộ, ghi ở đây với baseline; không giảm SRS hoặc
 Chỉ thêm DECISIONS khi chấp nhận lựa chọn kỹ thuật/product bền vững sau evidence;
 BRD/SRS chỉ sửa nếu lựa chọn được chấp nhận làm thay đổi requirement.
 Hiện chưa có quyết định kiến trúc/provider/retention mới.
+
+### Resumed physical execution — 2026-10-13
+
+Owner now authorizes physical Fold3 acceptance and per-task commit/push in
+priority order. The subsequent instruction skips speaking for now: run safe
+automation and resource preparation only; natural samples remain pending.
+T-020 continues to coordinate the campaign. Original Windows baseline artifacts
+are absent on this Linux host; retain the installed APK before any update and
+never label candidate-only measurements as matched A/B. Read-only physical
+resource collector and identity/privacy regression tests are in progress.
+
+Physical checkpoint: guarded collector and26host tests PASS; physical offline
+benchmark2/2 and metric/fault17/17 PASS. Candidate-only numbers and postflight
+limits in [evidence](../../evidence/T-021-fold3-automated-2026-10-13.md). M5 stays open.

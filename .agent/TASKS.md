@@ -2,6 +2,12 @@
 
 # Task board
 
+Current owner priority (2026-10-13): T-021 → T-014 → T-017 → T-020 →
+T-018 → T-006 → T-010 → T-011 → T-015 → T-016. Commit/push each verified
+task checkpoint. Physical Fold3 execution resumed under T-020; owner then
+skipped speaking for now. Natural/visual/manual gates remain open; this does
+not mark any task DONE or restart cancelled work.
+
 Physical acceptance follow-up (2026-10-08): owner requested automated-only
 Fold3 runs for existing tasks. [Evidence](evidence/Fold3-automated-2026-10-08.md)
 records current build/install, Config9PASS/1SKIP and matcher0.370469ms, Maps+pair
@@ -26,6 +32,8 @@ States: `BACKLOG`, `PLANNED`, `READY`, `IN_PROGRESS`, `BLOCKED`, `CANCELLED`, `D
 - Next: future development/test starts at Android AGENTS/STATUS. T-021/T-020 and other incomplete acceptance stay open.
 
 ## T-021 — Tối ưu phản hồi lệnh và RAM Android
+
+- Resumed physical checkpoint2026-10-13: owner resumed Fold3, then skipped speaking. Source5472dff host201-task checks PASS; perf tools26PASS; physical offline benchmark2/2 + safe metric/fault17/17PASS. Candidate Command p9512.174ms; matching physical baseline unavailable, no natural/PSS gain accepted. Added guarded read-only Fold3 resource collector and explicit single-run hardware reporting. Original signing/keys/settings/policy/roles/grants retained; history ciphertext changed, plaintext equality unmeasured. [Evidence](evidence/T-021-fold3-automated-2026-10-13.md). Remains IN_PROGRESS.
 
 - State: `IN_PROGRESS` (2026-10-13; simulator M0–M3 verified; owner defers all Fold3 acceptance).
 - Planning: [ExecPlan](plans/active/T-021-android-response-performance-ram.md).

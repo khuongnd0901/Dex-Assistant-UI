@@ -1,6 +1,9 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import subprocess
+import sys
+import tempfile
 
 spec = importlib.util.spec_from_file_location(
     "response_benchmark", Path(__file__).with_name("summarize-response-benchmark.py"))
@@ -45,6 +48,26 @@ class ResponseBenchmarkSummaryTest(unittest.TestCase):
         comparison = summary.compare(before, after)["wakeFrame"]
         self.assertFalse(comparison["allPairedBlocksFaster"])
         self.assertEqual(comparison["latencySignal"], "INCONCLUSIVE")
+
+    def test_different_hardware_cannot_claim_improvement(self):
+        before = summary.summarize(log(2000), "Windows-AVD")
+        after = summary.summarize(log(1000), "Fold3")
+        result = summary.compare(before, after)["commandTransport"]
+        self.assertFalse(result["completeCleanSamples"])
+        self.assertEqual(result["latencySignal"], "INCONCLUSIVE")
+        self.assertIsNone(result["medianBlockAllocationDeltaBytes"])
+
+    def test_single_fold3_cli_does_not_label_candidate_as_baseline(self):
+        import json
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt") as stream:
+            stream.write("\n".join(log(1000))); stream.flush()
+            run = subprocess.run([sys.executable, str(Path(__file__).with_name("summarize-response-benchmark.py")),
+                                  "--target", "Fold3", "--single", stream.name],
+                                 capture_output=True, text=True, check=True)
+        report = json.loads(run.stdout)
+        self.assertEqual(list(report), ["singleRun"])
+        self.assertEqual(report["singleRun"]["target"], "Fold3")
+        self.assertNotIn("Windows", report["singleRun"]["note"])
 
     def test_empty_population_is_missing_with_null_percentiles(self):
         report = summary.summarize([])

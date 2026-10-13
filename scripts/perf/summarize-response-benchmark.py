@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the synthetic T-021 AVD workload; never claim natural/Fold3 latency."""
+"""Summarize synthetic T-021 components; never claim natural end-to-end latency."""
 import argparse
 import json
 import math
@@ -15,7 +15,9 @@ def percentile(values):
             "p95Ms": values[math.ceil(.95 * len(values)) - 1] if values else None}
 
 
-def summarize(lines):
+def summarize(lines, target="Windows-AVD"):
+    if target not in ("Windows-AVD", "Fold3"):
+        raise ValueError("Unknown benchmark target")
     trials = {kind: {block: {} for block in range(3)} for kind in WORKLOAD}
     allocations = {}
     duplicates = invalid = duplicate_allocations = 0
@@ -57,14 +59,15 @@ def summarize(lines):
                            "complete": all(b["missingSamples"] == 0 for b in blocks)}
     return {"workloads": workloads, "duplicateTrials": duplicates,
             "invalidTrials": invalid, "duplicateAllocationRows": duplicate_allocations,
-            "note": "Synthetic offline Windows AVD components only. Allocation includes fixture/logging overhead; absent stats remain null."}
+            "target": target,
+            "note": "Synthetic offline components only, not natural speech/provider latency. Allocation includes fixture/logging overhead; absent stats remain null."}
 
 
 def compare(baseline, candidate):
     result = {}
     for kind in WORKLOAD:
         before, after = baseline["workloads"][kind], candidate["workloads"][kind]
-        clean = (before["complete"] and after["complete"] and
+        clean = (baseline.get("target") == candidate.get("target") and before["complete"] and after["complete"] and
                  all(report[key] == 0 for report in (baseline, candidate)
                      for key in ("duplicateTrials", "invalidTrials", "duplicateAllocationRows")))
         gain = before["p95Ms"] - after["p95Ms"] if before["p95Ms"] is not None and after["p95Ms"] is not None else None
@@ -95,12 +98,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("baseline", help="Filtered baseline DexT021 log, one instrumentation process")
     parser.add_argument("candidate", nargs="?", help="Matching candidate workload log")
+    parser.add_argument("--target", choices=("Windows-AVD", "Fold3"), default="Windows-AVD", help="Explicit measured hardware; never inferred from timing")
+    parser.add_argument("--single", action="store_true", help="One candidate-only run, no baseline or improvement claim")
     args = parser.parse_args()
+    if args.single and args.candidate:
+        parser.error("--single accepts only one log")
     with open(args.baseline, encoding="utf-8", errors="replace") as source:
-        baseline = summarize(source)
-    report = {"baseline": baseline}
+        baseline = summarize(source, args.target)
+    report = {"singleRun" if args.single else "baseline": baseline}
     if args.candidate:
         with open(args.candidate, encoding="utf-8", errors="replace") as source:
-            candidate = summarize(source)
+            candidate = summarize(source, args.target)
         report.update(candidate=candidate, comparison=compare(baseline, candidate))
     print(json.dumps(report, indent=2))
