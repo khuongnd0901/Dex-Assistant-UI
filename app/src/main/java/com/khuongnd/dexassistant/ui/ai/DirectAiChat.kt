@@ -23,6 +23,12 @@ class DirectChatState {
     var lastActivityMillis: Long = 0
         private set
 
+    /** The idle limit also applies before the first request. */
+    fun start(now: Long = System.currentTimeMillis()) {
+        clear()
+        lastActivityMillis = now
+    }
+
     fun begin(input: String, at: ZonedDateTime = ZonedDateTime.now()): Turn {
         require(input.isNotBlank() && input.codePointCount(0, input.length) <= 2000) { "CHAT_INPUT_TOO_LARGE" }
         require(!CommandPrivacy.requiresLocalHandling(input)) { "CHAT_SENSITIVE_INPUT_REJECTED" }
@@ -63,6 +69,10 @@ class DirectAiChat(
         .connectTimeout(5, TimeUnit.SECONDS).readTimeout(16, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS).build(),
 ) {
+    private val activeCall = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>()
+
+    fun cancelPendingRequest() { activeCall.get()?.cancel() }
+
     private val system = "You are a brief Vietnamese-language conversation partner. " +
         "Never claim to control the device, execute an action, or request credentials. " +
         "Do not produce device instructions as if they were executed. Answer in the user's language."
@@ -78,6 +88,7 @@ class DirectAiChat(
         if (providers.isEmpty()) throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
         var failure = MobileAiException("CHAT_PROVIDER_UNAVAILABLE")
         for (provider in providers) {
+            if (Thread.currentThread().isInterrupted) throw MobileAiException("CHAT_PROVIDER_TIMEOUT")
             try {
                 val key = credentials.load(provider) ?: throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")
                 val result = call(provider, key, settings.model(provider), turn)
@@ -132,8 +143,11 @@ class DirectAiChat(
         }
         val request = req.header("Content-Type", "application/json")
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        val call = client.newCall(request)
+        activeCall.set(call)
         try {
-            client.newCall(request).execute().use { response ->
+            if (Thread.currentThread().isInterrupted) call.cancel()
+            call.execute().use { response ->
                 if (!response.isSuccessful) throw when (response.code) {
                     429 -> MobileAiException("AI_QUOTA_EXHAUSTED", true)
                     408, 500, 502, 503, 504 -> MobileAiException("CHAT_PROVIDER_UNAVAILABLE", true)
@@ -147,7 +161,9 @@ class DirectAiChat(
                 }
             }
         } catch (_: IOException) {
-            throw MobileAiException("CHAT_PROVIDER_TIMEOUT", true)
+            throw MobileAiException("CHAT_PROVIDER_TIMEOUT", !call.isCanceled())
+        } finally {
+            activeCall.compareAndSet(call, null)
         }
     }
 

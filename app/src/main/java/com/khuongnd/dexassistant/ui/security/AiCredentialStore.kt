@@ -19,7 +19,7 @@ enum class AiProvider(val displayName: String, val supportsDirectCommands: Boole
     DEEPSEEK("DeepSeek", false),
 }
 
-class AiCredentialStore(context: Context) {
+class AiCredentialStore(context: Context, private val aliasPrefix: String = "dex-assistant-ai-key-v1-") {
     private val prefs = context.applicationContext.getSharedPreferences("ai_provider_keys_v1", Context.MODE_PRIVATE)
 
     @Synchronized
@@ -76,7 +76,7 @@ class AiCredentialStore(context: Context) {
         }
     }
 
-    private fun alias(provider: AiProvider) = "dex-assistant-ai-key-v1-" + provider.name.lowercase()
+    private fun alias(provider: AiProvider) = aliasPrefix + provider.name.lowercase()
 
     companion object {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

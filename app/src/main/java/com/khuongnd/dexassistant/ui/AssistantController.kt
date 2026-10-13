@@ -58,7 +58,13 @@ class AssistantController(private val contextForVoice: Context, private val stat
     }
 }
 
-class AssistantCoordinator internal constructor(private val context: Context, private val history: CommandHistoryStore = CommandHistoryStore(context)) {
+class AssistantCoordinator internal constructor(
+    private val context: Context,
+    private val history: CommandHistoryStore = CommandHistoryStore(context),
+    private val chatClient: okhttp3.OkHttpClient? = null,
+    private val chatCredentials: AiCredentialStore = AiCredentialStore(context),
+    private val chatIdleTimeoutMillis: Long = 15 * 60 * 1000L,
+) {
     private val observers = linkedSetOf<(UiState) -> Unit>()
     private var started = false
     private val commandGate = CommandSessionGate()
@@ -93,7 +99,10 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     @Volatile private var chatObserver: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)? = null
     fun observeChat(observer: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)?) { chatObserver = observer }
     private val directChatState = DirectChatState()
-    private val directChat by lazy { DirectAiChat(AiCredentialStore(context), aiSettings) }
+    private val directChat by lazy {
+        chatClient?.let { DirectAiChat(chatCredentials, aiSettings, it) }
+            ?: DirectAiChat(chatCredentials, aiSettings)
+    }
     private val chatExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "dex-chat-ai").apply { isDaemon = true }
     }
@@ -101,6 +110,17 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
     private var chatTurn: UUID? = null
     private var chatTask: java.util.concurrent.Future<*>? = null
     private var chatEpoch = 0L
+    private var chatIdleObserver: (() -> Unit)? = null
+    internal fun observeChatIdleExpiry(observer: (() -> Unit)?) { chatIdleObserver = observer }
+    private val chatIdleExpiry: Runnable = Runnable {
+        val active = chatSession != null
+        endChat("IDLE")
+        if (active && chatSession == null) chatIdleObserver?.invoke()
+    }
+    private fun rearmChatIdleExpiry() {
+        main.removeCallbacks(chatIdleExpiry)
+        main.postDelayed(chatIdleExpiry, chatIdleTimeoutMillis)
+    }
 
     /** Android owns the chat session; no WebSocket, persistence, or device action tools. */
     fun startChat() = onMain {
@@ -109,14 +129,15 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         val preferred = aiSettings.defaultProvider()
         val available = preferred.supportsDirectCommands && aiSettings.enabled(preferred) &&
             aiSettings.freeTierConfirmed(preferred) && aiSettings.model(preferred).isNotBlank() &&
-            AiCredentialStore(context).hasKey(preferred)
+            chatCredentials.hasKey(preferred)
         if (!available) {
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
                 null, UUID.randomUUID(), "CHAT_PROVIDER_UNAVAILABLE",
                 "Cấu hình provider/model Free Tier trong Settings", false))
         } else {
             chatSession = session; chatEpoch++
-            directChatState.clear()
+            directChatState.start()
+            rearmChatIdleExpiry()
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Started(session, 900))
         }
     }
@@ -145,6 +166,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                 session, UUID.randomUUID(), code, code, false))
             return@onMain
         }
+        rearmChatIdleExpiry()
         val requestId = UUID.randomUUID()
         chatTurn = requestId
         val epoch = chatEpoch
@@ -159,6 +181,7 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
                             session, requestId, "CHAT_INVALID_OUTPUT", "Phản hồi không hợp lệ", false))
                         return@fold
                     }
+                    rearmChatIdleExpiry()
                     chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Reply(
                         session, requestId, reply, count))
                 }, onFailure = { error ->
@@ -174,10 +197,12 @@ class AssistantCoordinator internal constructor(private val context: Context, pr
         }
     }
 
-    fun endChat(reason: String = "USER") = onMain {
+    fun endChat(reason: String = "USER"): Unit = onMain {
+        main.removeCallbacks(chatIdleExpiry)
         val session = chatSession ?: return@onMain
         chatEpoch++
         chatTask?.cancel(true); chatTask = null
+        directChat.cancelPendingRequest()
         chatTurn = null; chatSession = null; directChatState.clear()
         chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Ended(session))
     }

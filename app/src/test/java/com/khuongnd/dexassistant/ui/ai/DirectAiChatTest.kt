@@ -37,6 +37,18 @@ class DirectAiChatTest {
         assertTrue(chat.begin("Phiên mới").previous.isEmpty())
     }
 
+    @Test fun idleExpiryStartsWhenSessionOpensBeforeAnyTurn() {
+        val chat = DirectChatState()
+        val openedAt = 10_000L
+        val timeout = 15 * 60 * 1000L
+        chat.start(openedAt)
+        assertEquals(openedAt, chat.lastActivityMillis)
+        assertFalse(chat.expired(openedAt + timeout - 1))
+        assertTrue(chat.expired(openedAt + timeout))
+        chat.clear()
+        assertFalse(chat.expired(openedAt + timeout))
+    }
+
     @Test fun retainedTurnsStayBounded() {
         val chat = DirectChatState()
         repeat(35) {

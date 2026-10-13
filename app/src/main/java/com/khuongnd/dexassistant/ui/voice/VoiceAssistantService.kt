@@ -107,6 +107,16 @@ class VoiceAssistantService : Service() {
         }
         coordinator.start()
         coordinator.observeChat { event -> onChatEvent(event) }
+        coordinator.observeChatIdleExpiry {
+            // Explicit end helpers own their teardown; only automatic expiry uses this hook.
+            if (chatActive) {
+                cancelSession()
+                transitionSafely(VoiceEvent.STOP)
+                transitionSafely(VoiceEvent.START)
+                report("Chat hết thời gian chờ; đang chờ Hey Hey")
+                if (stateMachine.state == VoiceState.LISTENING) startWake()
+            }
+        }
     }
 
     fun currentVoiceState(): VoiceState = stateMachine.state
@@ -182,6 +192,7 @@ class VoiceAssistantService : Service() {
     override fun onDestroy() {
         active = null
         coordinator.observeChat(null)
+        coordinator.observeChatIdleExpiry(null)
         cancelSession()
         wakeWorker.execute { try { wakeEngine?.close() } finally { wakeEngine = null } }
         wakeWorker.shutdown()
