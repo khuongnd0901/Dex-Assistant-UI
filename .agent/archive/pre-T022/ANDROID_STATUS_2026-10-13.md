@@ -36,3 +36,47 @@ Recover expanded200 collector source recorded on another host before resuming re
 Then schedule T-020 once full readiness is established: all natural mic/wake/USB/TTS/Chat, Samsung selected-display/grid/semantic/app targets, pixel acceptance, real provider/radio behavior,30samples per route,100natural sessions, ASR real corpus and8hsoak together. Never run broad legacy LocalFirstDeviceTest against owner history or turn off sole wireless ADB. Use canonical selector `dex --emulator-only` during preparation.
 
 T-008/T-019 stay CANCELLED; no further microphone-selection or release-automation work. Prior physical sessions in older status are historical; rediscover device runtime/preflight at T-020. No backend runtime dependency. Preserve owner voice policy, history, original signing, Device Owner/Assistant role/Accessibility and grants.
+
+
+## Local T-019 handoff preserved during pull — 2026-10-13
+
+Historical local note from before the canonical-workspace migration; prior test
+results below are not validation of the newly merged source. T-019 remains CANCELLED.
+
+## 2026-10-10 — T-019 CANCELLED; retained microphone prototype
+
+Owner cancelled T-019; implementation/install/physical acceptance has stopped.
+Existing prototype is retained for main-owned source publication, not accepted or
+DONE. T-010 remains unfinished. Main owns publication/review of late dirty diffs.
+No production APK installed by the Android agent; only matching original-cert
+selected test APKs were installed, with --no-restart and normal pause/resume.
+Owner voice_policy file SHA stayed byte-identical; tests dispatched no commands
+or history/settings/key changes. Parent publication commit48d676d is separate
+from final five-file dirty follow-up; this agent made no commits/pushes.
+
+Retained prototype: fresh START/button defaults to builtin; sequential wake scan
+attempts exposed USB/wired/Bluetooth inputs, verifies actual route, resets KWS
+between routes, holds activity and remembers wake source through continuation.
+Exact Google TTS RecognitionService versionCode210673049/API33+ gate supplies
+selected16k monoPCM16 through ephemeral source-segmented pipe. First nonblank
+segment consumes final once; silence/25s capture/30s watchdog bound lifecycle.
+Unknown providers/updates visibly fall back to system routing. Latest dirty
+follow-up adds nonblocking writes/5s backpressure bound and an unread-source
+cancellation fixture; that physical fixture has NOT run. No global SCO/mode
+changes or persisted captured audio; temporary synthetic proof files deleted.
+
+Physical metadata: sequential builtin18/20 and USB61 route verified unsilenced;
+simultaneous VOICE_RECOGNITION builtin18 + USB61 both routed to18, so independent
+streams were not supported in this measured configuration. Known synthetic source
+proof PASS1/1 at24k(4.437s) and production16k(4.377s) with segmented mode; ordinary
+source variants returned empty result and were not enabled. This is provider
+source support, not natural selected-microphone STT acceptance. Bluetooth,
+natural phone/USB handoff, unplug/continuation/reliability remain unverified;
+remaining acceptance is withdrawn by cancellation.
+
+Final retained-source JDK17/Linux SDK offline `./gradlew test lint assembleDebug
+assembleDebugAndroidTest --max-workers=1` PASS201tasks/3m16s,
+`/tmp/t019-backpressure-final-build.log`; app190tests per variant,0failures/errors,
+1existing skip. Earlier expanded-source check PASS201tasks/5m10s; initial frozen
+check PASS201tasks/3m31s. Runnable reference/limitations:
+`scripts/android/T019-MICROPHONE-ACCEPTANCE.md`. No further T-019 action scheduled.

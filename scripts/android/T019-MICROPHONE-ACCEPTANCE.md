@@ -40,3 +40,25 @@ The RMS/zero-crossing classifier is a heuristic, not a trained VAD; short wake
 phrases entirely on an unobserved input can be missed, and music/noise can hold
 a route. No universal Bluetooth, simultaneous multi-input or speech reliability
 claim is supported by host tests. Natural physical acceptance is required.
+
+Measured Fold3/API35 evidence (2026-10-10): builtin18 and USB61 route correctly
+when opened sequentially; two simultaneous VOICE_RECOGNITION captures both
+report builtin18, so this HAL/configuration does not provide independent inputs.
+The Google TTS recognition component at versionCode210673049 recognizes supplied
+16000Hz mono PCM16 only with source-segmented mode in the bounded synthetic
+proof. Nonsegmented variants returned an empty result. The production capability
+table therefore permits only this exact component/version on API33+; unverified
+provider updates use the visibly labeled system-selected route.
+
+For the verified provider, wake selection survives into app-owned command PCM
+capture and conversation continuation. Fresh START and explicit assistant button
+use the phone microphone. The source verifies actual route before recognizer
+startup, rejects unexpected changes/silencing during the utterance, and closes
+on pause/stop/error/final. Its caller owns ephemeral pipe closure. Recognition
+commits only the first nonblank final segment through the existing consume-once
+guard. Captured audio is never written to disk. A conservative activity/silence
+EOF guard has a three-second minimum after readiness and 1.5-second silence
+bound; capture ends after25seconds and recognizer watchdog remains30seconds.
+Bluetooth inputs are attempted only if the system exposes them as input devices
+and actual routing verifies; the app never changes global SCO/communication mode.
+Physical Bluetooth and natural phone/USB reliability remain separate gates.

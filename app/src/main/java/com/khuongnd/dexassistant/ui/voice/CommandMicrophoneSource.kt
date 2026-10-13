@@ -10,6 +10,9 @@ import android.media.MediaRecorder
 import android.os.Handler
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.system.Os
+import android.system.OsConstants
+import android.system.ErrnoException
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -63,7 +66,8 @@ internal class CommandMicrophoneSource(
             val bytes = ByteArray(640)
             val endpoint = PcmSpeechEndpoint()
             val captureStarted = SystemClock.elapsedRealtime()
-            ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { output ->
+            Os.fcntlInt(pipe[1].fileDescriptor, OsConstants.F_SETFL, OsConstants.O_NONBLOCK)
+            run {
                 while (!stopped.get()) {
                     val count = record.read(samples, 0, samples.size)
                     if (stopped.get()) break
@@ -75,7 +79,10 @@ internal class CommandMicrophoneSource(
                         bytes[2 * i] = samples[i].toByte()
                         bytes[2 * i + 1] = (samples[i].toInt() shr 8).toByte()
                     }
-                    output.write(bytes, 0, count * 2)
+                    if (!writeFrame(bytes, count * 2)) {
+                        if (!stopped.get()) failure = "STT_MIC_PIPE_TIMEOUT"
+                        break
+                    }
                     val now = SystemClock.elapsedRealtime()
                     if ((readyAt != 0L && endpoint.shouldEnd(samples, count, now - readyAt)) ||
                         now - captureStarted >= 25_000) break
@@ -92,6 +99,22 @@ internal class CommandMicrophoneSource(
             failure?.let { status -> main.post { if (!stopped.get()) failed(status) } }
         }
     } }
+
+    private fun writeFrame(bytes: ByteArray, count: Int): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + 5000
+        var offset = 0
+        while (offset < count && !stopped.get()) {
+            try {
+                val written = Os.write(pipe[1].fileDescriptor, bytes, offset, count - offset)
+                if (written > 0) offset += written
+            } catch (error: ErrnoException) {
+                if (error.errno != OsConstants.EAGAIN) throw error
+                if (SystemClock.elapsedRealtime() >= deadline) return false
+                Thread.sleep(5)
+            }
+        }
+        return !stopped.get() && offset == count
+    }
 
     override fun close() {
         if (!stopped.compareAndSet(false, true)) return

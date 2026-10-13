@@ -48,6 +48,7 @@ class VoiceAssistantService : Service() {
     @Volatile private var lastWakeMicrophoneId: Int? = null
     private var recognizer: SpeechRecognizer? = null
     private var commandMicrophone: CommandMicrophoneSource? = null
+    private var commandMicrophoneRoute = "hệ thống chọn micro"
     private var recognizerEpoch: Long? = null
     private var latestPartial = ""
     private var measuredEpoch: Long? = null
@@ -211,6 +212,7 @@ class VoiceAssistantService : Service() {
     fun beginCommandListening(): Boolean {
         if (Looper.myLooper() != Looper.getMainLooper() || !VoiceCommandActivation.allowed(this) ||
             !VoiceActivationGate.idle(stateMachine.state)) return false
+        lastWakeMicrophoneId = null // Explicit button starts a new phone-default command.
         cancelSession(clearScreen = false)
         if (stateMachine.state in setOf(VoiceState.STOPPED, VoiceState.ERROR)) transitionSafely(VoiceEvent.START)
         transitionSafely(VoiceEvent.WAKE)
@@ -374,6 +376,7 @@ class VoiceAssistantService : Service() {
     private fun startRecognition(id: Long) {
         if (!sessions.isCurrent(id)) return
         latestPartial = ""
+        commandMicrophoneRoute = "hệ thống chọn micro · chưa giữ được nguồn đánh thức"
         if (!diagnosticOnly) VoiceSubtitles.store.begin(id)
         timing(id, "stt_requested")
         val component = CommandRecognizer.component(this)
@@ -411,7 +414,8 @@ class VoiceAssistantService : Service() {
                                 android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET -> "Micro Bluetooth"
                                 else -> "Micro ngoài"
                             }
-                            VoiceLiveState.microphone("STT: $route · nguồn đã xác minh")
+                            commandMicrophoneRoute = "$route · nguồn đã xác minh"
+                            VoiceLiveState.microphone("STT: $commandMicrophoneRoute")
                             runCatching {
                                 recognizer!!.startListening(intent
                                     .putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE, descriptor)
@@ -458,7 +462,7 @@ class VoiceAssistantService : Service() {
             }
         }
         override fun onSegmentResults(segmentResults: Bundle) {
-            if (isRecognizing(id) && !segmentResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).isNullOrEmpty())
+            if (isRecognizing(id) && segmentResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.isNotBlank() == true)
                 onResults(segmentResults)
         }
         override fun onEndOfSegmentedSession() {
@@ -468,7 +472,7 @@ class VoiceAssistantService : Service() {
         override fun onRmsChanged(rmsdB: Float) {
             if (isRecognizing(id) && SystemClock.elapsedRealtime() - lastMicUpdate >= 500) {
                 lastMicUpdate = SystemClock.elapsedRealtime()
-                VoiceLiveState.microphone("STT RMS %.1f dB · micro do dịch vụ nhận dạng quản lý".format(java.util.Locale.ROOT, rmsdB))
+                VoiceLiveState.microphone("STT: $commandMicrophoneRoute · RMS %.1f dB".format(java.util.Locale.ROOT, rmsdB))
             }
         }
         override fun onBufferReceived(buffer: ByteArray?) = Unit // Raw audio is never stored.
@@ -498,6 +502,8 @@ class VoiceAssistantService : Service() {
             finishWithFeedback(id, message, code)
         }
         override fun onResults(results: Bundle?) {
+            // Measured source-segmented provider emits an empty ordinary result after its segments.
+            if (commandMicrophone != null && results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().isNullOrBlank()) return
             if (!isRecognizing(id) || !sessions.consumeFinal(id)) return
             finalAcceptedAtNanos = SystemClock.elapsedRealtimeNanos()
             timing(id, "stt_final")

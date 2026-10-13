@@ -15,6 +15,9 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.test.platform.app.InstrumentationRegistry
 import com.khuongnd.dexassistant.ui.voice.CommandRecognizer
+import com.khuongnd.dexassistant.ui.voice.CommandMicrophoneSource
+import android.os.Handler
+import android.os.Looper
 import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import com.khuongnd.dexassistant.ui.voice.VoiceState
 import org.junit.Assert.*
@@ -100,6 +103,33 @@ class MicrophoneRoutingDeviceTest {
                 android.util.Log.i("DexMicrophoneTest", "requested=${device.id} type=${device.type} accepted=$accepted actual=${actual?.id ?: 0} silenced=${input.activeRecordingConfiguration?.isClientSilenced}")
                 assertNotNull(actual)
             } finally { runCatching { input.stop() }; input.release() }
+        }
+    }
+
+    @Test fun cancelledUnreadSourceReleasesWorkerAndRecorder() {
+        requireIdle()
+        val manager = context.getSystemService(AudioManager::class.java)
+        val baseline = manager.activeRecordingConfigurations.map { it.clientAudioSessionId }.toSet()
+        val prepared = CountDownLatch(1)
+        val failures = AtomicInteger()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val source = CommandMicrophoneSource(context, null, Handler(Looper.getMainLooper()), worker,
+            ready = { _, type ->
+                if (type == AudioDeviceInfo.TYPE_BUILTIN_MIC) prepared.countDown()
+            }, failed = { failures.incrementAndGet(); prepared.countDown() })
+        try {
+            source.start()
+            assertTrue("Source did not prepare phone input", prepared.await(5, TimeUnit.SECONDS))
+            assertEquals(0, failures.get())
+            Thread.sleep(1000) // Deliberately leave its reader open/unread: exercise backpressure.
+            source.close()
+            worker.submit {}.get(2, TimeUnit.SECONDS) // Must run after capture's finally releases.
+            assertEquals(baseline, manager.activeRecordingConfigurations.map { it.clientAudioSessionId }.toSet())
+            assertEquals("Cancellation must suppress late failure", 0, failures.get())
+        } finally {
+            source.close()
+            worker.shutdownNow()
+            worker.awaitTermination(2, TimeUnit.SECONDS)
         }
     }
 

@@ -36,3 +36,11 @@ Local simulator entry: `bash scripts/android/select-test-target.sh dex --emulato
 [Tooling guide](../scripts/android/README.md). Detailed prior handoffs:
 [Android](archive/pre-T022/ANDROID_STATUS_2026-10-13.md),
 [former canonical](archive/pre-T022/backend-STATUS_2026-10-13.md).
+
+Local sync 2026-10-13: pulled Android `5d06ef4` and restored the four pre-existing
+T-019 source/test/guide changes. Historical local T-019 handoff is preserved in
+[Android archive](archive/pre-T022/ANDROID_STATUS_2026-10-13.md). No device work or
+new T-019 development. Merged-source JDK17/Linux SDK offline test, lint, debug
+app/test APK assembly PASS; app200tests per variant,0failures/errors,1skip.
+Validation log: `/tmp/dex-ui-pull-validation-20261013.log`. Owner authorized commit/push of this retained-source snapshot; pre-pull stash
+and patch backup retained. Physical acceptance remains open under T-020.
