@@ -348,3 +348,29 @@ voice/chat documentation. Keep `.agent/TASKS.md` and `.agent/STATUS.md` aligned.
 ## Windows simulator continuation — 2026-10-13
 
 Continuation 2026-10-13: fixed idle clock before first turn, automatic15min session/context teardown and active HTTP cancellation/no cancellation fallback. Voice service automatic-expiry cleanup hook added. Host exact-boundary test and Windows AVD idle/cancel/restart fixtures PASS; full build/lint PASS. Spoken exit during TTS remains unsupported, requires design and T-020 physical proof. [Evidence](../../evidence/Android-simulator-continuation-2026-10-13.md).
+
+## Priority continuation — 2026-10-13
+
+Owner authorized all open Android tasks in priority order with per-task commit/
+push and resumed Fold3 automation, then skipped speaking for now. T-014 remains
+IN_PROGRESS. T-014-06 now addresses bounded long-reply playback: Chat allows
+4,000 Unicode code points, which may exceed the TTS engine's input-string limit
+for supplementary characters. Use the runtime `getMaxSpeechInputLength()` limit,
+sentence/word boundaries and intact surrogate pairs. Submit one chunk at a time;
+only last completion resumes listening. One start metric per whole reply;
+unique chunk/generation IDs suppress duplicate/late/cancelled callbacks.
+No new persistent transcript/provider/model/mic ownership or timeout policy.
+
+Primary reference accessed2026-10-13:
+[Android TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech#getMaxSpeechInputLength()).
+Acceptance: Unicode reconstruction/engine-limit, full-sequence completion,
+cancel/same-public-ID replacement and late callbacks pass host tests; build/
+lint/APKs pass; opt-in short offline Vietnamese chunk fixture provides actual
+TTS support evidence. No fixture mic or network synthesis. The60s Chat watchdog
+still bounds total playback; long spoken stories may timeout. Echo-safe exit
+while TTS is speaking remains unsupported and cannot be accepted from these
+playback-cursor tests. Natural F08 remains open.
+
+Verified chunk checkpoint: full201-task checks PASS, app204tests/variant and
+physical offline chunk/cancel fixture1/1 PASS. [Evidence](../../evidence/T-014-tts-chunks-2026-10-13.md).
+Spoken echo-safe exit/natural F08 remain open; no whole-task closure.

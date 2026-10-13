@@ -11,8 +11,12 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 
-/** Vietnamese canned feedback only: never speaks the raw command or credentials. */
-class VoiceFeedback(context: Context, private val capabilityChanged: (String) -> Unit = {}) : AutoCloseable {
+/** Vietnamese feedback and bounded Chat replies; never speaks command transcripts or credentials. */
+class VoiceFeedback(
+    context: Context,
+    private val speechInputLimit: Int = TextToSpeech.getMaxSpeechInputLength(),
+    private val capabilityChanged: (String) -> Unit = {},
+) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
     private val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 60)
     private var ready = false
@@ -22,6 +26,8 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
     private var completion: ((Boolean) -> Unit)? = null
     private var started: (() -> Unit)? = null
     private var utterance: String? = null
+    private var playback: TtsPlayback? = null
+    private var playbackGeneration = 0L
     var voiceDescription = "TTS_INITIALIZING"
         private set
     private var engine: TextToSpeech? = null
@@ -56,7 +62,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
             pending?.also { pending = null; it() }
         } }
         engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) { main.post { if (utterance == utteranceId) { timing("tts_started"); started?.also { started = null; it() } } } }
+            override fun onStart(utteranceId: String?) { main.post { if (playback?.start(utteranceId) == true) { timing("tts_started"); started?.also { started = null; it() } } } }
             override fun onDone(utteranceId: String?) { finish(utteranceId, false) }
             @Deprecated("Android callback") override fun onError(utteranceId: String?) { finish(utteranceId, true) }
             override fun onError(utteranceId: String?, errorCode: Int) { finish(utteranceId, true) }
@@ -132,21 +138,41 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         utterance = id
         completion = done
         started = onStarted
+        playback?.cancel()
+        playback = if (text.isBlank()) null else TtsPlayback(text,
+            speechInputLimit.coerceIn(2, TextToSpeech.getMaxSpeechInputLength()), "tts-${++playbackGeneration}")
+        if (playback == null) { completePlayback(true); return }
         timing("tts_queued")
-        if (engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) {
-            finish(id, true)
-        }
+        speakCurrentChunk()
     }
 
     private fun finish(id: String?, failed: Boolean) = main.post {
-        if (id != null && utterance == id) {
-            timing(if (failed) "tts_error" else "tts_done")
-            utterance = null
-            started = null
-            describe(if (failed) "TTS_PLAYBACK_FAILED" else if (selectedNetwork) "TTS_VI_NETWORK_SYNTHESIZED" else "TTS_VI_OFFLINE_SYNTHESIZED")
-            if (failed) tone.startTone(ToneGenerator.TONE_PROP_NACK, 120)
-            completion?.also { completion = null; it(!failed) }
+        val active = playback ?: return@post
+        if (id == null || active.current?.id != id) return@post
+        if (failed) completePlayback(true)
+        else if (active.complete(id)) {
+            if (active.current == null) completePlayback(false) else speakCurrentChunk()
         }
+    }
+
+    private fun speakCurrentChunk() {
+        val chunk = playback?.current ?: return
+        if (engine?.speak(chunk.text, TextToSpeech.QUEUE_FLUSH, null, chunk.id) != TextToSpeech.SUCCESS) {
+            finish(chunk.id, true)
+        }
+    }
+
+    private fun completePlayback(failed: Boolean) {
+        timing(if (failed) "tts_error" else "tts_done")
+        playback?.cancel(); playback = null
+        utterance = null
+        started = null
+        val done = completion
+        completion = null
+        if (failed) engine?.stop()
+        describe(if (failed) "TTS_PLAYBACK_FAILED" else if (selectedNetwork) "TTS_VI_NETWORK_SYNTHESIZED" else "TTS_VI_OFFLINE_SYNTHESIZED")
+        if (failed) tone.startTone(ToneGenerator.TONE_PROP_NACK, 120)
+        done?.invoke(!failed)
     }
 
     fun timeout() { timing("tts_timeout"); describe("TTS_PLAYBACK_TIMEOUT"); cancel() }
@@ -156,6 +182,7 @@ class VoiceFeedback(context: Context, private val capabilityChanged: (String) ->
         pending = null
         completion = null
         started = null
+        playback?.cancel(); playback = null
         utterance = null
         engine?.stop()
     }

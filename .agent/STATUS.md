@@ -27,9 +27,16 @@ voice policy, roles/grants/UID/data inode unchanged. History ciphertext changed
 after startup; before/after plaintext equality unmeasured. No live provider
 calls, Wi-Fi toggle, data reset, permission or role changes.
 
-Next: T-014 TTS chunk/lifecycle validation; echo-safe spoken exit remains
-unsupported and requires physical proof. Then T-017 expanded200 collector
-recovery: original dirty worktree `/home/kunrg/Dex-Assistant-UI-T017` found,
+T-014 chunk checkpoint verified: full201-task checks PASS, app204tests/variant;
+physical offline Vietnamese chunk/cancel/same-ID fixture1/1 PASS,6.378s.
+[Evidence](evidence/T-014-tts-chunks-2026-10-13.md). Parent remains IN_PROGRESS;
+echo-safe spoken exit unsupported. Current physical app is this TTS candidate,
+installed hash verified with original9ddb signing. Credential/settings/policy,
+roles/grants/data inode retained. Streaming install lost wireless link; owner
+reconnected and non-streaming retry succeeded. Physical ADB port5037, serial
+rediscovered/reverified; use current devices list rather than historical port.
+
+Next: T-017 expanded200 collector recovery: original dirty worktree `/home/kunrg/Dex-Assistant-UI-T017` found,
 not yet migrated/validated. Retained natural corpus remains7/200.
 Production STT Google, current provider acceptance Gemini-only; Sherpa rights
 and recommendation open. Preserve accepted thresholds/signing/data/settings.

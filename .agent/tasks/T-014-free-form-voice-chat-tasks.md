@@ -1,3 +1,9 @@
+> Priority continuation2026-10-13: T-014-06 gained bounded Unicode-safe TTS chunks,
+> unique chunk/generation callbacks and full-sequence completion. Host204tests/
+> variant + full lint/APKs PASS; physical offline TTS chunk/cancel/same-ID fixture
+> PASS1/1. [Evidence](../evidence/T-014-tts-chunks-2026-10-13.md).
+> Spoken exit/natural F08 and T-014-06/T-014-09 remain IN_PROGRESS.
+
 > Migrated to Android on 2026-10-13 ([D-037](../DECISIONS.md#d-037--android-canonical-workspace-backend-retired)). Backend-only instructions, paths and commands below are historical and superseded; they are not current prerequisites. Task IDs, measured evidence and unfinished Android/Fold3 gates are retained.
 
 > 2026-10-13 verified continuation: T-014-06 gained automatic idle context/service teardown and real HTTP cancellation. Host191tests/variant + lint/APKs PASS; Windows AVD9offline fault/idle/cancel/isolation tests PASS. Spoken exit during TTS remains unsupported; physical execution stays T-020. [Evidence](../evidence/Android-simulator-continuation-2026-10-13.md).

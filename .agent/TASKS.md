@@ -893,6 +893,8 @@ Owner confirms Android-only AI/provider proxy and Wi-Fi execution; Spring Boot/W
 
 ## T-014 — Free-form AI voice conversation sessions
 
+- Priority continuation2026-10-13: TTS replies now split by runtime input limit, preserve surrogate pairs and complete only after all chunks; unique chunk/generation IDs reject stale/duplicate/cancel callbacks. Full201-task test/lint/APKs PASS, app204tests/variant;4new playback tests PASS each. Physical offline Vietnamese TTS chunk/cancel/same-ID fixture PASS1/1,6.378s; installed hashes and original identity/policy/credentials retained. [Evidence](evidence/T-014-tts-chunks-2026-10-13.md). Spoken exit during TTS still unsupported; natural F08/parent remain IN_PROGRESS.
+
 - Continuation 2026-10-13: fixed idle clock before first turn, automatic15min session/context teardown and active HTTP cancellation/no cancellation fallback. Voice service automatic-expiry cleanup hook added. Host exact-boundary test and Windows AVD idle/cancel/restart fixtures PASS; full build/lint PASS. Spoken exit during TTS remains unsupported, requires design and T-020 physical proof. [Evidence](evidence/Android-simulator-continuation-2026-10-13.md).
 
 - Scheduling update 2026-10-13: all remaining real Fold3 tests are coordinated only through [T-020](plans/active/T-020-consolidated-fold3-acceptance.md). Continue implementation/host/Windows AVD work here; no separate physical run. Acceptance thresholds remain unchanged.
