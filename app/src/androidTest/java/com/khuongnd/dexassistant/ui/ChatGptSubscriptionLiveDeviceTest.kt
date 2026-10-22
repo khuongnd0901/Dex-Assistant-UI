@@ -34,12 +34,15 @@ class ChatGptSubscriptionLiveDeviceTest {
         check(model.isNotBlank()) { "SUBSCRIPTION_MODEL_NOT_SELECTED" }
         val capture = Buffer()
         var status = 0
+        var media = "MISSING"
         val client = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS)
             .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
             .addInterceptor { chain ->
                 val response = chain.proceed(chain.request())
                 status = response.code
+                val type = response.header("Content-Type")?.substringBefore(';')?.trim()
+                media = if (type in setOf("text/event-stream", "application/json", "text/plain", "application/octet-stream")) type!! else "OTHER"
                 val body = response.body ?: return@addInterceptor response
                 val source = object : ForwardingSource(body.source()) {
                     override fun read(sink: Buffer, byteCount: Long): Long {
@@ -70,17 +73,23 @@ class ChatGptSubscriptionLiveDeviceTest {
             val elapsed = (System.nanoTime() - start) / 1_000_000
             val shape = Bundle().apply {
                 putInt("subscriptionHttpStatus", status)
+                putString("subscriptionContentType", media)
                 putLong("subscriptionInferenceMs", elapsed)
                 putString("subscriptionFailure", failure)
                 putBoolean("subscriptionReplyValidated", reply != null)
                 putInt("subscriptionReplyCodePoints", reply?.codePointCount(0, reply!!.length) ?: 0)
             }
             val raw = capture.readUtf8()
-            var deltas = 0; var doneItems = 0; var completed = 0
+            var deltas = 0; var doneItems = 0; var completed = 0; var created = 0; var dataRecords = 0
+            var namedEvents = 0; var genericEvents = 0
+            shape.putInt("capturedCharacters", raw.length)
             for (line in raw.lineSequence()) {
+                if (line.startsWith("event:")) { namedEvents++; if (line.substring(6).trim() == "message") genericEvents++ }
                 if (!line.startsWith("data:")) continue
+                dataRecords++
                 val event = try { JSONObject(line.substring(5).trim()) } catch (_: Exception) { continue }
                 when (event.optString("type")) {
+                    "response.created" -> created++
                     "response.output_text.delta" -> deltas++
                     "response.output_item.done" -> doneItems++
                     "response.completed" -> {
@@ -104,6 +113,10 @@ class ChatGptSubscriptionLiveDeviceTest {
                     }
                 }
             }
+            shape.putInt("subscriptionCreatedEvents", created)
+            shape.putInt("dataRecords", dataRecords)
+            shape.putInt("namedEvents", namedEvents)
+            shape.putInt("genericEvents", genericEvents)
             shape.putInt("subscriptionDeltaEvents", deltas)
             shape.putInt("subscriptionDoneItems", doneItems)
             shape.putInt("subscriptionCompletedEvents", completed)
