@@ -114,6 +114,21 @@ class ChatGptSubscriptionTest {
             }
         }
     }
+    @Test fun completedSseDoesNotDependOnExactMimeButJsonBodyCannotSucceed() {
+        for (media in listOf(null, "Text/Event-Stream", "application/octet-stream")) {
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                    .apply { if (media != null) header("Content-Type", media) }
+                    .body(stream().toResponseBody()).build()
+            }.build()
+            assertEquals("Xin chào", ResponsesStream.chatText(ChatGptResponsesClient(Auth(), client).response(JSONObject())))
+        }
+        val jsonClient = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .header("Content-Type", "application/json").body("{}\n".toResponseBody()).build()
+        }.build()
+        failure("INCOMPLETE_RESPONSE") { ChatGptResponsesClient(Auth(), jsonClient).response(JSONObject()) }
+    }
     @Test fun repeated401StopsAfterOneRefreshAndNetworkFailureIsNotReplayed() {
         for (networkError in listOf(false, true)) {
             val auth = Auth(); var requests = 0

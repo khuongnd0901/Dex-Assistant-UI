@@ -49,8 +49,8 @@ class ChatGptResponsesClient internal constructor(private val auth: Subscription
                         operation.check()
                     } else {
                         ChatGptHttp.checkStatus(result.code)
-                        if (result.header("Content-Type")?.substringBefore(';')?.trim() != "text/event-stream")
-                            throw ChatGptFailure("INVALID_STREAM")
+                        // Like the proven POC, validate SSE events rather than a proxy-specific MIME label.
+                        // HTML/JSON errors still fail the bounded parser; only response.completed can succeed.
                         val source = result.body?.source() ?: throw ChatGptFailure("INVALID_STREAM")
                         return ResponsesStream.read(source, operation::check, onDelta)
                     }
