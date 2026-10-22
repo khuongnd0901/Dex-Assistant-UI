@@ -63,8 +63,25 @@ Original9ddb signing identity is available locally. Candidate `/tmp/dex-t025-art
 | Real target inference, Vietnamese/multi-turn Chat | NOT TESTED |
 | Real account function calling / Android execution | NOT TESTED; command activation BLOCKED |
 | Simulator offline regression / account UI | NOT TESTED; Windows tooling missing |
+| Actual Fold3 scoped offline regression | PASS20/20; account/device-action/natural-voice gates remain open |
 | Fold3 mic/STT/TTS, interruption, local/confirmation/security regression | NOT TESTED |
 | Latency, streaming completion rate, PSS/memory/network/cancellation measurements | NOT TESTED; no fabricated metrics |
+
+## Real Fold3 checkpoint after push
+
+Owner explicitly requested push first, then build/test on real Z Fold3. Commits `9bfedea` and `85cafa6` were pushed; [draft PR2](https://github.com/khuongnd0901/Dex-Assistant-UI/pull/2) targets main, unmerged. Subsequent device-candidate build after push PASS201tasks (42executed/159up-to-date),1m26s, using the same full test/lint/app+instrumentation APK targets.
+
+Source: pushed85cafa6 plus the owner's pre-existing T-023 launcher icon overlay (2manifest lines and7resource files) to preserve the installed icon. No T-017 collector changes copied; migration commits contain no icon/collector edits. Candidate and test APKs re-signed with the original certificate `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`; installed previous APK certificate independently matches. Original installed APK backed up privately before replacement. Initial90s wireless pull timed out; full retry completed113.984s and verified as a valid original-signed APK. No uninstall/reset/reprovision/grant or role changes.
+
+- Device: independently queried SM-F926B/API35, Linux ADB5037; actual Samsung Desktop display2,1920×1080.
+- In-place app and instrumentation installations PASS. Installed app SHA256 matches `1e70d0d9d438adadd2bfaf699d6b5da21cb3555296480adce5bf83fa951841c5` exactly. Test APK SHA256 `add1f5124b96840b36db505fa74e3ad4ecf480aa4968081da054573dc94c12d0`.
+- Real-device scoped offline instrumentation **20/20PASS**,4.489s,0failures: new subscription fixture3 (Android JSON/SSE completion, reserved synthetic Keystore encryption/non-exportability/restore/logout/host retention, activation gates), existing isolated DirectAiFault14 (Chat/Command HTTP faults, malformed/bounded data, idle/cancel/stale/no-replay/key/fallback/schema regressions), pure local catalog/strict typed protocol/matcher3.
+- Actual Fold3 matcher1000patterns/300warm samples p95=361354ns (0.361354ms), below existing5ms gate. This is local matching only, not inference or natural-command latency.
+- After installation/tests and before dashboard launch,131/133existing private files byte-identical, including all8history files, original API-key/provider settings and voice policy. Only volatile `voice_health.xml` and ART `files/profileInstalled` changed. UID/appId/data-directory inode, Assistant role/component, voice-interaction component, enabled Accessibility, grant rows and Device Owner component set unchanged. No owner plaintext/tokens read into host output.
+- DeX MainActivity launch PASS/WARM,806ms. Dashboard launch may re-encrypt retained history via the pre-existing read/persist policy; prior byte-equality evidence is explicitly before dashboard launch.
+- Logs/private preservation metadata/original APK: `/tmp/dex-t025-device/`; candidates: `/tmp/dex-t025-artifacts/`. Nothing private/generated committed. A pre-install resource snapshot exists; no matched memory-impact comparison or natural/real-provider metrics claimed.
+
+Owner completed native target sign-in and authorized model selection (verified in account settings). The first harmless inference probe reports ERROR; real inference is not PASS. Added an explicit-opt-in instrumentation probe that emits only HTTP status/counts/structural flags/local failure code, never token/body/text/IDs. Diagnosis and function-calling results are pending; no credentials/callback/browser logs or screenshots are collected during authorization. This physical offline PASS does not establish real subscription inference, device-command execution, natural voice/TTS, network/latency/PSS or soak acceptance.
 
 ## Files and rollback
 
