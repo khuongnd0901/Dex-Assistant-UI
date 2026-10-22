@@ -78,6 +78,18 @@ class ChatGptAuthTest {
         })
         assertTrue(auth.logout()); assertEquals(2, attempts); assertNull(store.value)
     }
+    @Test fun accountProofReadDoesNotWaitOnNetworkRefreshLock() {
+        val store = Store(session(0)); val entered = CountDownLatch(1); val finish = CountDownLatch(1)
+        val auth = ChatGptAuthManager(store, exchange = { entered.countDown(); finish.await(3, TimeUnit.SECONDS); token() })
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val refresh = pool.submit { auth.freshSession() }
+            assertTrue(entered.await(3, TimeUnit.SECONDS))
+            val metadata = pool.submit<String?> { auth.connectionKey() }
+            assertEquals(64, metadata.get(500, TimeUnit.MILLISECONDS)!!.length)
+            finish.countDown(); refresh.get(3, TimeUnit.SECONDS)
+        } finally { finish.countDown(); pool.shutdownNow() }
+    }
     @Test fun logoutCannotBeResurrectedByInFlightRefresh() {
         val store = Store(session(0)); val entered = CountDownLatch(1); val finish = CountDownLatch(1)
         val auth = ChatGptAuthManager(store, exchange = { entered.countDown(); finish.await(3, TimeUnit.SECONDS); token() }, revoke = {})
