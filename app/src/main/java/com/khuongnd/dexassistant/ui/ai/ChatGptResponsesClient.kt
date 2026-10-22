@@ -137,7 +137,7 @@ internal object ResponsesStream {
                         check()
                         val response = event.getJSONObject("response")
                         if (response.getString("status") != "completed" ||
-                            response.optJSONObject("error") != null ||
+                            (response.has("error") && !response.isNull("error")) ||
                             (response.has("incomplete_details") && !response.isNull("incomplete_details")) ||
                             (responseId != null && response.getString("id") != responseId))
                             throw ChatGptFailure("INVALID_STREAM")

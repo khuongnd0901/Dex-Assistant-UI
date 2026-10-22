@@ -163,6 +163,11 @@ class ChatGptSubscriptionTest {
         val actions = SubscriptionTools.parse(response, CommandRegistry.bundledForTests(), setOf(ActionId.VOLUME_SET))
         assertEquals(ActionId.VOLUME_SET, actions.single().action)
     }
+    @Test fun contradictoryTerminalErrorFieldsNeverAuthorizeOutput() {
+        for (error in listOf<Any>("malformed error", JSONObject().put("code", "failed"))) {
+            failure("INVALID_STREAM") { ResponsesStream.read(Buffer().writeUtf8(event("response.completed", completed().put("error", error)))) }
+        }
+    }
     @Test fun repeated401StopsAfterOneRefreshAndNetworkFailureIsNotReplayed() {
         for (networkError in listOf(false, true)) {
             val auth = Auth(); var requests = 0
