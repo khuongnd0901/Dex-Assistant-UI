@@ -13,10 +13,11 @@ import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Explicit release gates: change only after T-025 target-account/physical acceptance is recorded. */
+/** Native account/model tools verified on Fold3; manual selection also requires scoped proofs. Automatic migration stays off. */
 object SubscriptionAcceptance {
     const val DEFAULT_ACTIVATION_ACCEPTED = false
-    const val DEVICE_COMMANDS_ACCEPTED = false
+    const val MANUAL_SELECTION_ACCEPTED = true
+    const val DEVICE_COMMANDS_ACCEPTED = true
 }
 
 /** Consumers share authentication/transport, but each owns its cancellable request. */
@@ -25,8 +26,8 @@ class ChatGptSubscriptionProvider(context: Context, private val settings: AiProv
     private val responses = ChatGptResponsesClient(auth)
     private val active = AtomicReference<SubscriptionOperation?>()
     fun cancel() { active.get()?.cancel() }
-    fun ready() = auth.connected() && settings.enabled(AiProvider.CHATGPT_SUBSCRIPTION) &&
-        settings.model(AiProvider.CHATGPT_SUBSCRIPTION).isNotBlank()
+    fun ready() = SubscriptionAcceptance.MANUAL_SELECTION_ACCEPTED && auth.connected() &&
+        settings.enabled(AiProvider.CHATGPT_SUBSCRIPTION) && settings.subscriptionVerified(auth.connectionKey(), false)
 
     private fun <T> request(block: (String, SubscriptionOperation) -> T): T {
         val op = SubscriptionOperation()
@@ -54,7 +55,8 @@ class ChatGptSubscriptionProvider(context: Context, private val settings: AiProv
 
     fun plan(text: String, registry: CommandRegistry, supported: Set<ActionId>): List<TypedAction> {
         // No setting or model output can bypass the reviewed real function-calling gate.
-        if (!SubscriptionAcceptance.DEVICE_COMMANDS_ACCEPTED) throw MobileAiException("SUBSCRIPTION_COMMANDS_NOT_VERIFIED")
+        if (!SubscriptionAcceptance.DEVICE_COMMANDS_ACCEPTED || !settings.subscriptionVerified(auth.connectionKey(), true))
+            throw MobileAiException("SUBSCRIPTION_COMMANDS_NOT_VERIFIED")
         return request { model, op ->
             require(text.isNotBlank() && text.length <= 2000 && !CommandPrivacy.requiresLocalHandling(text))
             val payload = ChatGptResponsesClient.payload(model,

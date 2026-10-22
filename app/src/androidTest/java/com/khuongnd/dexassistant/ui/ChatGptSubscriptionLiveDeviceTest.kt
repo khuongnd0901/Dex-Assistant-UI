@@ -60,6 +60,7 @@ class ChatGptSubscriptionLiveDeviceTest {
             val actions = com.khuongnd.dexassistant.ui.ai.SubscriptionTools.parse(response, registry, supported)
             check(actions.size == 1 && actions.single().params["operation"] == "MUTE")
             count = actions.size
+            AiProviderSettings(context).recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, true)
         } catch (e: Exception) { failure = if (e is ChatGptFailure) e.code else e.javaClass.simpleName }
         finally {
             shape.putInt("toolValidatedActions", count)
@@ -145,6 +146,7 @@ class ChatGptSubscriptionLiveDeviceTest {
                 JSONArray().put(JSONObject().put("role", "user").put("content", "Hãy chào tôi bằng một câu tiếng Việt.")),
                 "Reply briefly in Vietnamese."))
             reply = ResponsesStream.chatText(response)
+            AiProviderSettings(context).recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, false)
         } catch (e: Exception) {
             // Only local finite codes / exception class, never exception.message or causes.
             failure = if (e is ChatGptFailure) e.code else e.javaClass.simpleName

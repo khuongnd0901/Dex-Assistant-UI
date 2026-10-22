@@ -8,9 +8,11 @@ test. ChatGPT Subscription is separate from the OpenAI API-key provider. No back
 CLI, copied credentials or separate OpenAI API key is required for this connection.
 Subscription requests consume the consenting account's plan allowance.
 
-**IN_PROGRESS:** target-app authentication, inference, real function calling and Fold3
-voice/security/performance acceptance are pending. Default subscription routing and
-subscription device commands remain locked. Gemini/Groq and saved keys remain intact;
+**IN_PROGRESS:** native target OAuth, inference, refresh, two-turn Chat and structured
+function planning have passed on Fold3. Deliberate manual trial selection requires
+successful inference/tools checks for the exact connected account and selected model.
+Automatic default migration stays disabled; routed action/natural voice/performance
+acceptance remains open. Gemini/Groq and saved keys remain intact;
 local commands continue unchanged. In AI Providers, choose ChatGPT Subscription,
 explicitly sign in while safely stationary, load/select an account model and run the
 harmless inference test. The browser never launches from a voice command.

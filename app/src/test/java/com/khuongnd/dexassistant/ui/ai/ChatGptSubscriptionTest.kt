@@ -83,7 +83,7 @@ class ChatGptSubscriptionTest {
         reject(plan().apply { getJSONArray("output").put(getJSONArray("output").getJSONObject(0)) })
         reject(plan().apply { getJSONArray("output").getJSONObject(0).put("namespace", "other") })
         reject(JSONObject().put("status", "completed").put("output", JSONArray()))
-        assertFalse(SubscriptionAcceptance.DEVICE_COMMANDS_ACCEPTED)
+        assertFalse(com.khuongnd.dexassistant.ui.security.SubscriptionProof.matches(null, "a".repeat(64), "model"))
         assertFalse(SubscriptionAcceptance.DEFAULT_ACTIVATION_ACCEPTED)
     }
 

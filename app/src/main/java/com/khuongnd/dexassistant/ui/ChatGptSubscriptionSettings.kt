@@ -65,6 +65,7 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
         }
         Button(enabled = !busy, onClick = {
             AssistantController.shared(context).aiConnectionChanged()
+            settings.clearSubscriptionVerification()
             busy = true; status = "AUTHENTICATING"; preview = ""
             scope.launch {
                 try {
@@ -111,7 +112,9 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
                             JSONArray().put(JSONObject().put("role", "user").put("content", "Hãy chào tôi bằng một câu tiếng Việt.")),
                             "Reply briefly in Vietnamese."), op)
                     }
-                    op.check(); preview = ResponsesStream.chatText(result); status = "CONNECTED — response.completed"
+                    op.check(); preview = ResponsesStream.chatText(result)
+                    settings.recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, false)
+                    status = "CONNECTED — response.completed"
                 } catch (e: Exception) { error(e) }
                 finally { operation.value = null; busy = false }
             }
@@ -134,6 +137,7 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
                         require(actions.size == 1 && actions.single().params["operation"] == "MUTE")
                         actions.size
                     }
+                    settings.recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, true)
                     status = "CONNECTED — function calling hợp lệ"
                     preview = "$count action đã validate; không thực thi, không bật quyền điều khiển."
                 } catch (e: Exception) { error(e) }
@@ -141,15 +145,17 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
             }
         }) { Text("Thử function calling (không thực thi)") }
         if (preview.isNotBlank()) Text(preview)
-        Text("Chuyển AI Chat/AI Command sang Subscription đang chờ nghiệm thu trong DeX Assistant. " +
-            "AI Command chỉ được bật sau khi xác minh function calling thực. Lệnh local vẫn hoạt động.")
-        OutlinedButton(enabled = SubscriptionAcceptance.DEFAULT_ACTIVATION_ACCEPTED && connected && !busy && model.isNotBlank(),
+        Text("Sau khi cả hai phép thử thành công với tài khoản/model này, anh có thể chủ động chọn Subscription " +
+            "để thử AI Chat và AI Command. Nghiệm thu voice/action còn mở; provider không tự đổi.")
+        OutlinedButton(enabled = SubscriptionAcceptance.MANUAL_SELECTION_ACCEPTED && connected && !busy &&
+            settings.subscriptionVerified(auth.connectionKey(), false) && settings.subscriptionVerified(auth.connectionKey(), true),
             onClick = { settings.setDefaultProvider(AiProvider.CHATGPT_SUBSCRIPTION); onPreferred() }) {
-            Text("Đặt làm provider ưu tiên")
+            Text("Chọn Subscription để thử Chat/AI Command")
         }
         OutlinedButton(onClick = { open(Uri.parse("https://chatgpt.com/settings/usage")) }) { Text("Quản lý hạn mức ChatGPT") }
         OutlinedButton(enabled = !busy && connected, onClick = {
             AssistantController.shared(context).aiConnectionChanged()
+            settings.clearSubscriptionVerification()
             busy = true; operation.value?.cancel(); preview = ""
             scope.launch {
                 try {

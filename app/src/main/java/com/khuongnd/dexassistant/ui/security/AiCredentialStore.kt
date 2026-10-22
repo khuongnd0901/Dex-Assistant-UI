@@ -86,7 +86,7 @@ class AiCredentialStore(context: Context, private val aliasPrefix: String = "dex
 }
 
 /** Non-secret provider preferences and opt-in direct Command routing. */
-class AiProviderSettings(context: Context) {
+class AiProviderSettings(private val context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("ai_provider_settings_v1", Context.MODE_PRIVATE)
 
     fun routingSnapshot(): Map<String, *> = prefs.all.toMap()
@@ -109,8 +109,10 @@ class AiProviderSettings(context: Context) {
             it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' || it == '/'
         }) { "Invalid model ID" }
         // Confirm free-tier eligibility again whenever model changes.
-        check(prefs.edit().putString(provider.name + "_model", normalized)
-            .putBoolean(provider.name + "_free_confirmed", false).commit())
+        val edit = prefs.edit().putString(provider.name + "_model", normalized)
+            .putBoolean(provider.name + "_free_confirmed", false)
+        if (provider == AiProvider.CHATGPT_SUBSCRIPTION) edit.remove("subscription_chat_proof").remove("subscription_tools_proof")
+        check(edit.commit())
     }
 
     fun freeTierConfirmed(provider: AiProvider): Boolean =
@@ -126,11 +128,30 @@ class AiProviderSettings(context: Context) {
     } ?: AiProvider.GEMINI
 
     fun setDefaultProvider(provider: AiProvider) {
-        require(provider != AiProvider.CHATGPT_SUBSCRIPTION ||
-            com.khuongnd.dexassistant.ui.ai.SubscriptionAcceptance.DEFAULT_ACTIVATION_ACCEPTED) {
-            "Subscription runtime acceptance pending"
+        if (provider == AiProvider.CHATGPT_SUBSCRIPTION) {
+            val auth = com.khuongnd.dexassistant.ui.auth.ChatGptAuthManager.get(context)
+            val connection = auth.connectionKey()
+            require(auth.connected() && enabled(provider) &&
+                com.khuongnd.dexassistant.ui.ai.SubscriptionAcceptance.MANUAL_SELECTION_ACCEPTED &&
+                subscriptionVerified(connection, false) && subscriptionVerified(connection, true)) {
+                "Subscription account/model acceptance pending"
+            }
         }
         check(prefs.edit().putString("default_provider", provider.name).commit())
+    }
+
+    fun subscriptionVerified(connection: String?, tools: Boolean): Boolean = SubscriptionProof.matches(
+        prefs.getString(if (tools) "subscription_tools_proof" else "subscription_chat_proof", null),
+        connection, model(AiProvider.CHATGPT_SUBSCRIPTION))
+
+    internal fun recordSubscriptionVerification(connection: String, model: String, tools: Boolean) {
+        require(model == this.model(AiProvider.CHATGPT_SUBSCRIPTION))
+        check(prefs.edit().putString(if (tools) "subscription_tools_proof" else "subscription_chat_proof",
+            SubscriptionProof.value(connection, model)).commit())
+    }
+
+    fun clearSubscriptionVerification() {
+        check(prefs.edit().remove("subscription_chat_proof").remove("subscription_tools_proof").commit())
     }
 
     /** Explicit user opt-in; defaults to the tested legacy WebSocket transport. */
@@ -139,4 +160,14 @@ class AiProviderSettings(context: Context) {
     fun setDirectMode(enabled: Boolean) {
         check(prefs.edit().putBoolean("direct_command_enabled", enabled).commit())
     }
+}
+
+/** Proofs are scoped to the validated account/client and exact selected model, never to all models. */
+internal object SubscriptionProof {
+    fun value(connection: String, model: String): String {
+        require(connection.matches(Regex("[a-f0-9]{64}")) && model.matches(Regex("[A-Za-z0-9._/-]{1,128}")))
+        return "$connection:$model"
+    }
+    fun matches(stored: String?, connection: String?, model: String): Boolean =
+        connection != null && model.isNotBlank() && runCatching { stored == value(connection, model) }.getOrDefault(false)
 }

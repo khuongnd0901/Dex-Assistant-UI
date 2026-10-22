@@ -42,8 +42,8 @@ class ChatGptSubscriptionOfflineDeviceTest {
             assertEquals("oaiapp_synthetic", store.registration()!!.getString("client_id"))
         } finally { file.delete(); if (keystore.containsAlias(alias)) keystore.deleteEntry(alias) }
     }
-    @Test fun subscriptionCommandsAndDefaultRemainGated() {
-        assertFalse(SubscriptionAcceptance.DEVICE_COMMANDS_ACCEPTED)
+    @Test fun subscriptionAutomaticDefaultAndUnprovenModelsRemainGated() {
+        assertFalse(com.khuongnd.dexassistant.ui.security.SubscriptionProof.matches(null, "a".repeat(64), "model"))
         assertFalse(SubscriptionAcceptance.DEFAULT_ACTIVATION_ACCEPTED)
         val models = ChatGptModelRepository.parse(JSONObject("""{"models":[{"visibility":"list","slug":"account-model","display_name":"Account model"}]}"""))
         assertEquals("account-model", models.single().slug)

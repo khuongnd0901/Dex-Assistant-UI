@@ -7,9 +7,10 @@ phiên mã hóa bằng Android Keystore, tải model được tài khoản cấp
 suy luận. ChatGPT Subscription tách biệt với provider dùng OpenAI API key; kết nối này
 không cần backend, CLI hay API key riêng. Các yêu cầu sử dụng hạn mức gói của chủ tài khoản.
 
-**IN_PROGRESS:** chưa nghiệm thu xác thực/suy luận/function calling trong app đích và
-voice/bảo mật/hiệu năng trên Fold3. Chuyển provider mặc định và thực thi lệnh bằng
-Subscription vẫn khóa. Gemini/Groq, API key đã lưu và lệnh local được giữ nguyên.
+**IN_PROGRESS:** OAuth, suy luận, refresh, Chat hai lượt và function planning đã PASS
+trong app đích trên Fold3. Chỉ cho chủ động chọn thử Subscription sau khi cả suy luận
+và tool đều được xác minh cho đúng tài khoản/model. Không tự đổi provider mặc định;
+nghiệm thu thực thi action/voice tự nhiên/hiệu năng còn mở. Gemini/Groq, API key đã lưu và lệnh local được giữ nguyên.
 Trong AI Providers, chọn ChatGPT Subscription, chủ động đăng nhập khi đã dừng xe an toàn,
 tải/chọn model rồi thử suy luận. Lệnh giọng nói không tự mở trình duyệt đăng nhập.
 

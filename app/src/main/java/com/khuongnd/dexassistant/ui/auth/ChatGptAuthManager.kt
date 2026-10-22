@@ -32,6 +32,14 @@ class ChatGptAuthManager internal constructor(private val store: SessionStorage,
     private val lock = Any()
     @Volatile private var generation = 0L
     fun sessionGeneration(): Long = generation
+    /** Opaque non-secret binding for model acceptance; never a bearer credential or UI label. */
+    fun connectionKey(): String? = synchronized(lock) {
+        store.load()?.let { session ->
+            MessageDigest.getInstance("SHA-256").digest(
+                (session.clientId + "\n" + session.subject).toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it.toInt() and 255) }
+        }
+    }
     @Volatile private var listener: ServerSocket? = null
     fun accountEmail(): String? = try { store.registration()?.optString("email") } catch (_: Exception) { null }
     fun connected(): Boolean = try { store.load()?.hasSubscriptionScope() == true } catch (_: Exception) { false }

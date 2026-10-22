@@ -150,7 +150,9 @@ class AssistantCoordinator internal constructor(
         if (!available) {
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
                 null, UUID.randomUUID(), "CHAT_PROVIDER_UNAVAILABLE",
-                "Cấu hình provider/model Free Tier trong Settings", false))
+                if (preferred == com.khuongnd.dexassistant.ui.security.AiProvider.CHATGPT_SUBSCRIPTION)
+                    "Kiểm tra kết nối ChatGPT và hai phép thử cho model trong Settings"
+                else "Cấu hình provider/model Free Tier trong Settings", false))
         } else {
             chatProviderSnapshot = aiSettings.routingSnapshot()
             chatSession = session; chatEpoch++
