@@ -12,9 +12,10 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** User-entered AI provider credentials. Separate from the legacy backend bearer token. */
 enum class AiProvider(val displayName: String, val supportsDirectCommands: Boolean) {
+    CHATGPT_SUBSCRIPTION("ChatGPT Subscription", false),
     GEMINI("Gemini", true),
     GROQ("Groq", true),
-    OPENAI("OpenAI (ChatGPT API)", false),
+    OPENAI("OpenAI API key", false),
     GROK("Grok (xAI)", false),
     DEEPSEEK("DeepSeek", false),
 }
@@ -24,6 +25,7 @@ class AiCredentialStore(context: Context, private val aliasPrefix: String = "dex
 
     @Synchronized
     fun save(provider: AiProvider, apiKey: String) {
+        require(provider != AiProvider.CHATGPT_SUBSCRIPTION) { "Subscription uses OAuth" }
         val normalized = apiKey.trim()
         require(normalized.isNotEmpty() && normalized.length <= 1024 && normalized.none(Char::isWhitespace)) {
             "Invalid API key format"
@@ -87,6 +89,12 @@ class AiCredentialStore(context: Context, private val aliasPrefix: String = "dex
 class AiProviderSettings(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("ai_provider_settings_v1", Context.MODE_PRIVATE)
 
+    fun routingSnapshot(): Map<String, *> = prefs.all.toMap()
+
+    fun observeRouting(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
     fun enabled(provider: AiProvider): Boolean = prefs.getBoolean(provider.name + "_enabled", false)
 
     fun setEnabled(provider: AiProvider, value: Boolean) {
@@ -118,6 +126,10 @@ class AiProviderSettings(context: Context) {
     } ?: AiProvider.GEMINI
 
     fun setDefaultProvider(provider: AiProvider) {
+        require(provider != AiProvider.CHATGPT_SUBSCRIPTION ||
+            com.khuongnd.dexassistant.ui.ai.SubscriptionAcceptance.DEFAULT_ACTIVATION_ACCEPTED) {
+            "Subscription runtime acceptance pending"
+        }
         check(prefs.edit().putString("default_provider", provider.name).commit())
     }
 

@@ -54,6 +54,10 @@ object AiToolCallParser {
             }
             else -> throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
         }
+        return validate(calls, registry, supported)
+    }
+
+    internal fun validate(calls: List<JSONObject>, registry: CommandRegistry, supported: Set<ActionId>): List<TypedAction> {
         require(calls.size in 1..8) { "No safe bounded AI action plan" }
         return calls.map { call ->
             val name = call.getString("name")
@@ -85,16 +89,18 @@ class MobileAiProxy(
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .callTimeout(15, TimeUnit.SECONDS).build(),
+    private val subscription: ChatGptSubscriptionProvider? = null,
 ) {
     private val toolCatalog = SerializedToolCatalog()
     private val activeCall = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>()
-    fun cancelPendingRequest() { activeCall.get()?.cancel() }
+    fun cancelPendingRequest() { activeCall.get()?.cancel(); subscription?.cancel() }
     fun plan(text: String, registry: CommandRegistry, supported: Set<ActionId>, metric: (String, Long) -> Unit = { _, _ -> }): List<TypedAction> {
         if (text.isBlank() || text.length > 2000) throw MobileAiException("UNSUPPORTED_COMMAND")
         // Sensitive commands must never leave the phone, even with direct BYOK access.
         if (com.khuongnd.dexassistant.ui.routing.CommandPrivacy.requiresLocalHandling(text))
             throw MobileAiException("POLICY_DENIED")
         val preferred = settings.defaultProvider()
+        if (preferred == AiProvider.CHATGPT_SUBSCRIPTION) return (subscription ?: throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")).plan(text, registry, supported)
         // Do not silently use a different AI when the selected provider has no validated adapter.
         if (!preferred.supportsDirectCommands) throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
         var firstEligibleKey: String? = null

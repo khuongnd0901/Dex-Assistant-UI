@@ -10,11 +10,14 @@ import org.junit.Test
 class AiKeyProbeTest {
     @Test
     fun everyProviderUsesFixedTlsEndpointWithoutCredentialsInUrl() {
-        val urls = AiProvider.entries.map { AiKeyProbe.modelsEndpoint(it) }
+        val urls = AiProvider.entries.filter { it != AiProvider.CHATGPT_SUBSCRIPTION }.map { AiKeyProbe.modelsEndpoint(it) }
         assertEquals(5, urls.distinct().size)
         assertTrue(urls.all { it.startsWith("https://") })
         assertTrue(urls.none { it.contains("?") || it.contains("generateContent") || it.contains("chat/completions") })
     }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun subscriptionCannotUseApiKeyProbe() { AiKeyProbe.modelsEndpoint(AiProvider.CHATGPT_SUBSCRIPTION) }
 
     @Test
     fun responseClassificationNeverLabelsErrorsAuthenticated() {
@@ -36,7 +39,7 @@ class AiKeyProbeTest {
     @Test
     fun openAiCompatibleModelListsKeepAccountIds() {
         val body = JSONObject("""{"data":[{"id":"model-2"},{"id":"model-1"}]}""")
-        for (provider in AiProvider.entries.filter { it != AiProvider.GEMINI }) {
+        for (provider in AiProvider.entries.filter { it != AiProvider.GEMINI && it != AiProvider.CHATGPT_SUBSCRIPTION }) {
             assertEquals(listOf("model-1", "model-2"), AiKeyProbe.parseModels(provider, body))
         }
     }

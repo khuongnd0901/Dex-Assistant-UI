@@ -1,5 +1,26 @@
 # DeX Assistant — Android
 
+## Chuyển đổi ChatGPT Subscription (T-025)
+
+Nhánh tính năng bổ sung **Continue with ChatGPT** trên Android, OAuth PKCE/OIDC riêng,
+phiên mã hóa bằng Android Keystore, tải model được tài khoản cấp quyền và nút thử
+suy luận. ChatGPT Subscription tách biệt với provider dùng OpenAI API key; kết nối này
+không cần backend, CLI hay API key riêng. Các yêu cầu sử dụng hạn mức gói của chủ tài khoản.
+
+**IN_PROGRESS:** chưa nghiệm thu xác thực/suy luận/function calling trong app đích và
+voice/bảo mật/hiệu năng trên Fold3. Chuyển provider mặc định và thực thi lệnh bằng
+Subscription vẫn khóa. Gemini/Groq, API key đã lưu và lệnh local được giữ nguyên.
+Trong AI Providers, chọn ChatGPT Subscription, chủ động đăng nhập khi đã dừng xe an toàn,
+tải/chọn model rồi thử suy luận. Lệnh giọng nói không tự mở trình duyệt đăng nhập.
+
+Quay lui: giữ/chọn Gemini hoặc Groq cùng model đang dùng; không tự fallback từ Subscription
+sang API trả phí. Ngắt tài khoản xóa token cục bộ, giữ định danh cài đặt/đăng ký. Nếu chưa
+xác nhận thu hồi phiên từ xa, ngắt app trong ChatGPT Settings. Không gỡ app hay xóa dữ liệu.
+Xem [báo cáo](.agent/evidence/T-025-chatgpt-subscription-migration.md),
+[ExecPlan](.agent/plans/active/T-025-chatgpt-subscription-migration.md) và
+[giấy phép mã POC được tái sử dụng](third-party/siwc-poc-LICENSE).
+
+
 [English](README.md) · **Tiếng Việt**
 
 DeX Assistant là trợ lý Android **ưu tiên điều khiển bằng giọng nói**, phục vụ một người dùng trên **Samsung Galaxy Z Fold3 xuất hình qua Samsung DeX ra màn hình ngoài**. Kiến trúc hiện tại là **local-first**: lệnh đơn giản xử lý ngay trên máy; lệnh phức tạp và AI Chat gọi trực tiếp API của nhà cung cấp AI. **Không cần vận hành Spring Boot, WebSocket proxy riêng, Firebase hoặc EC2 để chạy Command/Chat trên Android.**

@@ -68,10 +68,11 @@ class DirectAiChat(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS).readTimeout(16, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS).build(),
+    private val subscription: ChatGptSubscriptionProvider? = null,
 ) {
     private val activeCall = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>()
 
-    fun cancelPendingRequest() { activeCall.get()?.cancel() }
+    fun cancelPendingRequest() { activeCall.get()?.cancel(); subscription?.cancel() }
 
     private val system = "You are a brief Vietnamese-language conversation partner. " +
         "Never claim to control the device, execute an action, or request credentials. " +
@@ -80,6 +81,8 @@ class DirectAiChat(
     fun reply(turn: DirectChatState.Turn, metric: (String, Long) -> Unit = { _, _ -> }): String {
         if (Thread.currentThread().isInterrupted) throw MobileAiException("CHAT_PROVIDER_TIMEOUT")
         val preferred = settings.defaultProvider()
+        if (preferred == AiProvider.CHATGPT_SUBSCRIPTION) return (subscription
+            ?: throw MobileAiException("AI_PROVIDER_NOT_CONFIGURED")).reply(turn)
         // Do not silently switch away from an explicitly preferred unsupported provider.
         if (!preferred.supportsDirectCommands) throw MobileAiException("AI_PROVIDER_UNSUPPORTED")
         var firstEligibleKey: String? = null

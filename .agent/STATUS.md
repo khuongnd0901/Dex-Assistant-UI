@@ -4,7 +4,22 @@ Updated 2026-10-22. Android is canonical under [D-037](DECISIONS.md#d-037--andro
 Start at [AGENTS](../AGENTS.md), [TASKS](TASKS.md); use [workspace](../Dex-Assistant.code-workspace).
 Backend development is retired; T-022 DONE. No backend checkout/runtime needed.
 
-Latest owner request COMPLETE: T-024 public repository + MIT. License/README
+Latest owner priority: T-025 ChatGPT Subscription migration IN_PROGRESS.
+Native independent OAuth/Keystore/session/model/Responses/SSE and provider/settings
+implementation added; default selection and device commands remain code-gated.
+[Plan](plans/active/T-025-chatgpt-subscription-migration.md),
+[evidence/matrix](evidence/T-025-chatgpt-subscription-migration.md).
+Public MIT eligibility verified independently; target consent/inference/tools not verified.
+Host JDK17 test/lint/app+test APK PASS201tasks; app226tests/variant(1skip),
+DPC5/variant;0lint errors; whitespace PASS. Original9ddb signed candidate verified.
+Windows selector lacks Windows ADB; Linux5037 sees Fold3. Latest owner steering:
+push first, then build/test real Fold3. Offline physical run is next; no install or
+account/device acceptance claimed yet. Owner sign-in and physical/voice/tool/metrics
+gates remain required before merge. No migration DONE/default claim.
+Prior unfinished priorities below are retained; unrelated dirty icon/collector files
+are excluded from migration commits. No reference POC/backend changes.
+
+Prior owner request COMPLETE: T-024 public repository + MIT. License/README
 commit59fc4c9 pushed to main; GitHub authenticated and anonymous metadata verify
 PUBLIC/MIT; anonymous LICENSE matches local bytes and standard MIT template.
 [Evidence](evidence/T-024-public-mit-2026-10-22.md). No app/runtime/device change.

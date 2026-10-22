@@ -62,7 +62,10 @@ fun AiProvidersSettings() {
                 )
             }
         }
-        key(selected) { AiProviderEditor(selected) { preferred = selected } }
+        key(selected) {
+            if (selected == AiProvider.CHATGPT_SUBSCRIPTION) ChatGptSubscriptionSettings { preferred = selected }
+            else AiProviderEditor(selected) { preferred = selected }
+        }
     }
 }
 

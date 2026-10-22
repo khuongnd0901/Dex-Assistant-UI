@@ -77,7 +77,17 @@ class AssistantCoordinator internal constructor(
     private var pendingDispatched = false
     private var directDispatch = false
     private val aiSettings = AiProviderSettings(context)
-    private val aiProxyDelegate = lazy { MobileAiProxy(AiCredentialStore(context), aiSettings) }
+    private var directProviderSnapshot: Map<String, *>? = null
+    private var chatProviderSnapshot: Map<String, *>? = null
+    private val providerListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        onMain {
+            if (chatSession != null) endChat("STOP")
+            if (pendingId != null && directDispatch) finish("CANCELLED", "Đã đổi cấu hình AI")
+        }
+    }
+    private val commandSubscription by lazy { com.khuongnd.dexassistant.ui.ai.ChatGptSubscriptionProvider(context, aiSettings) }
+    private val chatSubscription by lazy { com.khuongnd.dexassistant.ui.ai.ChatGptSubscriptionProvider(context, aiSettings) }
+    private val aiProxyDelegate = lazy { MobileAiProxy(AiCredentialStore(context), aiSettings, subscription = commandSubscription) }
     private val aiProxy by aiProxyDelegate
     private val directExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "dex-direct-ai").apply { isDaemon = true }
@@ -105,8 +115,8 @@ class AssistantCoordinator internal constructor(
     fun observeChat(observer: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)?) { chatObserver = observer }
     private val directChatState = DirectChatState()
     private val directChat by lazy {
-        chatClient?.let { DirectAiChat(chatCredentials, aiSettings, it) }
-            ?: DirectAiChat(chatCredentials, aiSettings)
+        chatClient?.let { DirectAiChat(chatCredentials, aiSettings, it, chatSubscription) }
+            ?: DirectAiChat(chatCredentials, aiSettings, subscription = chatSubscription)
     }
     private val chatExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "dex-chat-ai").apply { isDaemon = true }
@@ -133,7 +143,8 @@ class AssistantCoordinator internal constructor(
         if (chatSession != null) endChat("STOP")
         val session = UUID.randomUUID()
         val preferred = aiSettings.defaultProvider()
-        val available = preferred.supportsDirectCommands && aiSettings.enabled(preferred) &&
+        val available = if (preferred == com.khuongnd.dexassistant.ui.security.AiProvider.CHATGPT_SUBSCRIPTION)
+            chatSubscription.ready() else preferred.supportsDirectCommands && aiSettings.enabled(preferred) &&
             aiSettings.freeTierConfirmed(preferred) && aiSettings.model(preferred).isNotBlank() &&
             chatCredentials.hasKey(preferred)
         if (!available) {
@@ -141,6 +152,7 @@ class AssistantCoordinator internal constructor(
                 null, UUID.randomUUID(), "CHAT_PROVIDER_UNAVAILABLE",
                 "Cấu hình provider/model Free Tier trong Settings", false))
         } else {
+            chatProviderSnapshot = aiSettings.routingSnapshot()
             chatSession = session; chatEpoch++
             directChatState.start()
             rearmChatIdleExpiry()
@@ -156,7 +168,7 @@ class AssistantCoordinator internal constructor(
             it.start("chatReplyLatency", acceptedAt)
         }
         val session = chatSession
-        if (session == null || directChatState.expired()) {
+        if (session == null || directChatState.expired() || chatProviderSnapshot != aiSettings.routingSnapshot()) {
             endChat("STOP")
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
                 session, requestId, "CHAT_INVALID_SESSION", "Chat đã kết thúc", false))
@@ -191,6 +203,7 @@ class AssistantCoordinator internal constructor(
             val result = runCatching { directChat.reply(turn, trace::metric) }
             onMain {
                 if (chatSession != session || chatEpoch != epoch || chatTurn != requestId) return@onMain
+                if (chatProviderSnapshot != aiSettings.routingSnapshot()) { endChat("STOP"); return@onMain }
                 chatTurn = null; chatTask = null; chatLatency = null
                 result.fold(onSuccess = { reply ->
                     val count = runCatching { directChatState.complete(turn, reply) }.getOrElse {
@@ -260,6 +273,12 @@ class AssistantCoordinator internal constructor(
         }
         return id
     }
+    /** Account/provider edits stop only AI work; deterministic local execution remains independent. */
+    fun aiConnectionChanged() = onMain {
+        if (chatSession != null) endChat("STOP")
+        if (pendingId != null && directDispatch) finish("CANCELLED", "Đã đổi kết nối AI")
+    }
+
     fun cancelVoice(requestId: String) {
         commandGate.cancelQueued(requestId)
         onMain { if (pendingId == requestId) {
@@ -310,6 +329,7 @@ class AssistantCoordinator internal constructor(
     fun start() {
         if (started) return
         started = true
+        aiSettings.observeRouting(providerListener)
         context.getSystemService(android.hardware.display.DisplayManager::class.java).registerDisplayListener(object : android.hardware.display.DisplayManager.DisplayListener {
             override fun onDisplayAdded(displayId: Int) = refreshVoiceHealth()
             override fun onDisplayChanged(displayId: Int) = refreshVoiceHealth()
@@ -403,6 +423,7 @@ class AssistantCoordinator internal constructor(
             }
             Route.BACKEND_REQUIRED -> {
                 directDispatch = true
+                directProviderSnapshot = aiSettings.routingSnapshot()
                 latencyPath = "direct"
                 val requestId = activeRequestId ?: return
                 pendingProgress?.invoke(requestId, "SENDING")
@@ -491,6 +512,9 @@ class AssistantCoordinator internal constructor(
     /** Direct AI plans use exactly the existing guarded ActionRouter, without WebSocket receipts. */
     private fun executeDirectActions(requestId: String, actions: List<TypedAction>, index: Int) {
         if (pendingId != requestId || !directDispatch) return
+        if (directProviderSnapshot != aiSettings.routingSnapshot()) {
+            finish("CANCELLED", "Đã đổi cấu hình AI"); return
+        }
         if (index == actions.size) {
             finish(if (remoteDispatch) "DISPATCHED" else "VERIFIED",
                 if (remoteDispatch) "Đã gửi yêu cầu thực hiện" else "Đã thực hiện")

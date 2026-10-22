@@ -2,6 +2,18 @@
 
 # Software Requirements Specification (SRS)
 
+## T-025 migration boundary (2026-10-22)
+
+D-039 authorizes a separate native ChatGPT Subscription provider using user-consented
+OAuth, without an API key/backend. This does not activate it by default: target-app
+OAuth/inference/function-calling and Fold3 acceptance remain required. Existing local,
+voice, privacy and typed-action security requirements still apply. Legacy API-key
+providers remain rollback choices. Subscription HTTP uses bounded explicit context,
+store=false/stream=true and no previous_response_id. Its preview rejects max_output_tokens;
+request approximately1024tokens in instructions and enforce the existing4000code-point
+output bound locally, without claiming a hard1024-token provider cap. See
+[T-025 report](../.agent/evidence/T-025-chatgpt-subscription-migration.md).
+
 ## 1. System Architecture
 Hệ thống lai (Hybrid Architecture) kết hợp sức mạnh phần cứng Z Fold 3 và Cloud LLM:
 - **Client (Android Native - Java/Kotlin):**

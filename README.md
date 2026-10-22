@@ -1,5 +1,29 @@
 # DeX Assistant — Android
 
+## ChatGPT Subscription migration (T-025)
+
+The feature branch adds native **Continue with ChatGPT**, independent OAuth PKCE/OIDC,
+Keystore-encrypted session storage, authorized model discovery and an explicit inference
+test. ChatGPT Subscription is separate from the OpenAI API-key provider. No backend,
+CLI, copied credentials or separate OpenAI API key is required for this connection.
+Subscription requests consume the consenting account's plan allowance.
+
+**IN_PROGRESS:** target-app authentication, inference, real function calling and Fold3
+voice/security/performance acceptance are pending. Default subscription routing and
+subscription device commands remain locked. Gemini/Groq and saved keys remain intact;
+local commands continue unchanged. In AI Providers, choose ChatGPT Subscription,
+explicitly sign in while safely stationary, load/select an account model and run the
+harmless inference test. The browser never launches from a voice command.
+
+Rollback: retain/select the existing Gemini/Groq provider and its configured model;
+no automatic subscription-to-API fallback is added. Disconnect clears subscription
+credentials while retaining its installation/registration identity. If remote revocation
+cannot be confirmed, disconnect the app in ChatGPT Settings. Do not uninstall or clear
+app data. See the [migration report](.agent/evidence/T-025-chatgpt-subscription-migration.md)
+and [ExecPlan](.agent/plans/active/T-025-chatgpt-subscription-migration.md) for gates and
+limitations. Adapted POC code retains its [MIT notice](third-party/siwc-poc-LICENSE).
+
+
 **English** · [Tiếng Việt](README.vi.md)
 
 Single-user, voice-first Android assistant designed for the **Samsung Galaxy Z Fold3 using Samsung DeX on an external display**. The current app is **local-first**, with direct AI provider calls for requests that need language understanding. **Spring Boot, a custom WebSocket proxy, Firebase and an EC2 instance are not required by the current Android Command/Chat runtime.**

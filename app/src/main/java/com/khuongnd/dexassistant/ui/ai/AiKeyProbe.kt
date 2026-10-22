@@ -50,6 +50,7 @@ class AiKeyProbe(
         const val DEEPSEEK_MODELS_URL = "https://api.deepseek.com/models"
 
         fun modelsEndpoint(provider: AiProvider): String = when (provider) {
+            AiProvider.CHATGPT_SUBSCRIPTION -> throw IllegalArgumentException("Subscription uses OAuth")
             AiProvider.GEMINI -> GEMINI_MODELS_URL
             AiProvider.GROQ -> GROQ_MODELS_URL
             AiProvider.OPENAI -> OPENAI_MODELS_URL
