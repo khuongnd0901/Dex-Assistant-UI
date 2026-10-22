@@ -129,6 +129,40 @@ class ChatGptSubscriptionTest {
         }.build()
         failure("INCOMPLETE_RESPONSE") { ChatGptResponsesClient(Auth(), jsonClient).response(JSONObject()) }
     }
+    private fun itemEvent(type: String, index: Int = 0, item: JSONObject): String = "data: " +
+        JSONObject().put("type", type).put("output_index", index).put("item", item) + "\n\n"
+    private fun emptyTerminal() = event("response.completed", JSONObject().put("id", "r1")
+        .put("status", "completed").put("output", JSONArray()))
+    private fun item() = completed().getJSONArray("output").getJSONObject(0).put("id", "m1")
+    private fun created() = event("response.created", JSONObject().put("id", "r1"))
+
+    @Test fun subscriptionEmptyTerminalUsesOnlyCompletedOutputItems() {
+        val message = item()
+        val added = itemEvent("response.output_item.added", item = JSONObject().put("id", "m1").put("status", "in_progress"))
+        val done = itemEvent("response.output_item.done", item = message)
+        assertEquals("Xin chào", ResponsesStream.chatText(ResponsesStream.read(Buffer().writeUtf8(created() + added + done + emptyTerminal()))))
+        failure("INCOMPLETE_RESPONSE") { ResponsesStream.read(Buffer().writeUtf8(created() + added + done)) }
+        failure("INCOMPLETE_RESPONSE") { ResponsesStream.read(Buffer().writeUtf8(created() + added + emptyTerminal())) }
+    }
+    @Test fun duplicateGappedOrIncompleteDoneItemsCannotBecomeAReply() {
+        val done = itemEvent("response.output_item.done", item = item())
+        failure("INVALID_STREAM") { ResponsesStream.read(Buffer().writeUtf8(created() + done + done + emptyTerminal())) }
+        failure("INVALID_STREAM") { ResponsesStream.read(Buffer().writeUtf8(created() + itemEvent("response.output_item.done", 1, item()) + emptyTerminal())) }
+        failure("INVALID_STREAM") { ResponsesStream.read(Buffer().writeUtf8(created() + itemEvent("response.output_item.done", item = item().put("status", "incomplete")) + emptyTerminal())) }
+        val other = JSONObject().put("id", "other").put("status", "in_progress")
+        failure("INVALID_STREAM") { ResponsesStream.read(Buffer().writeUtf8(created() + itemEvent("response.output_item.added", item = other) + done + emptyTerminal())) }
+    }
+    @Test fun finalSnapshotCannotOverrideConflictingCompletedItem() {
+        val final = completed("Different").apply { getJSONArray("output").getJSONObject(0).put("id", "m1") }
+        failure("INVALID_STREAM") { ResponsesStream.read(Buffer().writeUtf8(created() + itemEvent("response.output_item.done", item = item()) + event("response.completed", final))) }
+    }
+    @Test fun completedStructuredToolItemsAreRetainedWithoutExecuting() {
+        val call = JSONObject().put("id", "fc1").put("type", "function_call").put("call_id", "c1")
+            .put("namespace", "device").put("name", "deviceCommand_VOLUME_SET").put("arguments", "{\"operation\":\"MUTE\"}")
+        val response = ResponsesStream.read(Buffer().writeUtf8(created() + itemEvent("response.output_item.done", item = call) + emptyTerminal()))
+        val actions = SubscriptionTools.parse(response, CommandRegistry.bundledForTests(), setOf(ActionId.VOLUME_SET))
+        assertEquals(ActionId.VOLUME_SET, actions.single().action)
+    }
     @Test fun repeated401StopsAfterOneRefreshAndNetworkFailureIsNotReplayed() {
         for (networkError in listOf(false, true)) {
             val auth = Auth(); var requests = 0

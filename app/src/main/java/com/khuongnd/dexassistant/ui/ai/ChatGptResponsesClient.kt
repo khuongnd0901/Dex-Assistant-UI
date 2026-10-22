@@ -80,6 +80,22 @@ internal object ResponsesStream {
         val data = StringBuilder()
         var eventName = ""
         var responseId: String? = null
+        val addedItems = mutableMapOf<Int, String>()
+        val doneItems = sortedMapOf<Int, JSONObject>()
+        val doneIds = mutableSetOf<String>()
+        fun index(event: JSONObject): Int {
+            val raw = event.opt("output_index")
+            if (raw !is Int && raw !is Long) throw ChatGptFailure("INVALID_STREAM")
+            val value = (raw as Number).toLong()
+            if (value !in 0..127) throw ChatGptFailure("INVALID_STREAM")
+            return value.toInt()
+        }
+        fun finalItem(item: JSONObject): JSONObject {
+            // Optional item status is normalized only from a done event or a completed response.
+            if (item.has("status") && !item.isNull("status") && item.getString("status") != "completed")
+                throw ChatGptFailure("INVALID_STREAM")
+            return JSONObject(item.toString()).apply { put("status", "completed") }
+        }
         while (!source.exhausted()) {
             check()
             val line = source.readUtf8LineStrict(262144)
@@ -98,6 +114,20 @@ internal object ResponsesStream {
                         if (responseId != null) throw ChatGptFailure("INVALID_STREAM")
                         responseId = event.getJSONObject("response").getString("id")
                     }
+                    "response.output_item.added" -> {
+                        val i = index(event)
+                        val id = event.getJSONObject("item").getString("id")
+                        if (id.isBlank() || id.length > 256 || addedItems.put(i, id) != null || doneItems.containsKey(i))
+                            throw ChatGptFailure("INVALID_STREAM")
+                    }
+                    "response.output_item.done" -> {
+                        val i = index(event)
+                        val item = finalItem(event.getJSONObject("item"))
+                        val id = item.getString("id")
+                        if (id.isBlank() || id.length > 256 || !doneIds.add(id) || doneItems.containsKey(i) ||
+                            (addedItems.containsKey(i) && addedItems[i] != id)) throw ChatGptFailure("INVALID_STREAM")
+                        doneItems[i] = item
+                    }
                     "response.output_text.delta" -> {
                         val delta = event.getString("delta"); deltaSize += delta.length
                         if (deltaSize > 65536) throw ChatGptFailure("STREAM_TOO_LARGE")
@@ -111,8 +141,22 @@ internal object ResponsesStream {
                             (response.has("incomplete_details") && !response.isNull("incomplete_details")) ||
                             (responseId != null && response.getString("id") != responseId))
                             throw ChatGptFailure("INVALID_STREAM")
-                        response.getJSONArray("output")
-                        return response
+                        val snapshot = response.getJSONArray("output")
+                        if (addedItems.keys.any { it !in doneItems }) throw ChatGptFailure("INCOMPLETE_RESPONSE")
+                        val finalOutput = JSONArray()
+                        if (doneItems.isNotEmpty()) {
+                            if (responseId == null || doneItems.keys.toList() != (0 until doneItems.size).toList())
+                                throw ChatGptFailure("INVALID_STREAM")
+                            doneItems.values.forEach(finalOutput::put)
+                            if (snapshot.length() > 0) {
+                                val normalized = JSONArray()
+                                for (i in 0 until snapshot.length()) normalized.put(finalItem(snapshot.getJSONObject(i)))
+                                if (!sameJson(normalized, finalOutput)) throw ChatGptFailure("INVALID_STREAM")
+                            }
+                        } else {
+                            for (i in 0 until snapshot.length()) finalOutput.put(finalItem(snapshot.getJSONObject(i)))
+                        }
+                        return JSONObject(response.toString()).put("output", finalOutput)
                     }
                     "response.failed", "response.incomplete", "error" -> {
                         val error = event.optJSONObject("response")?.optJSONObject("error") ?: event.optJSONObject("error")
@@ -128,6 +172,16 @@ internal object ResponsesStream {
             } else if (line.startsWith("event:")) eventName = line.substring(6).trim()
         }
         throw ChatGptFailure("INCOMPLETE_RESPONSE")
+    }
+
+    private fun sameJson(first: Any?, second: Any?): Boolean = when {
+        first is JSONObject && second is JSONObject -> {
+            val keys = first.keys().asSequence().toSet()
+            keys == second.keys().asSequence().toSet() && keys.all { sameJson(first.opt(it), second.opt(it)) }
+        }
+        first is JSONArray && second is JSONArray -> first.length() == second.length() &&
+            (0 until first.length()).all { sameJson(first.opt(it), second.opt(it)) }
+        else -> first == second
     }
 
     fun chatText(response: JSONObject): String {
