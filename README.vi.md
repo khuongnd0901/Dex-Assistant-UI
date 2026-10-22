@@ -115,3 +115,7 @@ Cần thực hiện **một lượt nghiệm thu cuối cùng trên Samsung Z Fo
 Repo [DeX-Assistant (Java/Spring Boot)](https://github.com/khuongnd0901/DeX-Assistant) vẫn được giữ làm lịch sử source/contract và tài liệu rollback. **Không mặc định rằng EC2, EBS hay DNS đang sử dụng đã được dừng hoặc xóa.**
 
 Development/test entry point: [.agent/STATUS.md](.agent/STATUS.md). Windows simulator selection from this root: `bash scripts/android/select-test-target.sh dex --emulator-only`. [Local test tooling](scripts/android/README.md), [T-021 evidence](.agent/evidence/T-021-windows-response-performance-2026-10-13.md) and [T-020 physical campaign](.agent/plans/active/T-020-consolidated-fold3-acceptance.md) are canonical here.
+
+## Giấy phép
+
+[MIT](LICENSE) © 2026 Khuong Duy Nguyen. Các thành phần và tài nguyên mô hình bên thứ ba giữ giấy phép và thông báo bản quyền riêng.

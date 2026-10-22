@@ -113,3 +113,7 @@ A final **single controlled Samsung Z Fold3 / DeX acceptance run** remains open.
 The former [Java/Spring Boot backend repository](https://github.com/khuongnd0901/DeX-Assistant) is retired and frozen for historical source provenance. **Do not assume the deployed EC2/EBS/DNS resources have already been shut down.**
 
 Development/test entry point: [.agent/STATUS.md](.agent/STATUS.md). Windows simulator selection from this root: `bash scripts/android/select-test-target.sh dex --emulator-only`. [Local test tooling](scripts/android/README.md), [T-021 evidence](.agent/evidence/T-021-windows-response-performance-2026-10-13.md) and [T-020 physical campaign](.agent/plans/active/T-020-consolidated-fold3-acceptance.md) are canonical here.
+
+## License
+
+[MIT](LICENSE) © 2026 Khuong Duy Nguyen. Third-party components and model assets retain their respective licenses and notices.
