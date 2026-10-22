@@ -1,8 +1,14 @@
 # Android current status
 
-Updated 2026-10-13. Android is canonical under [D-037](DECISIONS.md#d-037--android-canonical-workspace-backend-retired).
+Updated 2026-10-22. Android is canonical under [D-037](DECISIONS.md#d-037--android-canonical-workspace-backend-retired).
 Start at [AGENTS](../AGENTS.md), [TASKS](TASKS.md); use [workspace](../Dex-Assistant.code-workspace).
 Backend development is retired; T-022 DONE. No backend checkout/runtime needed.
+
+Latest owner request COMPLETE: T-024 public repository + MIT. License/README
+commit59fc4c9 pushed to main; GitHub authenticated and anonymous metadata verify
+PUBLIC/MIT; anonymous LICENSE matches local bytes and standard MIT template.
+[Evidence](evidence/T-024-public-mit-2026-10-22.md). No app/runtime/device change.
+Prior unfinished priorities and local app/collector changes remain retained.
 
 Owner authorized execution and per-task commit/push in this order:
 T-021 → T-014 → T-017 → T-020 → T-018 → T-006 → T-010 → T-011 → T-015 → T-016.

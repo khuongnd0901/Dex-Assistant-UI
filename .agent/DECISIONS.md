@@ -680,3 +680,12 @@ was removed.
   original signing, settings, credentials and device data. Windows simulator is
   first; actual Fold3 tests stay deferred in T-020. This migration authorizes no
   app behavior changes, deployments, cloud deletion or physical/provider actions.
+
+## D-038 — Public Android repository under MIT
+
+- Date: 2026-10-22
+- Status: accepted by explicit owner request (T-024).
+- Context: owner requests making the Android GitHub repository public and adding MIT.
+- Decision: publish `khuongnd0901/Dex-Assistant-UI` publicly; license original project material under the root MIT LICENSE, copyright 2026 Khuong Duy Nguyen.
+- Rationale: follow the owner's distribution and licensing choice.
+- Consequences: third-party components/model assets keep their own licenses and notices. Unrelated local changes are excluded from this publication; existing runtime and physical acceptance gates remain open.

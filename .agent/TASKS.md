@@ -21,6 +21,14 @@ next follow-ups belong to these existing tasks, not a new task.
 States: `BACKLOG`, `PLANNED`, `READY`, `IN_PROGRESS`, `BLOCKED`, `CANCELLED`, `DONE`.
 `PLANNED` means an ExecPlan exists but implementation has not started.
 
+## T-024 — Publish Android repository with MIT license
+
+- State: `DONE` (2026-10-22; remote PUBLIC and MIT verified).
+- Scope: owner explicitly requests public visibility for `khuongnd0901/Dex-Assistant-UI` and MIT licensing. Preserve unrelated workspace changes and third-party notices.
+- Acceptance: root LICENSE contains the standard MIT text with owner/year; both READMEs link to it; license commit pushed to main; GitHub reports PUBLIC and MIT.
+- Validation: compare LICENSE to GitHub MIT template, whitespace/local links, remote commit/license/visibility verification. Android tests/build not applicable to license/documentation/settings-only work.
+- Verified: license/README commit `59fc4c9` pushed to main; GitHub metadata and anonymous API report PUBLIC/MIT; anonymous raw LICENSE matches local bytes and GitHub MIT template. Whitespace PASS. Memory validator retains the pre-existing missing T-017 recovery evidence link; unrelated to this task.
+
 ## T-022 — Move canonical project memory and development entry point to Android
 
 - State: `DONE` (2026-10-13; Android canonical workspace and retired backend redirects verified).
