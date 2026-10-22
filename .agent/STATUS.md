@@ -5,19 +5,24 @@ Start at [AGENTS](../AGENTS.md), [TASKS](TASKS.md); use [workspace](../Dex-Assis
 Backend development is retired; T-022 DONE. No backend checkout/runtime needed.
 
 Latest owner priority: T-025 ChatGPT Subscription migration IN_PROGRESS.
-Native independent OAuth/Keystore/session/model/Responses/SSE and provider/settings
-implementation added; default selection and device commands remain code-gated.
-[Plan](plans/active/T-025-chatgpt-subscription-migration.md),
-[evidence/matrix](evidence/T-025-chatgpt-subscription-migration.md).
-Public MIT eligibility verified independently; target consent/inference/tools not verified.
-Host JDK17 test/lint/app+test APK PASS201tasks; app226tests/variant(1skip),
-DPC5/variant;0lint errors; whitespace PASS. Original9ddb signed candidate verified.
-Windows selector lacks Windows ADB; Linux5037 sees Fold3. Latest owner steering:
-push first, then build/test real Fold3. Offline physical run is next; no install or
-account/device acceptance claimed yet. Owner sign-in and physical/voice/tool/metrics
-gates remain required before merge. No migration DONE/default claim.
-Prior unfinished priorities below are retained; unrelated dirty icon/collector files
-are excluded from migration commits. No reference POC/backend changes.
+Owner requested a checkpoint/push and pause until tomorrow (2026-10-22).
+Native OAuth/scopes/Keystore restoration/rotating refresh,7authorized models,
+Vietnamese inference,2-turn Chat,structured tools and cancellation PASS on Fold3.
+Real MobileAiProxy → validated APP_LAUNCH → ActionRouter dispatched Chrome once;
+Chat remained action-free. Saved owner default remains Gemini; account/model-bound
+proofs enable deliberate manual Subscription trials. Automatic activation is off.
+[Plan/resume steps](plans/active/T-025-chatgpt-subscription-migration.md),
+[evidence/matrix](evidence/T-025-chatgpt-subscription-migration.md),
+[draft PR2](https://github.com/khuongnd0901/Dex-Assistant-UI/pull/2).
+Latest source6515ec8 full test/lint/app+test APK PASS201tasks: app234tests/variant
+(1skip),DPC5/variant,0lint errors. Physical final core+offline23/23 and routing3/3
+PASS; original9ddb signing/data/legacy keys/roles retained. Latest6515ec8 stream
+error hardening is built/host-tested but NOT installed; Fold3 trial app is c89fa2b.
+Next: sign/install latest build in place, scoped final smoke, deliberate provider
+selection with owner, then natural voice/STT/TTS/interrupt/confirmation acceptance.
+Windows simulator NOT TESTED (Windows ADB missing). Natural latency/PSS/soak,
+physical logout/reconnect and full acceptance remain open; no DONE/merge claim.
+Unrelated dirty icon/collector/memory edits retained; no POC/backend changes.
 
 Prior owner request COMPLETE: T-024 public repository + MIT. License/README
 commit59fc4c9 pushed to main; GitHub authenticated and anonymous metadata verify

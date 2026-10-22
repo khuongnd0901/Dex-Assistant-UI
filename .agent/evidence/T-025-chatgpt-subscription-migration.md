@@ -1,6 +1,6 @@
 # T-025 — ChatGPT Subscription migration evidence
 
-Date: 2026-10-22. Status: IN_PROGRESS; subscription device commands/default activation BLOCKED pending target runtime acceptance. No OAuth secrets, callback queries, prompts from the owner, or private account information captured.
+Date: 2026-10-22. Status: IN_PROGRESS; owner requested checkpoint/push and pause until tomorrow. Native account/model/inference/tools and guarded routing verified on Fold3; full voice/performance acceptance remains open. No OAuth secrets, callback queries, owner prompts or private account identifiers are included in repository evidence.
 
 ## Eligibility and references
 
@@ -21,7 +21,7 @@ Reference source: local POC commit `2c67aacd06fdc572e6305ea016667daafe9d84a6`, M
 | Capability | Existing flow and constraints | Migration implementation / gate |
 | --- | --- | --- |
 | Local Command | CommandRouter deterministic catalog → TypedAction → ActionRouter → native/DPC/scoped Accessibility | Unchanged; never invokes subscription, including offline/local failures |
-| AI Command | AssistantCoordinator → MobileAiProxy → Gemini/Groq function calls → AiToolCallParser → typed guarded router | Dedicated subscription branch/shared transport; namespace schemas reuse AiToolSchema and common typed validator; device execution code-gated until real tools proven |
+| AI Command | AssistantCoordinator → MobileAiProxy → Gemini/Groq function calls → AiToolCallParser → typed guarded router | Dedicated subscription branch/shared transport; namespace schemas reuse AiToolSchema and common typed validator; manual execution requires real account/client+model-specific inference/tool proofs |
 | AI Chat | DirectChatState → DirectAiChat → Gemini/Groq text → complete history → Android TTS | Subscription adapter sends explicit user/assistant history, no tools; final validated response only; production selection gated |
 | Voice Command | Wake/STT → coordinator command route → interaction/confirmation/action → TTS | Same route, request IDs, cancellation, 30s watchdog/120s total and stale guards; no auth/browser launch from voice |
 | Voice Chat | Existing explicit Chat mode, follow-up after TTS, stop/idle/epoch guards | Same lifecycle and TTS; no action dispatcher in Chat; natural voice acceptance still pending |
@@ -31,7 +31,7 @@ Reference source: local POC commit `2c67aacd06fdc572e6305ea016667daafe9d84a6`, M
 | History | Command encrypted bounded durable; Chat volatile 20 pairs/24KB approximate context, 200 turns, 15min idle, 2000 input/4000 output code points | Existing state retained; only completed final Chat text committed; partial output never history; no previous_response_id |
 | Errors/fallback | Legacy Gemini/Groq eligibility and bounded fallback; unsupported/credential/malformed fail closed | Subscription pre-stream401 refresh at most once;403/429/5xx explicit failures; no subscription-to-BYOK fallback; truncated/failed/incomplete SSE never successful |
 
-Current production route remains legacy until acceptance. Implemented proposed route is Android → own OAuth installation → public models/Responses SSE → text or structured validated typed plan → existing consumers. No backend/CLI/proxy/internal API layer exists.
+Owner default remains Gemini. Explicit manually selected subscription route is Android → own OAuth installation → public models/Responses SSE → text or structured validated typed plan → existing consumers. No backend/CLI/proxy/internal API layer exists.
 
 ## Authentication architecture
 
@@ -45,64 +45,80 @@ Shared ChatGptResponsesClient uses OAuth bearer, fixed public endpoint, store=fa
 
 Chat sends bounded existing history and local time; no tools, action output rejected. Existing final Reply/TTS interface has no provisional UI event, so streaming display is not wired; incomplete output never reaches TTS/history. 1024token cap cannot be hard-enforced by unsupported max_output_tokens; instructions request brevity and local4000code-point cap rejects excess.
 
-SubscriptionTools translates existing capability/app-filtered declarations into a `device` namespace. Only completed function_call items with namespace, unique call_id, supported function name and valid typed arguments are accepted. Existing decode enforces schema1/allowlists/params; maximum8actions. No generated text becomes an action. Tools can be built/tested offline, but real output namespace/model behavior must be checked before enabling commands. Release constants keep both device commands and default activation false; settings cannot override them. No action/router executor implementation was replaced.
+SubscriptionTools translates existing capability/app-filtered declarations into a `device` namespace. Only completed function_call items with namespace, unique call_id, supported function name and valid typed arguments are accepted. Existing decode enforces schema1/allowlists/params; maximum8actions. No generated text becomes an action. Real namespace/model behavior is verified on the selected account/model. DEVICE_COMMANDS_ACCEPTED and MANUAL_SELECTION_ACCEPTED permit deliberate trials only with both scoped proofs; DEFAULT_ACTIVATION_ACCEPTED remains false. Account/model changes invalidate proofs. Owner default was never switched by tests. No action/router executor implementation was replaced.
 
 Settings include status, deliberate browser sign-in, verified account email, scope status, visible account-model list/selection, harmless inference test, nonexecuting real-schema function-call probe, cancellation, usage link and local/remote logout feedback. Available states include all eight requested states. No API-key entry for subscription. Legacy providers/keys unchanged.
 
-## Validation / device status
+## Final verified host checkpoint
 
-Clean-checkout JDK17 validation PASS: `./gradlew test lint assembleDebug assembleDebugAndroidTest --offline --max-workers=1 --no-watch-fs`. Final run201tasks (26executed/175up-to-date),1m53s, after initial clean201-task run6m14s. App226tests per debug/release variant,0failures/errors/1conditional skip each; DPC5tests per variant PASS. Lint0errors/fatal, app32/DPC2existing warnings. New tests cover OIDC, state/scopes/rotation/restoration/logout/concurrent refresh and logout fencing, bounded history/SSE/tools/401/403/429/5xx/offline/replay rejection. Offline Android fixture compiled/packaged; execution still pending.
+Source `6515ec83bdb11bcd73cc96ac3eec7ddf0ea18d2d` includes fail-closed rejection of any nonnull contradictory completed-response error. Full isolated JDK17 command PASS:
 
-Initial overlapping workspace builds produced Kotlin incremental-cache/internal compiler failures; both were discarded as evidence and replaced by the single-worker isolated checkout `/tmp/dex-t025-validation`, excluding unrelated dirty sources. Host logs are `/tmp/dex-t025-validation.log` and `/tmp/dex-t025-final-validation.log`. Whitespace PASS. Clean migration memory/link validation PASS144Markdown/473links; original workspace retains its pre-existing missing T-017 recovery-evidence link. Twelve unrelated tracked patches compared byte-for-byte unchanged.
+```bash
+./gradlew -p /tmp/dex-t025-validation test lint assembleDebug assembleDebugAndroidTest --offline --max-workers=1 --no-watch-fs
+```
 
-Original9ddb signing identity is available locally. Candidate `/tmp/dex-t025-artifacts/dex-assistant-subscription.apk` was re-signed and verified with that original certificate; SHA256 `617de1c0d7bccfd0fc6454787ff9814506914fb5844678272858f8950157f9ec`. No install claimed at this checkpoint. Owner subsequently explicitly requests push first, then build/test on real Fold3; scoped physical verification is now authorized despite unavailable Windows simulator, and will be recorded separately. Windows emulator-first selector attempted: FAIL because `/mnt/d/Android/Sdk/platform-tools/adb.exe` is absent. Linux SDK exists at `/home/kunrg/Android/Sdk` (the old `/home/khuongnd/Android/Sdk` path is absent); JDK17 exists. Linux ADB5037 reports connected SM-F926B; no sign-in, installation, role/grant changes, live provider calls or physical acceptance performed at this pre-push checkpoint. Owner browser interaction remains required.
+201tasks (22executed/179up-to-date),1m15s. App234tests per debug/release variant,0failures/errors,1conditional skip each; DPC5/variant PASS. Lint0errors/fatal; app32/DPC2existing warnings. Log `/tmp/dex-t025-release-candidate-build.log`. Whitespace checks PASS. Latest source built but final6515ec8 hardening NOT installed on Fold3 at pause.
 
-| Gate | Current result |
+Initial overlapping builds failed incremental caches and were discarded as evidence; isolated single-worker builds passed. Actual SDK `/home/kunrg/Android/Sdk`, JDK `/home/kunrg/.local/opt/jdk17`; old instructed SDK path absent. Final staged migration snapshot memory/link validation PASS144Markdown/473links/0errors; root workspace retains unrelated dirty T-017 missing-evidence link. Only the four T-025 handoff documents are staged in this checkpoint.
+
+## Physical Fold3 evidence
+
+Device independently verified SM-F926B/API35, Linux ADB5037, Samsung Desktop display2/1920×1080. Windows simulator NOT TESTED: Windows ADB absent. Owner explicitly requested push then physical tests; initial implementation was pushed before installation. Owner personally approved/completed system-browser sign-in. No authentication-browser/callback capture or secret logging.
+
+Original signing certificate SHA256 `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03` retained. Original installed APK privately backed up; app/test installed in place with original signing, no uninstall/reset/grant/role changes. Device builds include only migration source and owner's existing launcher-icon overlay, excluding collector edits.
+
+Current installed app is production through c89fa2b; last test fixture includes2183400. Installed trial artifact `/tmp/dex-t025-artifacts/dex-assistant-subscription-trial.apk` SHA256 `ce39dccc0df9dbd3be5b23869a1dbaa97ca3f5e221caa49d2927bd5545c6ce9a`. It excludes latest6515ec8 error hardening. Never report latest host build as already deployed.
+
+| Gate | Actual result |
 | --- | --- |
-| Target OAuth, consent/scope, refresh/restart, model list | NOT TESTED |
-| Real target inference, Vietnamese/multi-turn Chat | NOT TESTED |
-| Real account function calling / Android execution | NOT TESTED; command activation BLOCKED |
-| Simulator offline regression / account UI | NOT TESTED; Windows tooling missing |
-| Actual Fold3 scoped offline regression | PASS20/20; account/device-action/natural-voice gates remain open |
-| Fold3 mic/STT/TTS, interruption, local/confirmation/security regression | NOT TESTED |
-| Latency, streaming completion rate, PSS/memory/network/cancellation measurements | NOT TESTED; no fabricated metrics |
+| Native OAuth/consent/subscription scope | PASS; owner's independent target installation |
+| Session restoration and real refresh rotation | PASS; both token changes observed only as in-process booleans; scopes retained |
+| Account model catalog | PASS;7models; owner selected GPT-6-Astra, no hardcoded model |
+| Harmless inference/completed SSE | PASS, Vietnamese output |
+| Native two-turn DirectAiChat | PASS, bounded prior-pair counts0/1; command-like second input remains Chat, no actions |
+| Structured namespace function calling | PASS; finished typed tools only; initial VOLUME_SET/MUTE probe never executed |
+| Native MobileAiProxy → ActionRouter | PASS; one APP_LAUNCH Chrome dispatched, actual Chrome focus confirmed by package metadata |
+| Live streaming cancellation | PASS;1ms after first delta, CANCELLED, no partial history/replay |
+| Final scoped core+offline regression | PASS23/23,24.349s |
+| Separate real routing regression | PASS3/3,14.305s |
+| Windows simulator | NOT TESTED; missing tooling |
+| Owner selected Subscription as saved default | NOT DONE; saved default remains Gemini |
+| Natural voice/STT/TTS/interruption/confirmation | NOT TESTED for subscription acceptance |
+| Physical logout/reconnect | NOT TESTED; isolated secure-store/logout tests PASS |
+| Natural p95/matched PSS/100sessions/8hsoak | NOT TESTED; no acceptance claim |
 
-## Real Fold3 checkpoint after push
+The final23-test batch combines live3 and offline20. Offline20 includes new subscription3, isolated DirectAiFault14 and pure local catalog/protocol/matcher3. Initial offline20/20 also passed4.489s. Final matcher1000patterns/300samples p95=0.360052ms; this is deterministic matching only.
 
-Owner explicitly requested push first, then build/test on real Z Fold3. Commits `9bfedea` and `85cafa6` were pushed; [draft PR2](https://github.com/khuongnd0901/Dex-Assistant-UI/pull/2) targets main, unmerged. Subsequent device-candidate build after push PASS201tasks (42executed/159up-to-date),1m26s, using the same full test/lint/app+instrumentation APK targets.
+Live account core final timings: nonexecuting tool3368ms; harmless inference3406ms; Chat4538/3286ms. Earlier corrected core3/3 passed20.026s, with tool4100ms/inference3869ms/Chat3829 and3613ms. Real refresh rotated access+refresh and loaded7models. Small passing batches establish protocol behavior, not statistical completion-rate or natural latency acceptance.
 
-Source: pushed85cafa6 plus the owner's pre-existing T-023 launcher icon overlay (2manifest lines and7resource files) to preserve the installed icon. No T-017 collector changes copied; migration commits contain no icon/collector edits. Candidate and test APKs re-signed with the original certificate `9ddb7f477828847e3908328c4cfea0bb9d5c50124a41743dd42c2443abd83d03`; installed previous APK certificate independently matches. Original installed APK backed up privately before replacement. Initial90s wireless pull timed out; full retry completed113.984s and verified as a valid original-signed APK. No uninstall/reset/reprovision/grant or role changes.
+Routing fixture uses unique temporary preferences and the same real native auth session. DirectAiChat two turns3325/4522ms; live cancel3027ms total,1ms from delta to abort. Command phrase is asserted not to match deterministic local catalog, model allowlist APP_LAUNCH only; one validated Chrome action planned3185ms, end-to-end3245ms, DISPATCHED through existing ActionRouter. No retry/reconnect or duplicate action. Tests assert owner's API keys/default unchanged. They do not alter owner conversation history. Chrome may remain foreground after the test; no further device mutation after owner pause.
 
-- Device: independently queried SM-F926B/API35, Linux ADB5037; actual Samsung Desktop display2,1920×1080.
-- In-place app and instrumentation installations PASS. Installed app SHA256 matches `1e70d0d9d438adadd2bfaf699d6b5da21cb3555296480adce5bf83fa951841c5` exactly. Test APK SHA256 `add1f5124b96840b36db505fa74e3ad4ecf480aa4968081da054573dc94c12d0`.
-- Real-device scoped offline instrumentation **20/20PASS**,4.489s,0failures: new subscription fixture3 (Android JSON/SSE completion, reserved synthetic Keystore encryption/non-exportability/restore/logout/host retention, activation gates), existing isolated DirectAiFault14 (Chat/Command HTTP faults, malformed/bounded data, idle/cancel/stale/no-replay/key/fallback/schema regressions), pure local catalog/strict typed protocol/matcher3.
-- Actual Fold3 matcher1000patterns/300warm samples p95=361354ns (0.361354ms), below existing5ms gate. This is local matching only, not inference or natural-command latency.
-- After installation/tests and before dashboard launch,131/133existing private files byte-identical, including all8history files, original API-key/provider settings and voice policy. Only volatile `voice_health.xml` and ART `files/profileInstalled` changed. UID/appId/data-directory inode, Assistant role/component, voice-interaction component, enabled Accessibility, grant rows and Device Owner component set unchanged. No owner plaintext/tokens read into host output.
-- DeX MainActivity launch PASS/WARM,806ms. Dashboard launch may re-encrypt retained history via the pre-existing read/persist policy; prior byte-equality evidence is explicitly before dashboard launch.
-- Logs/private preservation metadata/original APK: `/tmp/dex-t025-device/`; candidates: `/tmp/dex-t025-artifacts/`. Nothing private/generated committed. A pre-install resource snapshot exists; no matched memory-impact comparison or natural/real-provider metrics claimed.
+### Preservation and private artifacts
 
-Owner completed native target sign-in and authorized model selection (verified in account settings). The first harmless inference probe reports ERROR; real inference is not PASS. Added an explicit-opt-in instrumentation probe that emits only HTTP status/counts/structural flags/local failure code, never token/body/text/IDs. Live diagnostics received HTTP200 in1946ms/3537ms but consumed0body characters: the added exact-MIME guard rejected the response header before parsing. This guard was not present in the proven POC or required by the documented plan-usage contract. Removed it; SSE structure/bounds/terminal completion remain mandatory. Added regression coverage for missing/noncanonical MIME and rejection of ordinary JSON bodies. Fixed-build/device retest and function-calling results are pending; no credentials/callback/browser logs or screenshots are collected during authorization. This physical offline PASS does not establish real subscription inference, device-command execution, natural voice/TTS, network/latency/PSS or soak acceptance.
+Before dashboard launch,131/133existing private files byte-identical, including all8history files, legacy keys/provider settings and voice policy; changes only volatile voice_health.xml/ART profileInstalled. UID/appId/data-directory inode, Assistant/voice components, Accessibility/grant metadata and Device Owner components unchanged. Subsequent owner sign-in/model/proofs and real refresh legitimately change subscription metadata/tokens; do not claim provider preferences remain byte-identical after that. Dashboard's pre-existing read/persist can re-encrypt history, so earlier byte equality has an explicit pre-dashboard boundary.
+
+Private original APK, preservation metadata and finite diagnostic logs: `/tmp/dex-t025-device/`. Candidate APKs: `/tmp/dex-t025-artifacts/`. Generated/private artifacts are not committed. A baseline resource snapshot exists; no matched candidate PSS/memory-impact comparison. No memory savings claimed.
+
+## Protocol findings and resolved failures
+
+Initial real HTTP200 requests consumed no body because an unnecessary exact-MIME guard rejected a noncanonical header. Removed it, matching the proven POC; bounded SSE structure and terminal validation still mandatory, ordinary JSON/HTML cannot succeed. Failed probes1946/3537ms are not inference PASS.
+
+Subsequent streams carried finished items in response.output_item.done but terminal response.completed.output was empty. Initial tool4402ms/inference4370ms reached completed yet failed validation. The [official streaming-event reference](https://developers.openai.com/api/reference/resources/responses/streaming-events) defines done as carrying the finished item. Decoder now buffers bounded finished items, verifies IDs/indices/added→done completeness/contiguous ordering/terminal identity and status, and releases output only after response.completed. Conflicting nonempty snapshots and nonnull terminal errors reject. Deltas never become completed replies/actions. Synthetic tests cover gaps/duplicates/incomplete/conflicting output. Corrected actual account tests above PASS.
 
 ## Files and rollback
 
-Added auth/{ChatGptAuthManager,ChatGptSessionStore,ChatGptOidcVerifier,ChatGptHttp}, ai/{ChatGptResponsesClient,ChatGptModelRepository,ChatGptSubscriptionProvider}, ChatGptSubscriptionSettings, synthetic auth/OIDC/SSE/transport/tool tests and offline Android fixture. Modified AiProvidersSettings, AiCredentialStore/provider identity/settings, MobileAiProxy/common typed validator, DirectAiChat, AssistantController and API-key probe/tests. Updated canonical task/status/decision/plan, both READMEs and MIT adaptation notice. Unrelated icon/collector changes excluded from migration commits.
+Added auth/{ChatGptAuthManager,ChatGptSessionStore,ChatGptOidcVerifier,ChatGptHttp}, ai/{ChatGptResponsesClient,ChatGptModelRepository,ChatGptSubscriptionProvider}, ChatGptSubscriptionSettings, auth/OIDC/SSE/transport/tool unit tests and scoped offline/live/routing Android fixtures. Modified AiProvidersSettings, AiCredentialStore/provider settings, MobileAiProxy/common typed validator, DirectAiChat, AssistantController, API-key probe/tests. Updated canonical task/status/decision/plan, SRS, both READMEs and MIT adaptation notice. Unrelated icon/collector/memory edits excluded; POC/backend unchanged.
 
-Rollback: leave existing Gemini/Groq default/settings intact, or explicitly choose the previous configured provider/model. Never delete legacy credentials or uninstall/clear app data. Disconnect subscription to clear its tokens; manage ChatGPT app access if remote revocation unconfirmed. Revert migration commits only after reviewing later work; retain independent account mapping/host identity for reconnect. No paid fallback introduced.
+Rollback: owner's default is still Gemini. If manually switched later, explicitly choose previous configured Gemini/Groq provider/model; keys remain intact. Never uninstall/clear data. Disconnect subscription to clear its tokens; manage ChatGPT app access if remote revocation unconfirmed. Keep host/registration for reconnect. Review later work before reverting commits. No silent paid fallback.
 
-## Outstanding acceptance and limitations
+## Tomorrow's resume checklist and remaining gates
 
-Owner must sign in to DeX Assistant itself and approve plan usage. Run current model catalog and harmless inference, restart/refresh/logout/reconnect, Vietnamese multi-turn Chat and real namespace function-call extraction without execution first. Verify guarded execution/confirmation/local/voice/cancel/stale/dedup behavior and measurements through T-020. Windows simulator tooling remains unavailable; owner explicitly resumed real Fold3 build/testing after push. Preserve device state and run the scoped offline fixture first; account interaction remains owner-mediated. Keep draft PR unmerged and release gates false until these pass.
+Owner requested pause/checkpoint on2026-10-22. Branch feat/chatgpt-subscription-migration; [draft PR2](https://github.com/khuongnd0901/Dex-Assistant-UI/pull/2), unmerged. Source through6515ec8 pushed; documentation checkpoint follows it. Task remains IN_PROGRESS.
 
-Additional implementation limits: one saved registration, no multi-account UI; no provisional Chat streaming view; auth exchange/refresh cancellation uses bounded HTTP completion plus generation fencing. These are not claimed as completed account/physical gates. Legacy spoken exit during TTS and other pre-existing physical gates remain open.
+1. Read STATUS/plan, rediscover wireless ADB. Re-sign latest app/test with original9ddb identity, retain icon overlay and install in place; verify installed hash. Final6515ec8 hardening is built/host-tested only.
+2. Run scoped final offline plus one harmless inference smoke; do not repeat actual Chrome dispatch unnecessarily.
+3. Ask owner to deliberately use “Chọn Subscription để thử Chat/AI Command” if ready. Both account/client+model-specific proofs already stored by real probes. Do not silently change saved default; automatic activation remains false.
+4. Verify natural Vietnamese voice/STT/TTS, interruptions, Chat lifecycle, local commands, confirmation/security, physical logout/reconnect and required performance campaign under T-020/T-021. No automatic action retry after ambiguity.
+5. Simulator remains NOT TESTED until tooling available. Record all unmet gates before considering default activation/merge; no DONE claim today.
 
-## Subscription stream compatibility finding
-
-After removing the exact-MIME guard, real HTTP200 streams delivered response.created, text deltas, output_item.done and response.completed/status=completed, but terminal output was empty. Treating the terminal snapshot as the sole output incorrectly rejected real text and tool results. The [official streaming-event reference](https://developers.openai.com/api/reference/resources/responses/streaming-events) defines output_item.done as carrying the finished item. The decoder now retains bounded completed items, checks unique IDs/indices, added→done completeness, contiguous ordering and terminal response identity/status, then uses these items only after response.completed. Conflicting nonempty terminal snapshots reject. Deltas never become final replies or actions. Synthetic regressions cover missing terminal/done, duplicates/gaps/incomplete/conflicting items and structured tools.
-
-Real native refresh and restart restoration PASS: replacement access and refresh tokens observed only via in-process boolean comparisons, subscription scope retained, authorized catalog7models. Earlier failing live batch: tool completion4402ms and harmless inference4370ms reached completed, but both empty-snapshot handling and Chat validation failed as recorded. These are failed baselines, not accepted inference/Chat/tool PASS. Fixed item-aggregation retest pending.
-
-## Successful native account checkpoint and scoped manual trials
-
-Fixed completed-item aggregation build: JDK17 full201-task test/lint/app+test APK PASS, app231tests per variant (1skip), DPC5/variant. Original-signed in-place candidate retested on the real Fold3: live3/3PASS20.026s, using only DeX Assistant's own persisted OAuth installation. Namespace function planning4100ms produced one completed device/VOLUME_SET/MUTE TypedAction, never executed. Harmless Vietnamese inference3869ms, HTTP200,11text deltas,1done item,1response.completed;35reply code points validated. Native refresh rotated both access and refresh tokens (only booleans recorded);7account models loaded. Two-turn Chat3829ms/3613ms, prior-pair counts0/1 and reply lengths56/31. Four requests in this passing batch completed/validated4/4; this tiny sample is not a completion-rate or p95 acceptance campaign.
-
-Real protocol/model compatibility is now established for the chosen account/model, so manual trial selection is being exposed behind account/client+model-specific proof checks. These are non-secret opaque bindings, not credentials; stored proofs clear on model change/sign-in/logout. Both inference and structured tools must pass before choosing Subscription. No automatic provider preference migration is enabled, and Gemini/Groq remain rollback choices. Actual routed Android execution/natural voice/TTS/cancellation/performance acceptance still remain open.
+Additional limits: one saved registration/no multi-account UI, no provisional Chat streaming display, instruction-only1024token request with hard local4000code-point bound, auth network cancellation bounded30s plus generation fence. Existing spoken exit during TTS remains a separate T-014 limitation. Current small inference samples3–4.5seconds do not establish the SRS2second p95 target. Natural30samples/route,100sessions,8hsoak and matched PSS remain open.

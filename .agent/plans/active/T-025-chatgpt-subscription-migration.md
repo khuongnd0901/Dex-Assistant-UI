@@ -29,14 +29,24 @@ JDK17 `./gradlew test lint assembleDebug`, focused offline tests, scoped instrum
 Preview protocol/account policy may change. Missing account tools => command BLOCKED, no text/JSON workaround. Owner absent => sign-in/physical NOT TESTED, migration IN_PROGRESS. Browser only explicit settings button, never voice/driving auto-launch. No resets/uninstalls/grant changes. Retain existing backup exclusions.
 
 ## Progress and findings
-- [x] Read repository instructions/current routing/contracts and POC implementation.
-- [x] Feature branch created, dirty tracked baseline saved outside repository.
-- [x] Public OSS eligibility and documented native direct protocol established.
-- [x] M1–M6 gated implementation and host verification: app226tests/variant, DPC5/variant, lint/build/app+test APK PASS.
-- [x] Original signing identity available; signed candidate verified, no install yet.
-- [ ] Owner follow-up: push first, then build/test on real Fold3; Windows simulator unavailable, scoped offline physical run now authorized.
-- [ ] Target OAuth/inference/function calls and physical acceptance (owner interaction required).
-- [ ] Default activation after all acceptance gates.
+- [x] M0 audit/matrix, repository/contract/POC reads, feature branch, independent public-MIT eligibility.
+- [x] M1–M6 native auth/shared transport/Chat/typed planning/settings; legacy keys and local/security routes preserved.
+- [x] Full latest6515ec8 host test/lint/app+test APK PASS201tasks; app234tests/variant (1skip),DPC5/variant,0lint errors.
+- [x] Original-signed in-place Fold3 installation; owner personally completed sign-in. Scope/restoration/refresh rotation and7models verified.
+- [x] Actual inference,2-turn Vietnamese Chat and completed structured namespace tools PASS; real cancellation1ms after delta, no partial history.
+- [x] Final core+offline23/23PASS; routing3/3PASS: actual MobileAiProxy/ActionRouter Chrome dispatch, no local-match shortcut, Chat action isolation. No owner default/key change.
+- [x] Account/client+model-bound inference/tool proofs allow deliberate manual trials; automatic activation remains false. Draft PR2 unmerged.
+- [ ] Latest6515ec8 hardened completion error check installed on Fold3 (built/host-tested only; current device app c89fa2b).
+- [ ] Windows simulator (NOT TESTED: Windows ADB absent).
+- [ ] Owner manual Subscription selection and natural voice/STT/TTS/interrupt/confirmation/security acceptance; physical logout/reconnect; matched PSS/natural p95/soak.
+- [ ] Full acceptance/default activation/merge; migration remains IN_PROGRESS.
+
+### Next-session handoff (owner pause 2026-10-22)
+No more live calls/device changes today. Source pushed through6515ec8; checkpoint documentation follows it. Read STATUS and report first. Rediscover wireless ADB; never reuse historical port blindly. Use JDK17 and `/home/kunrg/Android/Sdk`; `/tmp/dex-t025-validation` is isolated build workspace. Latest full build log `/tmp/dex-t025-release-candidate-build.log`.
+
+Re-sign latest app/test with original9ddb identity, retaining the owner's existing icon overlay, then install in place without uninstall/data/grant/role changes. Current installed trial artifact SHA256 ce39dccc0df9dbd3be5b23869a1dbaa97ca3f5e221caa49d2927bd5545c6ce9a; final6515ec8 hardening is not in it. Verify installed hash and scoped offline/final harmless live smoke. Do not repeat the Chrome execution unnecessarily.
+
+Owner default is still Gemini. Existing real account/model proofs enable settings button “Chọn Subscription để thử Chat/AI Command”; obtain deliberate owner choice before altering their default. Continue natural voice/TTS/interrupt and acceptance measurements, recording missing gates honestly. No automatic default migration, paid fallback or merge. Original APK/private metadata/logs live under `/tmp/dex-t025-device/`; artifacts under `/tmp/dex-t025-artifacts/`. Never commit these private/generated files. Prior unrelated dirty files stay untouched.
 
 ## Decision and requirement updates
 D-039 records migration direction and gates; READMEs/report distinguish API keys from subscription and document rollback. Existing physical tasks remain unfinished. Update TASKS/STATUS/this plan with verified outcomes only.
