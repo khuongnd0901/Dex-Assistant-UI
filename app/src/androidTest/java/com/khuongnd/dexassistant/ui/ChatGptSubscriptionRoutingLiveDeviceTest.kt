@@ -87,8 +87,10 @@ class ChatGptSubscriptionRoutingLiveDeviceTest {
         val registry = CommandRegistry.load(context)
         check("chrome" in registry.appIds)
         val proxy = MobileAiProxy(credentials, settings, subscription = ChatGptSubscriptionProvider(context, settings))
+        val input = "Xin hãy mở ứng dụng Chrome giúp tôi."
+        assertNull("Deterministic local commands must not be sent to AI", com.khuongnd.dexassistant.ui.routing.LocalCommandEngine(registry).resolve(input))
         val start = System.nanoTime()
-        val actions = proxy.plan("Xin hãy mở ứng dụng Chrome giúp tôi.", registry, setOf(ActionId.APP_LAUNCH))
+        val actions = proxy.plan(input, registry, setOf(ActionId.APP_LAUNCH))
         // Reject all effects except the single specifically reviewed configured-app launch.
         assertEquals(1, actions.size)
         assertEquals(ActionId.APP_LAUNCH, actions.single().action)
