@@ -23,6 +23,85 @@ import java.util.concurrent.TimeUnit
 
 /** Explicit owner-authorized opt-in only. No tokens, prompts, text, response bodies or IDs are logged. */
 class ChatGptSubscriptionLiveDeviceTest {
+    private fun liveContext(): android.content.Context {
+        assumeTrue("Owner-authorized live probe required", InstrumentationRegistry.getArguments()
+            .getString("subscriptionLiveProbe") == "true")
+        return InstrumentationRegistry.getInstrumentation().targetContext
+    }
+
+    @Test fun authorizedNamespacedFunctionPlanningNeverExecutes() {
+        val context = liveContext()
+        val auth = ChatGptAuthManager.get(context)
+        val model = AiProviderSettings(context).model(AiProvider.CHATGPT_SUBSCRIPTION)
+        val supported = setOf(com.khuongnd.dexassistant.ui.routing.ActionId.VOLUME_SET)
+        val registry = com.khuongnd.dexassistant.ui.routing.CommandRegistry.load(context)
+        val payload = ChatGptResponsesClient.payload(model,
+            JSONArray().put(JSONObject().put("role", "user").put("content", "Lập kế hoạch tắt âm lượng media.")),
+            "Call deviceCommand_VOLUME_SET with operation MUTE. This is a planning test only; no action executes.")
+            .put("tools", com.khuongnd.dexassistant.ui.ai.SubscriptionTools.schemas(supported, registry.appIds))
+        val start = System.nanoTime()
+        var failure = "NONE"
+        var count = 0
+        val shape = Bundle()
+        try {
+            val response = ChatGptResponsesClient(auth).response(payload)
+            shape.putBoolean("toolResponseCompleted", response.optString("status") == "completed")
+            val items = response.getJSONArray("output")
+            shape.putInt("toolOutputItems", items.length())
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                if (item.optString("type") == "function_call") {
+                    shape.putBoolean("toolHasNamespace", item.has("namespace"))
+                    shape.putBoolean("toolNamespaceDevice", item.optString("namespace") == "device")
+                    shape.putBoolean("toolStatusCompleted", item.optString("status") == "completed")
+                    shape.putBoolean("toolHasArguments", item.has("arguments"))
+                }
+            }
+            val actions = com.khuongnd.dexassistant.ui.ai.SubscriptionTools.parse(response, registry, supported)
+            check(actions.size == 1 && actions.single().params["operation"] == "MUTE")
+            count = actions.size
+        } catch (e: Exception) { failure = if (e is ChatGptFailure) e.code else e.javaClass.simpleName }
+        finally {
+            shape.putInt("toolValidatedActions", count)
+            shape.putLong("toolPlanningMs", (System.nanoTime() - start) / 1_000_000)
+            shape.putString("toolFailure", failure)
+            shape.putBoolean("toolActionsExecuted", false)
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, shape)
+        }
+        org.junit.Assert.assertEquals("Structured tool planning: $failure", 1, count)
+    }
+
+    @Test fun authorizedRefreshModelsAndTwoTurnChatRestore() {
+        val context = liveContext()
+        val auth = ChatGptAuthManager.get(context)
+        val previous = auth.freshSession()
+        val refreshed = auth.freshSession(previous.accessToken)
+        val models = com.khuongnd.dexassistant.ui.ai.ChatGptModelRepository(auth).load()
+        val model = AiProviderSettings(context).model(AiProvider.CHATGPT_SUBSCRIPTION)
+        check(models.any { it.slug == model })
+        val report = Bundle().apply {
+            putBoolean("liveRefreshAuthorized", refreshed.hasSubscriptionScope())
+            putBoolean("liveAccessTokenChanged", refreshed.accessToken != previous.accessToken)
+            putBoolean("liveRefreshTokenChanged", refreshed.refreshToken != previous.refreshToken)
+            putInt("liveAccountModelCount", models.size)
+        }
+        val state = com.khuongnd.dexassistant.ui.ai.DirectChatState().apply { start() }
+        try {
+            listOf("Chào tôi bằng một câu tiếng Việt.", "Nhắc lại lời chào vừa rồi, ngắn gọn.").forEachIndexed { i, input ->
+                val turn = state.begin(input)
+                val start = System.nanoTime()
+                val response = ChatGptResponsesClient(auth).response(
+                    com.khuongnd.dexassistant.ui.ai.ChatGptSubscriptionProvider.chatPayload(model, turn))
+                val reply = ResponsesStream.chatText(response)
+                org.junit.Assert.assertEquals(i + 1, state.complete(turn, reply))
+                report.putLong("liveChatTurn${i + 1}Ms", (System.nanoTime() - start) / 1_000_000)
+                report.putInt("liveChatTurn${i + 1}PriorPairs", turn.previous.size)
+                report.putInt("liveChatTurn${i + 1}ReplyCodePoints", reply.codePointCount(0, reply.length))
+            }
+            report.putBoolean("liveTwoTurnChatValidated", true)
+        } finally { state.clear(); InstrumentationRegistry.getInstrumentation().sendStatus(0, report) }
+    }
+
     @Test fun authorizedHarmlessInferenceWithStructuralDiagnostics() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         assumeTrue("Owner-authorized live probe required", InstrumentationRegistry.getArguments()
