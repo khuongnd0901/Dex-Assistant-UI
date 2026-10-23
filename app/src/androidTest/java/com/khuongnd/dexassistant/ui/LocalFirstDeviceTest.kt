@@ -4,10 +4,8 @@ import android.content.Context
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import com.khuongnd.dexassistant.ui.history.CommandHistoryStore
@@ -125,8 +123,7 @@ class LocalFirstDeviceTest {
     }
 
     private fun command(text: String) {
-        compose.onNodeWithTag("command").performClick()
-        compose.onNodeWithText("Vietnamese command").performScrollTo().performTextInput(text)
-        compose.onNodeWithText("Run command").performScrollTo().performClick()
+        compose.onNodeWithTag("commandInput").performTextInput(text)
+        compose.onNodeWithTag("runCommand").performClick()
     }
 }

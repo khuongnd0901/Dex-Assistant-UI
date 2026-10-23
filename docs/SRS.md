@@ -2,6 +2,21 @@
 
 # Software Requirements Specification (SRS)
 
+## Current T-025 subscription runtime (2026-10-23)
+
+D-040 replaces API-key providers with native ChatGPT subscription for AI Command and
+Chat. Android owns OAuth/Keystore/refresh/logout, model discovery and Responses SSE;
+no backend or Codex CLI. Existing API keys remain stored but are not read or deleted.
+Explicit account/model verification and selection are required, including after an
+upgrade whose saved provider is Gemini. Local routing, privacy, confirmation and
+voice/session limits remain authoritative. No API-key/provider fallback.
+
+HTTP uses store=false/stream=true, explicit bounded history and no previous_response_id.
+The preview rejects max_output_tokens: instructions request about1024tokens and local
+validation enforces4000code points; no hard1024-token provider guarantee. Natural
+voice/physical/performance acceptance remains open. Earlier API-key/backend descriptions
+below are historical where they conflict with this section. See [continuation evidence](../.agent/evidence/T-025-subscription-only-2026-10-23.md).
+
 ## 1. System Architecture
 Hệ thống lai (Hybrid Architecture) kết hợp sức mạnh phần cứng Z Fold 3 và Cloud LLM:
 - **Client (Android Native - Java/Kotlin):**

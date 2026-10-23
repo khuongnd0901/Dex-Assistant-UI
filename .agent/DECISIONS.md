@@ -689,3 +689,20 @@ was removed.
 - Decision: publish `khuongnd0901/Dex-Assistant-UI` publicly; license original project material under the root MIT LICENSE, copyright 2026 Khuong Duy Nguyen.
 - Rationale: follow the owner's distribution and licensing choice.
 - Consequences: third-party components/model assets keep their own licenses and notices. Unrelated local changes are excluded from this publication; existing runtime and physical acceptance gates remain open.
+
+## D-039 — ChatGPT Subscription migration behind target acceptance
+
+- Date: 2026-10-22.
+- Status: accepted implementation direction by owner; runtime/default activation unaccepted.
+- Decision: T-025 adapts the MIT Android POC into a separate DeX Assistant OAuth installation (own host/client/Keystore record). Use documented public OAuth/model/Responses endpoints with user-granted subscription scope, store=false, stream=true and bounded explicit input history. Keep API-key identities/credentials separate; never use CLI files, internal endpoints, proxies or automatic paid fallback.
+- Eligibility: D-038 public MIT repository independently verified on GitHub; official SIWC open-source guidance permits implementation. This does not prove the target account's consent/model/tool availability. POC evidence cannot substitute for target testing.
+- Boundaries: local-first routing, CommandPrivacy, ActionCatalog/TypedAction, ActionRouter consent/deadlines/dedup and session-only Chat/voice/TTS remain authoritative. Only completed structured namespace function calls may become typed plans; no text-to-action workaround. Existing Gemini/Groq remain operational rollback choices.
+- Activation: subscription account/model/inference settings support owner testing. After real target inference/function-calling PASS, allow deliberate manual trial selection only with successful Chat/tools proofs for the exact account/client and selected model. Changing model or signing in/out clears proofs. Automatic default migration remains disabled pending full physical/voice/action acceptance; no provider preference changes implicitly. No model name is hardcoded. HTTP output limits are enforced locally because subscription preview rejects max_output_tokens; the existing 4000-code-point Chat cap remains authoritative, while 1024 tokens is requested in instructions and is not a hard provider guarantee.
+- Consequences: [T-025 plan](plans/active/T-025-chatgpt-subscription-migration.md) and [report](evidence/T-025-chatgpt-subscription-migration.md) own remaining gates. Earlier provider constraints are superseded only within this explicitly authorized migration; no existing unfinished task is marked complete.
+
+## D-040 — Subscription-only AI runtime; preserve stored legacy credentials
+
+- Date: 2026-10-23. Status: accepted by owner's renewed migration/cleanup request, using existing GitHub subscription branch.
+- Decision: continue T-025 from ba054d3. Remove Gemini/Groq HTTP adapters, other API-key model probes/key editor and unused provider/free-tier/direct-mode configuration. Command and Chat invoke existing ChatGptSubscriptionProvider directly. Retain encrypted legacy keys/preferences without reading, deleting or migrating their secrets.
+- Routing: only subscription may serve non-local AI. Preserve explicit selection and account/model proofs; a saved legacy default is inactive and receives setup guidance. No implicit preference/token changes, backend or API-key fallback. Subscription refresh, bounded SSE and typed ActionRouter remain authoritative.
+- Consequences: supersedes D-039's operational Gemini/Groq rollback choices; rollback requires an earlier APK with original signing/data retained. D-039's auth/privacy/tool/proof/physical gates remain. Replace removed-provider fixtures with subscription transport/lifecycle/schema/settings tests; synthetic subscription benchmarks are a new series, not comparable to T-021 BYOK timings. Existing physical results are historical, not evidence of this cleanup build.
