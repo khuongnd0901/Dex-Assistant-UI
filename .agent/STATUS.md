@@ -7,7 +7,7 @@ Backend development is retired; T-022 DONE, no backend checkout/runtime required
 Latest owner priority: **T-025 subscription migration IN_PROGRESS**. Continue existing
 GitHub `feat/chatgpt-subscription-migration`, fetched at ba054d3; current worktree
 `/home/khuongnd/worktrees/dex-subscription`. Original dirty main at
-`/mnt/d/dex-assistant-ui` retained. Owner authorized commit/push; publication is being prepared. No merge.
+`/mnt/d/dex-assistant-ui` retained. Implementation commit `5f5bd25` pushed to the feature branch; remote SHA verified. No merge.
 
 D-040 retires Gemini/Groq/API-key runtime, key editor/probes/dead settings. Command
 and Chat use the branch's existing ChatGPT subscription provider directly; stored
@@ -27,7 +27,7 @@ initial2failures; final batch passes. Whitespace and memory145Markdown/471links 
 No physical install/test or live-account/provider action this session. Last recorded
 Fold3 trial app c89fa2b/original9ddb signing; earlier native OAuth/refresh/7models/
 inference/tools/Chat/cancel/Chrome evidence is historical, not cleanup validation.
-Next: publish the authorized checkpoint, then coordinate original-signed
+Next: coordinate original-signed
 in-place Fold3 install and owner explicit selection through T-020. Natural voice/STT/
 TTS/interrupt/confirmation,physical logout/reconnect,natural p95/matched PSS/soak open.
 Draft PR2 remains unmerged; no release/DONE claim.

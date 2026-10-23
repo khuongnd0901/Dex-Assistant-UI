@@ -50,8 +50,13 @@ Whitespace PASS. Repository memory/link check PASS145Markdown/471local links.
 Runtime scan finds no AiProvider/AiCredentialStore/MobileAiProxy/DirectAiChat or
 Gemini/Groq/xAI/DeepSeek API endpoints under main source. Remaining public network
 endpoints in ai/auth are official auth/JWKS/models/Responses only. No generated assets,
-APKs, credentials or logs are added to Git. Owner subsequently authorized commit/push on the existing feature branch;
-publication is being prepared. No merge or physical acceptance claim.
+APKs, credentials or logs are added to Git. Owner subsequently authorized commit/push. Implementation commit
+`5f5bd251a5ad71a503b651239130f62025b86d7e` was pushed to
+`origin/feat/chatgpt-subscription-migration`; `git ls-remote` matched local HEAD.
+Initial push failed because the configured temporary GitHub CLI helper was missing.
+Restored the official CLI at the same temporary path and reused the existing authenticated
+account; retry succeeded without changing Git credentials/configuration.
+No merge or physical acceptance claim. A documentation-only publication checkpoint follows.
 
 Candidate identity (SHA256):
 
@@ -61,7 +66,9 @@ Candidate identity (SHA256):
 | app-debug.apk | `ba03bb0164d390b3034f5835b9ba10d15fa4a8c0ba0fe46650c5df151c083a3f` |
 | app-debug-androidTest.apk | `ceb6f241971d4846e51dcbb9554bca226605bbb3a49a3815814bd3bccefcc255` |
 
-Source snapshot hashes sorted existing tracked/untracked nonignored `app/src` files
+The tested snapshot/APKs above precede a final whitespace-only removal of one
+extra blank line at EOF in DirectChatState.kt before commit. No behavior changed;
+commit whitespace check passes. Source snapshot hashes sorted existing tracked/untracked nonignored `app/src` files
 as `relativePath + NUL + fileBytes + NUL`; deleted files excluded. APKs live in ignored
 build outputs and copied staging under original main's ignored `.cache/subscription-validation`.
 
