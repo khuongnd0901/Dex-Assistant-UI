@@ -194,4 +194,34 @@ class ChatGptSubscriptionTest {
         failure("INCOMPLETE_RESPONSE") { ChatGptResponsesClient(auth, client).response(JSONObject()) }
         assertEquals(1, requests)
     }
+
+    @Test fun metricsCoverSuccessfulAndFailedSubscriptionRequestsWithoutPayloads() {
+        for (status in listOf(200, 429, 503)) {
+            val metrics = mutableListOf<Pair<String, Long>>()
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(status).message("fixture")
+                    .body(stream().toResponseBody()).build()
+            }.build()
+            try {
+                val result = ChatGptResponsesClient(Auth(), client).response(JSONObject(), metric = { name, value -> metrics += name to value })
+                assertEquals(200, status); assertEquals("Xin chào", ResponsesStream.chatText(result))
+            } catch (_: ChatGptFailure) { assertNotEquals(200, status) }
+            assertEquals(1, metrics.count { it.first == "providerRequestLatency" })
+            assertEquals(if (status == 200) 1 else 0, metrics.count { it.first == "providerFirstByteLatency" })
+            assertEquals(if (status == 200) 1 else 0, metrics.count { it.first == "providerBodyLatency" })
+            assertTrue(metrics.all { it.second >= 0 })
+        }
+    }
+    @Test fun failedOrTruncatedSseCannotReplayOrReturnPartialText() {
+        for (body in listOf("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n", "data: broken\n\n")) {
+            var requests = 0
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                requests++
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture")
+                    .body(body.toResponseBody()).build()
+            }.build()
+            failure { ChatGptResponsesClient(Auth(), client).response(JSONObject()) }
+            assertEquals(1, requests)
+        }
+    }
 }

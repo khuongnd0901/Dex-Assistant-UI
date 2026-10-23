@@ -5,9 +5,9 @@ import com.khuongnd.dexassistant.ui.routing.ActionCatalog
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Device capability scoped, provider-specific tool schemas. Android revalidates every call. */
+/** Device capability scoped, subscription function schemas. Android revalidates every call. */
 object AiToolSchema {
-    fun schemas(supported: Set<ActionId>, appIds: Set<String>, gemini: Boolean): List<JSONObject> =
+    fun schemas(supported: Set<ActionId>, appIds: Set<String>): List<JSONObject> =
         supported.sortedBy { it.name }.mapNotNull { id ->
             if (id in ActionCatalog.schemaTwoOnlyActions) return@mapNotNull null
             if (id in setOf(ActionId.APP_LAUNCH, ActionId.APP_PAIR_LAUNCH) &&
@@ -16,17 +16,17 @@ object AiToolSchema {
             val p = linkedMapOf<String, JSONObject>()
             val required = mutableListOf<String>()
             fun str(name: String, choices: List<String>? = null) {
-                p[name] = JSONObject().put("type", type("string", gemini)).apply {
+                p[name] = JSONObject().put("type", "string").apply {
                     if (choices != null) put("enum", JSONArray(choices))
                 }
                 required.add(name)
             }
             fun integer(name: String, min: Int, max: Int, mandatory: Boolean = true) {
-                p[name] = JSONObject().put("type", type("integer", gemini)).put("minimum", min).put("maximum", max)
+                p[name] = JSONObject().put("type", "integer").put("minimum", min).put("maximum", max)
                 if (mandatory) required.add(name)
             }
             fun flag(name: String) {
-                p[name] = JSONObject().put("type", type("boolean", gemini))
+                p[name] = JSONObject().put("type", "boolean")
                 required.add(name)
             }
             val apps = appIds.sorted()
@@ -38,7 +38,7 @@ object AiToolSchema {
                 ActionId.BRIGHTNESS_SET -> { str("operation", listOf("SET", "INCREASE", "DECREASE", "AUTO_ON", "AUTO_OFF")); integer("percent", 0, 100, false) }
                 ActionId.MEDIA_TRANSPORT -> str("operation", listOf("PLAY", "PAUSE", "STOP", "NEXT", "PREVIOUS"))
                 ActionId.YOUTUBE_SEARCH, ActionId.YOUTUBE_PLAY_QUERY, ActionId.SEARCH_PLACE, ActionId.WEB_SEARCH -> str("query")
-                ActionId.YOUTUBE_SELECT -> { integer("index", 1, 50, false); p["title"] = JSONObject().put("type", type("string", gemini)) }
+                ActionId.YOUTUBE_SELECT -> { integer("index", 1, 50, false); p["title"] = JSONObject().put("type", "string") }
                 ActionId.MEDIA_SEEK -> { str("operation", listOf("FORWARD", "BACKWARD")); integer("seconds", 1, 3600) }
                 ActionId.NAVIGATE -> { str("destination"); str("travelMode", listOf("DRIVING", "WALKING")) }
                 ActionId.CALL_CONTACT -> str("contact")
@@ -49,15 +49,13 @@ object AiToolSchema {
                 ActionId.FEED_NEXT, ActionId.FEED_PREVIOUS -> Unit
                 ActionId.CLICK_TARGET -> return@mapNotNull null
             }
-            val params = JSONObject().put("type", type("object", gemini)).put("properties", JSONObject(p))
+            val params = JSONObject().put("type", "object").put("properties", JSONObject(p))
                 .put("required", JSONArray(required))
-            // Gemini rejects some standard JSON schema options; Android validation is authoritative.
-            if (!gemini) params.put("additionalProperties", false)
+            params.put("additionalProperties", false)
             val declaration = JSONObject().put("name", "deviceCommand_" + id.name)
                 .put("description", "Request " + id.name + "; Android validates capability, consent, and execution.")
                 .put("parameters", params)
-            if (gemini) declaration else JSONObject().put("type", "function").put("function", declaration)
+            declaration.put("type", "function").put("strict", false)
         }
 
-    private fun type(value: String, gemini: Boolean): String = if (gemini) value.uppercase() else value
 }

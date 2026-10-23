@@ -2,17 +2,20 @@
 
 # Software Requirements Specification (SRS)
 
-## T-025 migration boundary (2026-10-22)
+## Current T-025 subscription runtime (2026-10-23)
 
-D-039 authorizes a separate native ChatGPT Subscription provider using user-consented
-OAuth, without an API key/backend. This does not activate it by default: target-app
-OAuth/inference/function-calling and Fold3 acceptance remain required. Existing local,
-voice, privacy and typed-action security requirements still apply. Legacy API-key
-providers remain rollback choices. Subscription HTTP uses bounded explicit context,
-store=false/stream=true and no previous_response_id. Its preview rejects max_output_tokens;
-request approximately1024tokens in instructions and enforce the existing4000code-point
-output bound locally, without claiming a hard1024-token provider cap. See
-[T-025 report](../.agent/evidence/T-025-chatgpt-subscription-migration.md).
+D-040 replaces API-key providers with native ChatGPT subscription for AI Command and
+Chat. Android owns OAuth/Keystore/refresh/logout, model discovery and Responses SSE;
+no backend or Codex CLI. Existing API keys remain stored but are not read or deleted.
+Explicit account/model verification and selection are required, including after an
+upgrade whose saved provider is Gemini. Local routing, privacy, confirmation and
+voice/session limits remain authoritative. No API-key/provider fallback.
+
+HTTP uses store=false/stream=true, explicit bounded history and no previous_response_id.
+The preview rejects max_output_tokens: instructions request about1024tokens and local
+validation enforces4000code points; no hard1024-token provider guarantee. Natural
+voice/physical/performance acceptance remains open. Earlier API-key/backend descriptions
+below are historical where they conflict with this section. See [continuation evidence](../.agent/evidence/T-025-subscription-only-2026-10-23.md).
 
 ## 1. System Architecture
 Hệ thống lai (Hybrid Architecture) kết hợp sức mạnh phần cứng Z Fold 3 và Cloud LLM:

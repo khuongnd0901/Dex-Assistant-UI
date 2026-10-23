@@ -17,12 +17,9 @@ import com.khuongnd.dexassistant.ui.execution.ActionRouter
 import com.khuongnd.dexassistant.ui.routing.CommandRegistry
 import com.khuongnd.dexassistant.ui.routing.CommandRouter
 import com.khuongnd.dexassistant.ui.routing.Route
-import com.khuongnd.dexassistant.ui.security.AiCredentialStore
-import com.khuongnd.dexassistant.ui.security.AiProviderSettings
-import com.khuongnd.dexassistant.ui.ai.MobileAiProxy
+import com.khuongnd.dexassistant.ui.security.ChatGptSettings
 import com.khuongnd.dexassistant.ui.ai.MobileAiException
 import com.khuongnd.dexassistant.ui.ai.DirectChatState
-import com.khuongnd.dexassistant.ui.ai.DirectAiChat
 import com.khuongnd.dexassistant.ui.routing.TypedAction
 import com.khuongnd.dexassistant.ui.voice.VoiceAssistantService
 import java.util.UUID
@@ -61,8 +58,7 @@ class AssistantController(private val contextForVoice: Context, private val stat
 class AssistantCoordinator internal constructor(
     private val context: Context,
     private val history: CommandHistoryStore = CommandHistoryStore(context),
-    private val chatClient: okhttp3.OkHttpClient? = null,
-    private val chatCredentials: AiCredentialStore = AiCredentialStore(context),
+    private val chatProvider: com.khuongnd.dexassistant.ui.ai.AiSubscription? = null,
     private val chatIdleTimeoutMillis: Long = 15 * 60 * 1000L,
     private val latencySink: (String) -> Unit = { android.util.Log.i("DexLatency", it) },
 ) {
@@ -76,7 +72,7 @@ class AssistantCoordinator internal constructor(
     private var pendingCompletion: ((VoiceCommandResult) -> Unit)? = null
     private var pendingDispatched = false
     private var directDispatch = false
-    private val aiSettings = AiProviderSettings(context)
+    private val aiSettings = ChatGptSettings(context)
     private var directProviderSnapshot: Map<String, *>? = null
     private var chatProviderSnapshot: Map<String, *>? = null
     private val providerListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
@@ -86,9 +82,7 @@ class AssistantCoordinator internal constructor(
         }
     }
     private val commandSubscription by lazy { com.khuongnd.dexassistant.ui.ai.ChatGptSubscriptionProvider(context, aiSettings) }
-    private val chatSubscription by lazy { com.khuongnd.dexassistant.ui.ai.ChatGptSubscriptionProvider(context, aiSettings) }
-    private val aiProxyDelegate = lazy { MobileAiProxy(AiCredentialStore(context), aiSettings, subscription = commandSubscription) }
-    private val aiProxy by aiProxyDelegate
+    private val chatSubscription by lazy { chatProvider ?: com.khuongnd.dexassistant.ui.ai.ChatGptSubscriptionProvider(context, aiSettings) }
     private val directExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "dex-direct-ai").apply { isDaemon = true }
     }
@@ -114,10 +108,6 @@ class AssistantCoordinator internal constructor(
     @Volatile private var chatObserver: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)? = null
     fun observeChat(observer: ((com.khuongnd.dexassistant.ui.protocol.ChatSession.Event) -> Unit)?) { chatObserver = observer }
     private val directChatState = DirectChatState()
-    private val directChat by lazy {
-        chatClient?.let { DirectAiChat(chatCredentials, aiSettings, it, chatSubscription) }
-            ?: DirectAiChat(chatCredentials, aiSettings, subscription = chatSubscription)
-    }
     private val chatExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "dex-chat-ai").apply { isDaemon = true }
     }
@@ -142,17 +132,10 @@ class AssistantCoordinator internal constructor(
     fun startChat() = onMain {
         if (chatSession != null) endChat("STOP")
         val session = UUID.randomUUID()
-        val preferred = aiSettings.defaultProvider()
-        val available = if (preferred == com.khuongnd.dexassistant.ui.security.AiProvider.CHATGPT_SUBSCRIPTION)
-            chatSubscription.ready() else preferred.supportsDirectCommands && aiSettings.enabled(preferred) &&
-            aiSettings.freeTierConfirmed(preferred) && aiSettings.model(preferred).isNotBlank() &&
-            chatCredentials.hasKey(preferred)
-        if (!available) {
+        if (!chatSubscription.ready()) {
             chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Error(
                 null, UUID.randomUUID(), "CHAT_PROVIDER_UNAVAILABLE",
-                if (preferred == com.khuongnd.dexassistant.ui.security.AiProvider.CHATGPT_SUBSCRIPTION)
-                    "Kiểm tra kết nối ChatGPT và hai phép thử cho model trong Settings"
-                else "Cấu hình provider/model Free Tier trong Settings", false))
+                "Kết nối ChatGPT, chọn model và hoàn tất hai phép thử trong Settings", false))
         } else {
             chatProviderSnapshot = aiSettings.routingSnapshot()
             chatSession = session; chatEpoch++
@@ -202,7 +185,7 @@ class AssistantCoordinator internal constructor(
         chatLatency = trace
         chatTask = chatExecutor.submit {
             trace.end("providerQueueLatency", SystemClock.elapsedRealtimeNanos())
-            val result = runCatching { directChat.reply(turn, trace::metric) }
+            val result = runCatching { chatSubscription.reply(turn, trace::metric) }
             onMain {
                 if (chatSession != session || chatEpoch != epoch || chatTurn != requestId) return@onMain
                 if (chatProviderSnapshot != aiSettings.routingSnapshot()) { endChat("STOP"); return@onMain }
@@ -239,7 +222,7 @@ class AssistantCoordinator internal constructor(
         chatEpoch++
         chatLatency?.terminal("CANCELLED"); chatLatency = null
         chatTask?.cancel(true); chatTask = null
-        directChat.cancelPendingRequest()
+        chatSubscription.cancel()
         chatTurn = null; chatSession = null; directChatState.clear()
         chatObserver?.invoke(com.khuongnd.dexassistant.ui.protocol.ChatSession.Event.Ended(session))
     }
@@ -305,7 +288,7 @@ class AssistantCoordinator internal constructor(
         val id = pendingId ?: return
         actionRouter.cancel()
         directTask?.cancel(true)
-        if (directDispatch && aiProxyDelegate.isInitialized()) aiProxy.cancelPendingRequest()
+        if (directDispatch) commandSubscription.cancel()
         directTask = null
         latency?.end("executionLatency", SystemClock.elapsedRealtimeNanos())
         latency?.terminal(status)
@@ -434,7 +417,7 @@ class AssistantCoordinator internal constructor(
                 trace?.start("providerQueueLatency", SystemClock.elapsedRealtimeNanos())
                 directTask = directExecutor.submit {
                     trace?.end("providerQueueLatency", SystemClock.elapsedRealtimeNanos())
-                    val result = runCatching { aiProxy.plan(text, commandRegistry, actionRouter.supportedActions(), { name, micros -> trace?.metric(name, micros) }) }
+                    val result = runCatching { commandSubscription.plan(text, commandRegistry, actionRouter.supportedActions(), { name, micros -> trace?.metric(name, micros) }) }
                     onMain {
                         if (pendingId != requestId || !directDispatch) return@onMain
                         result.fold(

@@ -23,14 +23,14 @@ States: `BACKLOG`, `PLANNED`, `READY`, `IN_PROGRESS`, `BLOCKED`, `CANCELLED`, `D
 
 ## T-025 — ChatGPT Subscription migration
 
-- State: `IN_PROGRESS` (2026-10-22; owner requested checkpoint/push, resume tomorrow).
+- State: `IN_PROGRESS` (2026-10-23; owner resumed existing GitHub subscription branch; cleanup under D-040).
 - Priority: latest owner request; prior unfinished task priorities retained.
 - Planning: [ExecPlan](plans/active/T-025-chatgpt-subscription-migration.md).
 - Goal: independent native DeX Assistant OAuth and shared subscription Responses transport for bounded Chat and validated command tools; no key/backend/CLI/internal API/paid fallback.
-- Acceptance: own PKCE/state/nonce/OIDC/scopes/Keystore/refresh/logout, authorized models, terminal SSE/cancel/bounds, existing Chat/voice/privacy/local/ActionRouter/deadline/security semantics; host/simulator/owner-mediated physical regression and measurements. Legacy providers/keys retained. Full physical acceptance required for DONE/automatic activation; D-039 permits explicit account/model-proven manual trials.
-- Verified: target OAuth/scope/refresh rotation/restoration,7models,Vietnamese inference,2-turn native Chat,structured tool validation,live cancel and one guarded Chrome launch through MobileAiProxy/ActionRouter PASS on Fold3. Final core+offline23/23 and routing3/3 PASS. Scoped proofs ready; saved owner default remains Gemini; automatic activation off.
-- Host: latest6515ec8 test/lint/app+instrumentation build PASS201tasks; app234tests/variant (1skip),DPC5/variant; lint0errors. Latest stream-error hardening built but NOT installed; current physical trial app c89fa2b, original signing preserved.
-- Next: in-place signed latest install/final smoke, owner manual selection, natural voice/TTS/interrupt/confirmation and performance acceptance. Simulator NOT TESTED (Windows ADB missing); physical logout/reconnect, matched PSS/natural p95/soak open. Draft PR2 unmerged; no DONE claim.
+- Acceptance: own PKCE/state/nonce/OIDC/scopes/Keystore/refresh/logout, authorized models, terminal SSE/cancel/bounds, existing Chat/voice/privacy/local/ActionRouter/deadline/security semantics; host/simulator/owner-mediated physical regression and measurements. Legacy API runtime/UI retired; stored keys/preferences retained without access. Full physical acceptance required for DONE/automatic activation; D-039 permits explicit account/model-proven manual trials.
+- Historical Fold3 checkpoint2026-10-22: target OAuth/scope/refresh rotation/restoration,7models,Vietnamese inference,2-turn native Chat,structured tool validation,live cancel and one guarded Chrome launch through MobileAiProxy/ActionRouter PASS on Fold3. Final core+offline23/23 and routing3/3 PASS. Scoped proofs ready; saved owner default was Gemini; automatic activation off.
+- Historical host checkpoint2026-10-22:6515ec8 test/lint/app+instrumentation build PASS201tasks; app234tests/variant (1skip),DPC5/variant; lint0errors. Latest stream-error hardening built but NOT installed; current physical trial app c89fa2b, original signing preserved.
+- Current continuation: subscription-only runtime/settings and ported offline tests. JDK17 test/lint/APKs PASS201tasks,app219tests/variant(1skip),DPC5/variant; Windows API35 final subscription/offline/local suites13/13PASS,14.309s; LocalFirst historical UI helper fixed. [new evidence](evidence/T-025-subscription-only-2026-10-23.md). Current host/AVD checks complete; owner authorized commit/push; publish checkpoint and coordinate original-signed physical acceptance. Owner manual selection, natural voice/TTS/interrupt/confirmation, logout/reconnect, matched PSS/natural p95/soak remain open. Draft PR2 unmerged; no DONE claim.
 - Validation/evidence: [migration report](evidence/T-025-chatgpt-subscription-migration.md). No POC/backend edits; unrelated dirty files excluded.
 
 ## T-024 — Publish Android repository with MIT license

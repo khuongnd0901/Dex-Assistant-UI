@@ -1,7 +1,7 @@
 # T-025 — ChatGPT Subscription migration ExecPlan
 
 ## Outcome and boundaries
-Native DeX Assistant subscription authentication and inference for Chat and typed command planning. Preserve local routes, privacy, voice/TTS, ActionRouter and legacy keys. No backend, proxy, CLI credentials, private endpoints, POC changes or automatic paid fallback. Never activate commands/default before real account acceptance.
+Native DeX Assistant subscription authentication and inference for Chat and typed command planning. Preserve local routes, privacy, voice/TTS, ActionRouter and stored legacy keys. No backend, proxy, CLI credentials, private endpoints, POC changes or automatic paid fallback. Never activate commands/default before real account acceptance.
 
 ## Inputs and constraints
 Owner migration request M0–M7; AGENTS, D-030/D-036–038, BRD/SRS, DEVICE_COMMANDS_V1/V2, current source. POC reference `/home/kunrg/ChatGPT-Subscription-Android-POC` commit `2c67aacd06fdc572e6305ea016667daafe9d84a6`, MIT. POC report is reference, not target evidence. Existing dirty icon/collector/memory edits are retained and excluded from migration commits. Device data/signature/roles/grants must survive.
@@ -19,7 +19,7 @@ Owner migration request M0–M7; AGENTS, D-030/D-036–038, BRD/SRS, DEVICE_COMM
 4. M3 Chat adapter using bounded explicit history and existing lifecycle/TTS.
 5. M4 namespace schema/strict typed extraction; keep execution blocked without account proof.
 6. M5 deliberate browser/account/settings/test inference; no key UI for subscription.
-7. M6 explicit routing, preserved legacy fallback choices, no subscription fallback or default activation before acceptance.
+7. M6 explicit routing, preserved legacy fallback choices (historical; D-040 retires them), no subscription fallback or default activation before acceptance.
 8. M7 host/build/simulator checks, owner Fold3 auth/inference/tools/voice/metrics, evidence, milestone commits/push/draft PR.
 
 ## Validation
@@ -31,17 +31,20 @@ Preview protocol/account policy may change. Missing account tools => command BLO
 ## Progress and findings
 - [x] M0 audit/matrix, repository/contract/POC reads, feature branch, independent public-MIT eligibility.
 - [x] M1–M6 native auth/shared transport/Chat/typed planning/settings; legacy keys and local/security routes preserved.
-- [x] Full latest6515ec8 host test/lint/app+test APK PASS201tasks; app234tests/variant (1skip),DPC5/variant,0lint errors.
+- [x] Historical2026-10-22 source6515ec8 host test/lint/app+test APK PASS201tasks; app234tests/variant (1skip),DPC5/variant,0lint errors.
 - [x] Original-signed in-place Fold3 installation; owner personally completed sign-in. Scope/restoration/refresh rotation and7models verified.
 - [x] Actual inference,2-turn Vietnamese Chat and completed structured namespace tools PASS; real cancellation1ms after delta, no partial history.
 - [x] Final core+offline23/23PASS; routing3/3PASS: actual MobileAiProxy/ActionRouter Chrome dispatch, no local-match shortcut, Chat action isolation. No owner default/key change.
 - [x] Account/client+model-bound inference/tool proofs allow deliberate manual trials; automatic activation remains false. Draft PR2 unmerged.
 - [ ] Latest6515ec8 hardened completion error check installed on Fold3 (built/host-tested only; current device app c89fa2b).
-- [ ] Windows simulator (NOT TESTED: Windows ADB absent).
+- [x] Windows simulator2026-10-23: final cleanup candidate13/13scoped subscription/offline/local tests PASS14.309s,API35; original missing-ADB limitation resolved on current host.
 - [ ] Owner manual Subscription selection and natural voice/STT/TTS/interrupt/confirmation/security acceptance; physical logout/reconnect; matched PSS/natural p95/soak.
 - [ ] Full acceptance/default activation/merge; migration remains IN_PROGRESS.
 
-### Next-session handoff (owner pause 2026-10-22)
+### Continuation 2026-10-23 — current work
+Owner requests latest GitHub source, continuing its existing subscription branch and removing obsolete API code. Fetched ba054d3 and created isolated worktree `/home/khuongnd/worktrees/dex-subscription`; original dirty main preserved. D-040 supersedes in-app BYOK rollback. Current work removes API adapters/key editor and dead settings, routes coordinator directly to subscription, retains stored credentials and explicit activation/proofs, ports offline lifecycle/perf/schema tests and updates bilingual docs. Validation and results: [continuation evidence](../../evidence/T-025-subscription-only-2026-10-23.md). No physical/live-account action performed this session. Current cleanup JDK17 test/lint/APKs PASS201tasks; app219tests/variant (1skip),DPC5/variant. Windows API35 AVD final subscription/offline lifecycle/settings/Keystore/component/local suites PASS13/13,14.309s. LocalFirst fixture updated to current UI tags after initial2failures. Whitespace and memory145Markdown/471links PASS. Owner now authorizes commit/push; publication pending. No physical/live calls. Next publish checkpoint and coordinate original-signed physical acceptance. Do not reuse previous physical results as cleanup validation.
+
+### Historical next-session handoff (owner pause 2026-10-22)
 No more live calls/device changes today. Source pushed through6515ec8; checkpoint documentation follows it. Read STATUS and report first. Rediscover wireless ADB; never reuse historical port blindly. Use JDK17 and `/home/kunrg/Android/Sdk`; `/tmp/dex-t025-validation` is isolated build workspace. Latest full build log `/tmp/dex-t025-release-candidate-build.log`.
 
 Re-sign latest app/test with original9ddb identity, retaining the owner's existing icon overlay, then install in place without uninstall/data/grant/role changes. Current installed trial artifact SHA256 ce39dccc0df9dbd3be5b23869a1dbaa97ca3f5e221caa49d2927bd5545c6ce9a; final6515ec8 hardening is not in it. Verify installed hash and scoped offline/final harmless live smoke. Do not repeat the Chrome execution unnecessarily.

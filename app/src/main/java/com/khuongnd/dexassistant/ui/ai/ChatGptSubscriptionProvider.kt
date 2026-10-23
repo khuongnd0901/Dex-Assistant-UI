@@ -7,8 +7,7 @@ import com.khuongnd.dexassistant.ui.routing.ActionId
 import com.khuongnd.dexassistant.ui.routing.CommandPrivacy
 import com.khuongnd.dexassistant.ui.routing.CommandRegistry
 import com.khuongnd.dexassistant.ui.routing.TypedAction
-import com.khuongnd.dexassistant.ui.security.AiProvider
-import com.khuongnd.dexassistant.ui.security.AiProviderSettings
+import com.khuongnd.dexassistant.ui.security.ChatGptSettings
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,25 +20,33 @@ object SubscriptionAcceptance {
 }
 
 /** Consumers share authentication/transport, but each owns its cancellable request. */
-class ChatGptSubscriptionProvider(context: Context, private val settings: AiProviderSettings) {
+internal interface AiSubscription {
+    fun ready(): Boolean
+    fun cancel()
+    fun reply(turn: DirectChatState.Turn, metric: (String, Long) -> Unit = { _, _ -> }): String
+    fun plan(text: String, registry: CommandRegistry, supported: Set<ActionId>, metric: (String, Long) -> Unit = { _, _ -> }): List<TypedAction>
+}
+
+class ChatGptSubscriptionProvider(context: Context, private val settings: ChatGptSettings) : AiSubscription {
     private val auth = ChatGptAuthManager.get(context)
     private val responses = ChatGptResponsesClient(auth)
+    private val toolCatalog = SerializedToolCatalog()
     private val active = AtomicReference<SubscriptionOperation?>()
-    fun cancel() { active.get()?.cancel() }
-    fun ready() = SubscriptionAcceptance.MANUAL_SELECTION_ACCEPTED && auth.connected() &&
-        settings.enabled(AiProvider.CHATGPT_SUBSCRIPTION) && settings.subscriptionVerified(auth.connectionKey(), false)
+    override fun cancel() { active.get()?.cancel() }
+    override fun ready() = SubscriptionAcceptance.MANUAL_SELECTION_ACCEPTED && settings.selected() && auth.connected() &&
+        settings.enabled() && settings.subscriptionVerified(auth.connectionKey(), false)
 
     private fun <T> request(block: (String, SubscriptionOperation) -> T): T {
         val op = SubscriptionOperation()
         if (!active.compareAndSet(null, op)) throw MobileAiException("AI_REQUEST_IN_PROGRESS")
-        val model = settings.model(AiProvider.CHATGPT_SUBSCRIPTION)
+        val model = settings.model()
         val generation = auth.sessionGeneration()
         try {
             if (!ready()) throw ChatGptFailure("NOT_CONNECTED")
             val value = block(model, op)
             op.check()
-            if (auth.sessionGeneration() != generation || settings.defaultProvider() != AiProvider.CHATGPT_SUBSCRIPTION ||
-                settings.model(AiProvider.CHATGPT_SUBSCRIPTION) != model || !ready())
+            if (auth.sessionGeneration() != generation || !settings.selected() ||
+                settings.model() != model || !ready())
                 throw ChatGptFailure("CANCELLED")
             return value
         } catch (e: ChatGptFailure) { throw MobileAiException(e.code) }
@@ -47,13 +54,14 @@ class ChatGptSubscriptionProvider(context: Context, private val settings: AiProv
         finally { active.compareAndSet(op, null) }
     }
 
-    fun reply(turn: DirectChatState.Turn): String = request { model, op ->
+    override fun reply(turn: DirectChatState.Turn, metric: (String, Long) -> Unit): String = request { model, op ->
         require(!CommandPrivacy.requiresLocalHandling(turn.input))
         val payload = chatPayload(model, turn)
-        ResponsesStream.chatText(responses.response(payload, op))
+        val response = responses.response(payload, op, metric = metric)
+        ProviderTiming.parse(metric) { ResponsesStream.chatText(response) }
     }
 
-    fun plan(text: String, registry: CommandRegistry, supported: Set<ActionId>): List<TypedAction> {
+    override fun plan(text: String, registry: CommandRegistry, supported: Set<ActionId>, metric: (String, Long) -> Unit): List<TypedAction> {
         // No setting or model output can bypass the reviewed real function-calling gate.
         if (!SubscriptionAcceptance.DEVICE_COMMANDS_ACCEPTED || !settings.subscriptionVerified(auth.connectionKey(), true))
             throw MobileAiException("SUBSCRIPTION_COMMANDS_NOT_VERIFIED")
@@ -63,8 +71,9 @@ class ChatGptSubscriptionProvider(context: Context, private val settings: AiProv
                 JSONArray().put(JSONObject().put("role", "user").put("content", text)),
                 "Plan only supported device actions using the supplied functions. Reject ambiguous or unsafe requests. " +
                     "Never invent apps, recipients, targets, confirmation, credentials or success.")
-                .put("tools", SubscriptionTools.schemas(supported, registry.appIds))
-            SubscriptionTools.parse(responses.response(payload, op), registry, supported)
+                .put("tools", JSONArray(toolCatalog.forScope(supported, registry.appIds)))
+            val response = responses.response(payload, op, metric = metric)
+            ProviderTiming.parse(metric) { SubscriptionTools.parse(response, registry, supported) }
         }
     }
 
@@ -89,8 +98,8 @@ class ChatGptSubscriptionProvider(context: Context, private val settings: AiProv
 internal object SubscriptionTools {
     fun schemas(supported: Set<ActionId>, apps: Set<String>): JSONArray {
         val tools = JSONArray()
-        AiToolSchema.schemas(supported, apps, false).forEach {
-            tools.put(it.getJSONObject("function").put("type", "function").put("strict", false))
+        AiToolSchema.schemas(supported, apps).forEach {
+            tools.put(it)
         }
         require(tools.length() > 0)
         return JSONArray().put(JSONObject().put("type", "namespace").put("name", "device")
@@ -110,6 +119,6 @@ internal object SubscriptionTools {
             require(args.length <= 16384)
             calls.add(JSONObject().put("name", item.getString("name")).put("args", JSONObject(args)))
         }
-        return AiToolCallParser.validate(calls, registry, supported)
+        return AiToolCallValidator.validate(calls, registry, supported)
     }
 }

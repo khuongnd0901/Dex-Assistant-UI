@@ -6,8 +6,7 @@ import com.khuongnd.dexassistant.ui.ai.ChatGptResponsesClient
 import com.khuongnd.dexassistant.ui.ai.ResponsesStream
 import com.khuongnd.dexassistant.ui.auth.ChatGptAuthManager
 import com.khuongnd.dexassistant.ui.auth.ChatGptFailure
-import com.khuongnd.dexassistant.ui.security.AiProvider
-import com.khuongnd.dexassistant.ui.security.AiProviderSettings
+import com.khuongnd.dexassistant.ui.security.ChatGptSettings
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 import okio.Buffer
@@ -32,7 +31,7 @@ class ChatGptSubscriptionLiveDeviceTest {
     @Test fun authorizedNamespacedFunctionPlanningNeverExecutes() {
         val context = liveContext()
         val auth = ChatGptAuthManager.get(context)
-        val model = AiProviderSettings(context).model(AiProvider.CHATGPT_SUBSCRIPTION)
+        val model = ChatGptSettings(context).model()
         val supported = setOf(com.khuongnd.dexassistant.ui.routing.ActionId.VOLUME_SET)
         val registry = com.khuongnd.dexassistant.ui.routing.CommandRegistry.load(context)
         val payload = ChatGptResponsesClient.payload(model,
@@ -60,7 +59,7 @@ class ChatGptSubscriptionLiveDeviceTest {
             val actions = com.khuongnd.dexassistant.ui.ai.SubscriptionTools.parse(response, registry, supported)
             check(actions.size == 1 && actions.single().params["operation"] == "MUTE")
             count = actions.size
-            AiProviderSettings(context).recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, true)
+            ChatGptSettings(context).recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, true)
         } catch (e: Exception) { failure = if (e is ChatGptFailure) e.code else e.javaClass.simpleName }
         finally {
             shape.putInt("toolValidatedActions", count)
@@ -78,7 +77,7 @@ class ChatGptSubscriptionLiveDeviceTest {
         val previous = auth.freshSession()
         val refreshed = auth.freshSession(previous.accessToken)
         val models = com.khuongnd.dexassistant.ui.ai.ChatGptModelRepository(auth).load()
-        val model = AiProviderSettings(context).model(AiProvider.CHATGPT_SUBSCRIPTION)
+        val model = ChatGptSettings(context).model()
         check(models.any { it.slug == model })
         val report = Bundle().apply {
             putBoolean("liveRefreshAuthorized", refreshed.hasSubscriptionScope())
@@ -110,7 +109,7 @@ class ChatGptSubscriptionLiveDeviceTest {
         val context = instrumentation.targetContext
         val auth = ChatGptAuthManager.get(context)
         check(auth.connected()) { "SUBSCRIPTION_NOT_CONNECTED" }
-        val model = AiProviderSettings(context).model(AiProvider.CHATGPT_SUBSCRIPTION)
+        val model = ChatGptSettings(context).model()
         check(model.isNotBlank()) { "SUBSCRIPTION_MODEL_NOT_SELECTED" }
         val capture = Buffer()
         var status = 0
@@ -146,7 +145,7 @@ class ChatGptSubscriptionLiveDeviceTest {
                 JSONArray().put(JSONObject().put("role", "user").put("content", "Hãy chào tôi bằng một câu tiếng Việt.")),
                 "Reply briefly in Vietnamese."))
             reply = ResponsesStream.chatText(response)
-            AiProviderSettings(context).recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, false)
+            ChatGptSettings(context).recordSubscriptionVerification(requireNotNull(auth.connectionKey()), model, false)
         } catch (e: Exception) {
             // Only local finite codes / exception class, never exception.message or causes.
             failure = if (e is ChatGptFailure) e.code else e.javaClass.simpleName

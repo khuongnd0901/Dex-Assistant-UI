@@ -12,7 +12,7 @@ Xây dựng một trợ lý ảo toàn quyền điều khiển thiết bị Andr
 - Mục tiêu zero-touch áp dụng cho từng action đã được kiểm chứng trên Fold3;
   chức năng chưa có API/đặc quyền ổn định phải báo unsupported hoặc best-effort.
 - Phản hồi siêu tốc độ (Real-time).
-- Chi phí vận hành: $0/tháng (Sử dụng 100% Free Tier services).
+- AI sử dụng gói ChatGPT sẵn có theo D-040; tiêu thụ hạn mức chung của gói đã cấp quyền. Không tự chuyển sang API trả phí; không cam kết API miễn phí/không giới hạn.
 
 ## 3. Scope of Work (In-Scope)
 - **Voice Trigger:** Luôn lắng nghe lệnh (Wake word) 24/7 không lo tốn pin.
@@ -26,11 +26,9 @@ Xây dựng một trợ lý ảo toàn quyền điều khiển thiết bị Andr
 - **Vietnamese routines:** Lệnh local nhận tiếng Việt và ánh xạ routine phổ biến
   sang intent xác định; ví dụ `nhạc lái xe` mở YouTube tìm các tiêu đề liên quan,
   không phụ thuộc playlist cố định.
-- **Free-tier control and observability:** Backend quản lý mọi lượt gọi AI qua
-  một lớp proxy có budget theo provider. App hiển thị tình trạng backend và
-  quota/usage của từng API, đồng thời có thể lưu lịch sử chẩn đoán cục bộ đã
-  giới hạn để phục vụ tối ưu hệ thống. Proxy chọn ngẫu nhiên API còn quota và tự
-  thử API khả dụng khác khi cần.
+- **Subscription control:** Android quản lý kết nối ChatGPT riêng, chọn model từ tài
+  khoản, kiểm tra quyền suy luận/function calling và báo lỗi quota/xác thực. Người dùng
+  xem hạn mức trong ChatGPT Settings. Không dùng backend hay API key/fallback provider.
 
 ## 4. Out of Scope
 - Quản lý đa người dùng (Multi-tenant).

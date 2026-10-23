@@ -217,7 +217,7 @@ fun AssistantScreen(
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (dialog) {
                     "settings" -> {
-                        AiProvidersSettings()
+                        ChatGptSubscriptionSettings()
                         Text("Local Command và Chat/AI hoạt động trực tiếp trên Android, không cần backend.")
                         Button(onClick = onRefresh) { Text("Refresh health") }
                         Button(onClick = onApplyPermissions) { Text("Apply permission profile") }

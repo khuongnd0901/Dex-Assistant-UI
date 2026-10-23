@@ -30,7 +30,7 @@ class ChatGptResponsesClient internal constructor(private val auth: Subscription
     private val client: OkHttpClient = ChatGptHttp.client.newBuilder()
         .readTimeout(15, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS).build()) {
     fun response(payload: JSONObject, operation: SubscriptionOperation = SubscriptionOperation(),
-        onDelta: (String) -> Unit = {}): JSONObject {
+        onDelta: (String) -> Unit = {}, metric: (String, Long) -> Unit = { _, _ -> }): JSONObject {
         operation.check()
         var session = auth.freshSession()
         operation.check()
@@ -41,8 +41,10 @@ class ChatGptResponsesClient internal constructor(private val auth: Subscription
                 .header("Accept", "text/event-stream")
                 .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
             val call = client.newCall(request); operation.bind(call)
+            val timing = ProviderTiming(metric)
             try {
                 call.execute().use { result ->
+                    timing.headers()
                     operation.check()
                     if (result.code == 401 && attempt == 0) {
                         session = auth.freshSession(session.accessToken)
@@ -51,15 +53,15 @@ class ChatGptResponsesClient internal constructor(private val auth: Subscription
                         ChatGptHttp.checkStatus(result.code)
                         // Like the proven POC, validate SSE events rather than a proxy-specific MIME label.
                         // HTML/JSON errors still fail the bounded parser; only response.completed can succeed.
-                        val source = result.body?.source() ?: throw ChatGptFailure("INVALID_STREAM")
-                        return ResponsesStream.read(source, operation::check, onDelta)
+                        val body = result.body ?: throw ChatGptFailure("INVALID_STREAM")
+                        return timing.body(body) { ResponsesStream.read(body.source(), operation::check, onDelta) }
                     }
                 }
             } catch (e: ChatGptFailure) { auth.failure(e); throw e }
             catch (_: Exception) {
                 operation.check()
                 throw ChatGptFailure("NETWORK_OR_INVALID_RESPONSE")
-            } finally { operation.release(call) }
+            } finally { timing.headers(); operation.release(call) }
         }
         throw ChatGptFailure("SESSION_EXPIRED")
     }

@@ -32,11 +32,11 @@ class ChatGptSubscriptionRoutingLiveDeviceTest {
         assumeTrue("Owner opt-in required", InstrumentationRegistry.getArguments().getString("subscriptionLiveProbe") == "true")
         return instrumentation.targetContext
     }
-    private fun withFixture(block: (Context, AiProviderSettings, AiCredentialStore) -> Unit) {
+    private fun withFixture(block: (Context, ChatGptSettings) -> Unit) {
         val owner = context()
         val auth = ChatGptAuthManager.get(owner)
         val connection = requireNotNull(auth.connectionKey())
-        val original = AiProviderSettings(owner)
+        val original = ChatGptSettings(owner)
         check(original.subscriptionVerified(connection, false) && original.subscriptionVerified(connection, true))
         val ownerPrefs = owner.getSharedPreferences("ai_provider_settings_v1", 0).all
         val ownerKeys = owner.getSharedPreferences("ai_provider_keys_v1", 0).all
@@ -50,14 +50,14 @@ class ChatGptSubscriptionRoutingLiveDeviceTest {
             }
         }
         try {
-            val settings = AiProviderSettings(isolated)
-            val model = original.model(AiProvider.CHATGPT_SUBSCRIPTION)
-            settings.setModel(AiProvider.CHATGPT_SUBSCRIPTION, model)
-            settings.setEnabled(AiProvider.CHATGPT_SUBSCRIPTION, true)
+            val settings = ChatGptSettings(isolated)
+            val model = original.model()
+            settings.setModel(model)
+            settings.setEnabled(true)
             settings.recordSubscriptionVerification(connection, model, false)
             settings.recordSubscriptionVerification(connection, model, true)
-            settings.setDefaultProvider(AiProvider.CHATGPT_SUBSCRIPTION)
-            block(isolated, settings, AiCredentialStore(isolated, prefix))
+            settings.select()
+            block(isolated, settings)
         } finally {
             names.forEach(owner::deleteSharedPreferences)
             assertTrue("Owner provider settings must remain unchanged", ownerPrefs == owner.getSharedPreferences("ai_provider_settings_v1", 0).all)
@@ -65,9 +65,9 @@ class ChatGptSubscriptionRoutingLiveDeviceTest {
         }
     }
 
-    @Test fun directChatAdapterKeepsDeviceRequestsConversational() = withFixture { context, settings, credentials ->
+    @Test fun directChatAdapterKeepsDeviceRequestsConversational() = withFixture { context, settings ->
         val state = DirectChatState().apply { start() }
-        val chat = DirectAiChat(credentials, settings, subscription = ChatGptSubscriptionProvider(context, settings))
+        val chat = ChatGptSubscriptionProvider(context, settings)
         val report = Bundle()
         try {
             listOf("Chào tôi bằng một câu tiếng Việt.", "Hãy mở Chrome.").forEachIndexed { i, input ->
@@ -80,13 +80,13 @@ class ChatGptSubscriptionRoutingLiveDeviceTest {
             }
             report.putBoolean("adapterChatDeviceActionsExecuted", false)
             report.putInt("adapterChatValidatedTurns", 2)
-        } finally { chat.cancelPendingRequest(); state.clear(); instrumentation.sendStatus(0, report) }
+        } finally { chat.cancel(); state.clear(); instrumentation.sendStatus(0, report) }
     }
 
-    @Test fun nativeCommandPlannerLaunchesOnlyValidatedChromeThroughActionRouter() = withFixture { context, settings, credentials ->
+    @Test fun nativeCommandPlannerLaunchesOnlyValidatedChromeThroughActionRouter() = withFixture { context, settings ->
         val registry = CommandRegistry.load(context)
         check("chrome" in registry.appIds)
-        val proxy = MobileAiProxy(credentials, settings, subscription = ChatGptSubscriptionProvider(context, settings))
+        val proxy = ChatGptSubscriptionProvider(context, settings)
         val input = "Xin hãy mở ứng dụng Chrome giúp tôi."
         assertNull("Deterministic local commands must not be sent to AI", com.khuongnd.dexassistant.ui.routing.LocalCommandEngine(registry).resolve(input))
         val start = System.nanoTime()
@@ -120,14 +120,14 @@ class ChatGptSubscriptionRoutingLiveDeviceTest {
             assertTrue("Truthful native dispatch required", outcome.outcome in setOf(LocalOutcome.DISPATCHED, LocalOutcome.VERIFIED))
         } finally {
             instrumentation.runOnMainSync { router?.cancel() }
-            proxy.cancelPendingRequest(); dpc.unbind()
+            proxy.cancel(); dpc.unbind()
         }
     }
 
     @Test fun liveStreamCancellationDiscardsPartialReplyWithoutReplay() {
         val context = context()
         val auth = ChatGptAuthManager.get(context)
-        val model = AiProviderSettings(context).model(AiProvider.CHATGPT_SUBSCRIPTION)
+        val model = ChatGptSettings(context).model()
         val operation = SubscriptionOperation()
         var deltas = 0
         var cancelledAt = 0L

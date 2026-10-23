@@ -12,7 +12,7 @@ internal class ProviderTiming(private val emit: (String, Long) -> Unit) {
         requestEnded = true
         elapsed("providerRequestLatency", requestStarted)
     }
-    fun body(body: ResponseBody, read: () -> String): String {
+    fun <T> body(body: ResponseBody, read: () -> T): T {
         if (body.source().request(1)) {
             firstByteAt = System.nanoTime()
             elapsed("providerFirstByteLatency", requestStarted, firstByteAt!!)

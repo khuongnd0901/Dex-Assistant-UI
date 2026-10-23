@@ -27,8 +27,7 @@ import com.khuongnd.dexassistant.ui.ai.SubscriptionAcceptance
 import com.khuongnd.dexassistant.ui.ai.SubscriptionOperation
 import com.khuongnd.dexassistant.ui.auth.ChatGptAuthManager
 import com.khuongnd.dexassistant.ui.auth.ChatGptFailure
-import com.khuongnd.dexassistant.ui.security.AiProvider
-import com.khuongnd.dexassistant.ui.security.AiProviderSettings
+import com.khuongnd.dexassistant.ui.security.ChatGptSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,16 +36,17 @@ import org.json.JSONObject
 
 /** No browser launch except the deliberate sign-in click. No raw auth/provider errors reach UI. */
 @Composable
-internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
+internal fun ChatGptSubscriptionSettings() {
     val context = LocalContext.current
     val auth = remember { ChatGptAuthManager.get(context) }
-    val settings = remember { AiProviderSettings(context) }
+    val settings = remember { ChatGptSettings(context) }
     val scope = rememberCoroutineScope()
+    var selected by remember { mutableStateOf(settings.selected()) }
     var connected by remember { mutableStateOf(auth.connected()) }
     var status by remember { mutableStateOf(if (connected) "CONNECTED" else auth.state.name) }
     var busy by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf(emptyList<ChatGptModelRepository.Model>()) }
-    var model by remember { mutableStateOf(settings.model(AiProvider.CHATGPT_SUBSCRIPTION)) }
+    var model by remember { mutableStateOf(settings.model()) }
     var menu by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf("") }
     val operation = remember { mutableStateOf<SubscriptionOperation?>(null) }
@@ -58,6 +58,7 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("ChatGPT Subscription — $status", modifier = Modifier.testTag("subscriptionStatus"))
+        Text(if (selected) "AI Chat và AI Command: ChatGPT Subscription" else "Kết nối và chọn ChatGPT để dùng AI Chat/AI Command.")
         Text("Dùng gói ChatGPT đã cấp quyền; không nhập OpenAI API key. Không tự chuyển sang API trả phí.")
         if (connected) {
             Text(auth.accountEmail().orEmpty())
@@ -76,7 +77,7 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
                         }
                     } }
                     connected = true; status = "CONNECTED"; models = emptyList()
-                    settings.setEnabled(AiProvider.CHATGPT_SUBSCRIPTION, true)
+                    settings.setEnabled(true)
                 } catch (e: Exception) { error(e) }
                 finally { busy = false }
             }
@@ -88,7 +89,7 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
                 try {
                     models = withContext(Dispatchers.IO) { ChatGptModelRepository(auth).load() }
                     if (models.none { it.slug == model }) {
-                        model = ""; settings.setModel(AiProvider.CHATGPT_SUBSCRIPTION, "")
+                        model = ""; settings.setModel("")
                     }
                     status = if (models.isEmpty()) "Không có model được cấp quyền" else "CONNECTED"
                 } catch (e: Exception) { models = emptyList(); error(e) }
@@ -100,7 +101,7 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             models.forEach { item -> DropdownMenuItem(text = { Text(item.displayName) }, onClick = {
-                model = item.slug; settings.setModel(AiProvider.CHATGPT_SUBSCRIPTION, model); menu = false; preview = ""
+                model = item.slug; settings.setModel(model); menu = false; preview = ""
             }) }
         }
         Button(enabled = connected && !busy && models.any { it.slug == model }, onClick = {
@@ -149,8 +150,8 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
             "để thử AI Chat và AI Command. Nghiệm thu voice/action còn mở; provider không tự đổi.")
         OutlinedButton(enabled = SubscriptionAcceptance.MANUAL_SELECTION_ACCEPTED && connected && !busy &&
             settings.subscriptionVerified(auth.connectionKey(), false) && settings.subscriptionVerified(auth.connectionKey(), true),
-            onClick = { settings.setDefaultProvider(AiProvider.CHATGPT_SUBSCRIPTION); onPreferred() }) {
-            Text("Chọn Subscription để thử Chat/AI Command")
+            onClick = { settings.select(); selected = true }) {
+            Text(if (selected) "Đã chọn ChatGPT Subscription" else "Chọn Subscription để thử Chat/AI Command")
         }
         OutlinedButton(onClick = { open(Uri.parse("https://chatgpt.com/settings/usage")) }) { Text("Quản lý hạn mức ChatGPT") }
         OutlinedButton(enabled = !busy && connected, onClick = {
@@ -161,7 +162,7 @@ internal fun ChatGptSubscriptionSettings(onPreferred: () -> Unit) {
                 try {
                     val revoked = withContext(Dispatchers.IO) { auth.logout() }
                     connected = false; models = emptyList()
-                    settings.setEnabled(AiProvider.CHATGPT_SUBSCRIPTION, false)
+                    settings.setEnabled(false)
                     status = if (revoked) "NOT_CONNECTED" else "NOT_CONNECTED — chưa xác nhận thu hồi từ xa; ngắt app trong ChatGPT Settings"
                 } catch (e: Exception) { error(e) }
                 finally { busy = false }
